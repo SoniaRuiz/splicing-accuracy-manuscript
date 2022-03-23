@@ -7,23 +7,6 @@ library(GenomicRanges)
 
 .libPaths( c( "/home/sruiz/R/x86_64-pc-linux-gnu-library/4.1", .libPaths()) )
 
-
-# project_id <- "SRP058181"
-# clusters_ID <- c("C_", "P_")
-
-
-# project_id <- "SRP051844"
-# clusters_ID <- c("C_", "H_")
-# 
-# 
-# project_id <- "SRP035988"
-# clusters_ID <- c("normal", "lesional")
-
-# project_id <- "BRAIN"
-# project_id <- "ADRENAL_GLAND"
-# gtf_version <- 105
-# folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
-
 get_mode <- function(vector) {
   uniqv <- unique(vector)
   uniqv[which.max(tabulate(match(vector, uniqv)))]
@@ -131,7 +114,7 @@ download_from_recount <- function(project_id,
 source("/home/sruiz/PROJECTS/splicing-project/pipeline1_QC_split_reads.R")
 
 
-annotate_from_recount <- function(project_id = "BRAIN",
+annotate_from_recount <- function(project_id,
                                   gtf_path = NULL,
                                   clusters_ID = NULL,
                                   folder_root = NULL) {
@@ -262,7 +245,7 @@ idb_generation <- function(project_id,
     ############################################
 
     get_distances(cluster = cluster,
-                  samples = samples[119:length(samples)],
+                  samples = samples,
                   split_read_counts = split_read_counts,
                   all_split_reads_details = all_split_reads_details_105,
                   folder_name)
@@ -274,6 +257,7 @@ idb_generation <- function(project_id,
                       folder_name = folder_name)
 
 
+    ## "ESOPHAGUS" needs to continue by here
     get_never_misspliced(cluster = cluster,
                          samples = samples,
                          split_read_counts = split_read_counts,
@@ -371,62 +355,69 @@ idb_generation <- function(project_id,
 # project_id <- "SMALL_INTESTINE"
 # project_id <- "SALIVARY_GLAND"
 
+# "SPLEEN"
+# "LIVER"
+# "BONE_MARROW"
+# "OVARY"
+# "VAGINA"
+# "UTERUS"
+# "BLADDER"
+# "CERVIX_UTERI"
+# "FALLOPIAN_TUBE"
+# "STOMACH"
+# "ESOPHAGUS"
+# "SKIN"
+# "PANCREAS"
+# "BREAST"
+# "TESTIS"
+# "PITUITARY"
+# "PROSTATE"
+# "BLOOD_VESSEL"
+# "ADIPOSE_TISSUE"
+# "HEART"
+# "MUSCLE"
+# "COLON"
+# "THYROID"
+# "NERVE"
+# "LUNG"
+
 
 ## TODO:
-# project_id <- "BLOOD"
-projects <- c("SKIN",
-              "ESOPHAGUS",
-              "BLOOD_VESSEL",
-              "ADIPOSE_TISSUE",
-              "HEART",
-              "MUSCLE",
-              "COLON",
-              "THYROID",
-              "NERVE",
-              "LUNG",
-              "BREAST",
-              "TESTIS",
-              "STOMACH",
-              "PANCREAS",
-              "PITUITARY",
-              "PROSTATE",
-              "SPLEEN",
-              "LIVER",
-              "BONE_MARROW",
-              "OVARY",
-              "VAGINA",
-              "UTERUS",
-              "BLADDER",
-              "CERVIX_UTERI",
-              "FALLOPIAN_TUBE")
 
-
-for (project_id in projects[1]) {
+projects <- c("BLOOD") # the 2nd tissue from blood project # ask if file doesn't exist
+              
+              
   
-  project_id <- "BLOOD"
-  # project_id <- projects[25]
+              
+
+
+for (project_id in projects) {
+  
+  # project_id <- "ESOPHAGUS"
+  # project_id <- "SKIN"
+  # project_id <- projects[1]
   
   gtf_version <- 105
   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
   
-  # rse <- recount3::create_rse_manual(
-  #   project = project_id,
-  #   project_home = "data_sources/gtex",
-  #   organism = "human",
-  #   annotation = "gencode_v29",
-  #   type = "jxn"
-  # )
-  # clusters_ID <- rse$gtex.smtsd %>% unique()
-  # 
-  # download_from_recount(project_id = project_id,
-  #                       recount_version = 3,
-  #                       clusters_ID = clusters_ID,
-  #                       rse = rse,
-  #                       folder_root = folder_root)
-  # 
-  # rm(rse)
-  # gc()
-  
+  rse <- recount3::create_rse_manual(
+    project = project_id,
+    project_home = "data_sources/gtex",
+    organism = "human",
+    annotation = "gencode_v29",
+    type = "jxn"
+  )
+  clusters_ID <- rse$gtex.smtsd %>% unique()
+
+  download_from_recount(project_id = project_id,
+                        recount_version = 3,
+                        clusters_ID = clusters_ID,
+                        rse = rse,
+                        folder_root = folder_root)
+
+  rm(rse)
+  gc()
+
   annotate_from_recount(project_id = project_id,
                         folder_root = folder_root)
 

@@ -29,8 +29,9 @@ get_distances <- function(cluster,
     # sample <- samples[2]
     # sample <- "54285"
     
-    if (length(which((colnames(split_read_counts) == sample) == TRUE)) == 1) { # Every sampleID is unique, so the result should be equal to 1
-      
+    if (!file.exists(paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")) &&
+        length(which((colnames(split_read_counts) == sample) == TRUE)) == 1) { 
+      # Every sampleID is unique, so the result should be equal to 1
       
       print(cluster)
       print(paste0(Sys.time(), " - sample '", num_sample, "'"))
@@ -372,15 +373,21 @@ get_distances <- function(cluster,
       
       
     } else {
+
+      if (file.exists(paste0(folder_name, "/", cluster, "_", sample, "_distances.rds"))) {
+        print(paste0("Sample '", sample, "' exists!"))
+      }
+      if ( length(which((colnames(split_read_counts) == sample) == TRUE)) == 0) {
+        print(paste0("Error: sample '", sample, "' not found in the split-reads file!"))
+        break;
+      }
       
-      print(paste0("Error: sample '", sample, "' not found in the split-reads file!"))
-      break;
       
     }
     
     ## FREE-UP SOME MEMORY
     rm(split_reads_details_97_sample)
-    
+    rm(split_read_counts_sample)
     
     
     rm(all_annotated)
@@ -414,7 +421,10 @@ extract_distances <- function(cluster,
   
   
   ## Obtain the distances across all samples
-  df_all <- map_df(samples, function(sample) { # sample <- samples[1]
+  df_all <- map_df(samples, function(sample) { 
+    
+    # sample <- samples[1]
+    # sample <- "GTEX-ZVT2-0426-SM-5E44S.1"
     
     file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
     
@@ -423,22 +433,26 @@ extract_distances <- function(cluster,
       print(paste0("sample: ", sample))
       
       df <- readRDS(file = file_name)
+      
       return(df)
+    } else {
+      print(paste0("sample: ", sample, " doesn't exist!"))
     }
     
   })
+  print("Samples loaded!")
   
-  if (df_all %>% nrow() == 0) {
-    
-    df_all <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
-    
-  } else {
-    
-    saveRDS(object = df_all %>% data.table::as.data.table(),
-            file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
-    print(stringr::str_c(Sys.time(), " - raw 'distances' file saved!")) 
-    
-  }
+  # if (df_all %>% nrow() == 0) {
+  #   
+  #   df_all <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
+  #   
+  # } else {
+  #   
+  #   saveRDS(object = df_all %>% data.table::as.data.table(),
+  #           file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
+  #   print(stringr::str_c(Sys.time(), " - raw 'distances' file saved!")) 
+  #   
+  # }
   
   # df_all <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
   print(paste0(Sys.time(), " --> ", df_all$ref_junID %>% unique() %>% length(), " unique reference introns"))
@@ -674,7 +688,7 @@ extract_distances <- function(cluster,
     #mutate(novel_junID = novel_junID %>% as.integer()) %>%
     data.table::as.data.table()
   
-  split_read_counts_novel <- split_read_counts_novel%>%
+  split_read_counts_novel <- split_read_counts_novel %>%
     #mutate(junID = junID %>% as.integer()) %>% 
     data.table::as.data.table()
   
@@ -793,19 +807,25 @@ get_never_misspliced <- function(cluster,
     
     print(paste0(Sys.time(), " - filtering junctions that are potentially not mis-spliced..."))
     
-    df_all_misspliced <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_raw.rds")) %>%
-      dplyr::distinct(ref_junID, .keep_all = T)
-    
-    all_not_misspliced <- all_split_reads_details %>%
-      dplyr::filter(!(junID %in% df_all_misspliced$ref_junID)) #%>%
-      #mutate(junID = junID %>% as.integer())
-    
-    if (intersect(all_not_misspliced$junID, df_all_misspliced$ref_junID) %>% length() > 0){
-      print("Error: some of the never misspliced introns appear within the 'distances' file!")
+    if (file.exists(paste0(folder_name, "/", cluster, "_distances_tidy.rds"))) {
+      
+      df_all_misspliced <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_tidy.rds")) %>%
+        dplyr::distinct(ref_junID, .keep_all = T)
+      
+      all_not_misspliced <- all_split_reads_details %>%
+        dplyr::filter(!(junID %in% df_all_misspliced$ref_junID)) %>%
+        data.table::as.data.table()
+      
+      if (intersect(all_not_misspliced$junID, df_all_misspliced$ref_junID) %>% length() > 0){
+        print("Error: some of the never misspliced introns appear within the 'distances' file!")
+      }
+      if (any(df_all_misspliced$ref_junID %>% duplicated()) || any(all_not_misspliced$junID %>% duplicated())) {
+        print("Error: none of the mis-spliced introns should within the never mis-spliced introns!")
+      }
+    } else {
+      print(paste0("File: '", folder_name, "/", cluster, "_distances_raw.rds' doesn't exist."))
     }
-    if (any(df_all_misspliced$ref_junID %>% duplicated()) || any(all_not_misspliced$junID %>% duplicated())) {
-      print("Error: none of the mis-spliced introns should within the never mis-spliced introns!")
-    }
+    
   }
   
   
@@ -827,13 +847,7 @@ get_never_misspliced <- function(cluster,
       split_read_counts_sample <- split_read_counts %>%
         dplyr::select(junID, all_of(sample %>% as.character())) %>%
         drop_na() 
-      split_read_counts_sample <- split_read_counts_sample[split_read_counts_sample[,sample] > 0,]
-      
-      all_not_misspliced <- all_not_misspliced %>%
-        #mutate(junID = junID %>% as.integer()) %>%
-        data.table::as.data.table()
-      split_read_counts_sample <- split_read_counts_sample %>% 
-        #mutate(junID = junID %>% as.integer()) %>%
+      split_read_counts_sample <- split_read_counts_sample[split_read_counts_sample[,sample] > 0,] %>%
         data.table::as.data.table()
       
       split_reads_details_97_sample <- merge(all_not_misspliced, 
@@ -904,19 +918,11 @@ get_never_misspliced <- function(cluster,
         ########  NOVEL-DONOR & FORWARD STRAND  ############
         ####################################################
         
-        overl_df <- GenomicRanges::findOverlaps(GenomicRanges::GRanges(seqnames = seqnames(all_donor_forward),
-                                                                       ranges = IRanges(start = end(all_donor_forward), 
-                                                                                        end = end(all_donor_forward)),
-                                                                       strand = strand("+"),
-                                                                       seqlengths = seqlengths(all_donor_forward)),
-                                                GenomicRanges::GRanges(seqnames = seqnames(all_annotated_forward),
-                                                                       ranges = IRanges(start = end(all_annotated_forward), 
-                                                                                        end = end(all_annotated_forward)),
-                                                                       strand = strand("+"),
-                                                                       seqlengths = seqlengths(all_annotated_forward)),
-                                                ignore.strand = FALSE)
         
-        overl_df %>% length()
+        overl_df <- GenomicRanges::findOverlaps(query = all_donor_forward,
+                                                subject = all_annotated_forward,
+                                                ignore.strand = FALSE,
+                                                type = "end")
         ignore_df <- all_annotated_forward[subjectHits(overl_df),]$junID
         ref_annotated_d_forward <- all_annotated_forward[-subjectHits(overl_df),]$junID
         
@@ -926,16 +932,10 @@ get_never_misspliced <- function(cluster,
         ########  NOVEL-DONOR & REVERSE STRAND  ############
         ####################################################
         
-        overl_dr <- GenomicRanges::findOverlaps(GenomicRanges::GRanges(seqnames = seqnames(all_donor_reverse),
-                                                                       ranges = IRanges(start = start(all_donor_reverse), 
-                                                                                        end = start(all_donor_reverse)),
-                                                                       strand = strand("-")),
-                                                GenomicRanges::GRanges(seqnames = seqnames(all_annotated_reverse),
-                                                                       ranges = IRanges(start = start(all_annotated_reverse), 
-                                                                                        end = start(all_annotated_reverse)),
-                                                                       strand = strand("-")),
+        overl_dr <- GenomicRanges::findOverlaps(query = all_donor_reverse,
+                                                subject = all_annotated_reverse,
+                                                type = "start",
                                                 ignore.strand = FALSE)
-        overl_dr %>% length()
         ignore_dr <- all_annotated_reverse[subjectHits(overl_dr),]$junID
         ref_annotated_d_reverse <- all_annotated_reverse[-subjectHits(overl_dr),]$junID
       
@@ -955,16 +955,10 @@ get_never_misspliced <- function(cluster,
           all_annotated_forward %>% length() > 0 &&
           all_annotated_reverse %>% length() > 0) {
       
-        overl_af <- GenomicRanges::findOverlaps(GRanges(seqnames = seqnames(all_acceptor_forward),
-                                                        ranges = IRanges(start = start(all_acceptor_forward), 
-                                                                         end = start(all_acceptor_forward)),
-                                                        strand = strand("+")),
-                                                GRanges(seqnames = seqnames(all_annotated_forward),
-                                                        ranges = IRanges(start = start(all_annotated_forward), 
-                                                                         end = start(all_annotated_forward)),
-                                                        strand = strand("+")),
+        overl_af <- GenomicRanges::findOverlaps(query = all_acceptor_forward,
+                                                subject = all_annotated_forward,
+                                                type = "start",
                                                 ignore.strand = FALSE)
-        overl_af %>% length()
         ignore_af <- all_annotated_forward[subjectHits(overl_af),]$junID
         ref_annotated_a_forward <- all_annotated_forward[-subjectHits(overl_af),]$junID
         
@@ -973,16 +967,10 @@ get_never_misspliced <- function(cluster,
         ########  NOVEL-ACCEPTOR & REVERSE STRAND  #########
         ####################################################
         
-        overl_ar <- GenomicRanges::findOverlaps(GRanges(seqnames = seqnames(all_acceptor_reverse),
-                                                        ranges = IRanges(start = end(all_acceptor_reverse), 
-                                                                         end = end(all_acceptor_reverse)),
-                                                        strand = strand("-")),
-                                                GRanges(seqnames = seqnames(all_annotated_reverse),
-                                                        ranges = IRanges(start = end(all_annotated_reverse), 
-                                                                         end = end(all_annotated_reverse)),
-                                                        strand = strand("-")),
+        overl_ar <- GenomicRanges::findOverlaps(query = all_acceptor_reverse,
+                                                subject = all_annotated_reverse,
+                                                type = "end",
                                                 ignore.strand = FALSE)
-        overl_ar %>% length()
         ignore_ar <- all_annotated_reverse[subjectHits(overl_ar),]$junID
         ref_annotated_a_reverse <- all_annotated_reverse[-subjectHits(overl_ar),]$junID
         
@@ -992,6 +980,7 @@ get_never_misspliced <- function(cluster,
         ignore_ar <- NULL
         ref_annotated_a_reverse <- NULL
       }
+      
       junc_ignore <- c(junc_ignore,
                        ignore_af,
                        ignore_ar,
@@ -1022,6 +1011,32 @@ get_never_misspliced <- function(cluster,
       
       num_sample <- num_sample + 1
       
+      rm(ignore_af)
+      rm(ignore_ar)
+      rm(ignore_df)
+      rm(ignore_dr)
+      rm(ref_annotated_d_forward)
+      rm(ref_annotated_d_reverse)
+      rm(ref_annotated_a_forward) 
+      rm(ref_annotated_a_reverse)
+      rm(overl_df)
+      rm(overl_dr)
+      rm(overl_af)
+      rm(overl_ar)
+      rm(split_read_counts_sample)
+      rm(split_reads_details_97_sample)
+      rm(all_annotated)
+      rm(all_annotated_forward)
+      rm(all_annotated_reverse)
+      rm(all_donor)
+      rm(all_donor_forward)
+      rm(all_donor_reverse)
+      rm(all_acceptor)
+      rm(all_acceptor_forward)
+      rm(all_acceptor_reverse)
+      rm(data)
+      rm(data_col)
+      gc()
       
     }
   }
@@ -1029,9 +1044,6 @@ get_never_misspliced <- function(cluster,
   if ((which(junc_not_misspliced %in% junc_ignore) %>% length()) > 0) {
     junc_not_misspliced <- junc_not_misspliced[-which(junc_not_misspliced %in% junc_ignore)]  
   }
-  
-  
-  
   
   if (save_results) {
     
@@ -1284,7 +1296,7 @@ add_never_misspliced_to_df <- function(cluster,
   
   
   ## Add the rest of the features to the joined data.frame
-  print(paste0(Sys.time(), " - Add the rest of the features to the joined dataframe..."))
+  print(paste0(Sys.time(), " - Adding the rest of the features to the joined dataframe..."))
   df_all <- merge(df_all %>% data.table::as.data.table(), 
                   all_split_reads_details[, c("junID", "gene_id_junction", "gene_name_junction", "tx_id_junction")] %>%
                     #mutate(junID = junID %>% as.integer()) %>% 
@@ -1371,7 +1383,7 @@ get_missplicing_ratio <- function(cluster,
   }
   
   
-  print(paste0(Sys.time(), " - Getting mis-splicing ratio for mis-spliced junctions."))
+  print(paste0(Sys.time(), " - Calulating MSR_Donor and MSR_Acceptor."))
   
   
   df_tidy %>% head()

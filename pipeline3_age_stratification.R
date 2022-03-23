@@ -1260,159 +1260,36 @@ age_stratification_GO_enrichment <- function(genes,
     return()
 }
 
-rbp_expression <- function(metadata,
-                           project_id) {
-  
-  library("DESeq2")
-  # source("/home/sruiz/secondary_projects/asap-gba-gbap1/R/file_paths.R")
-  
-  project_id <- "SMALL_INTESTINE"
-  
-  # load("/home/sruiz/PROJECTS/splicing-project/splicing-recount2-projects/GTEx/rse_fc_SRP012682_ovary.Rdata")
-  # rse_fc
-  
-  rse <- recount3::create_rse_manual(
-    project = project_id,
-    project_home = "data_sources/gtex",
-    organism = "human",
-    annotation = "gencode_v29",
-    type = "gene")
-  
-  rse %>% colData %>% names
-  rse %>% colData %>% as.data.frame()
-  rownames(rse)
-  
-  ddsSE <- DESeqDataSet(rse, design = ~ 1)
-  
-  # Remove anything after . in ensembl id
-  rownames(ddsSE) <- rownames(ddsSE) %>%
-    str_remove("\\..*")
-  
-  ddsSE
-  
-  
-  
-  # Reference gtf
-  ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-  ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22,"X","Y"), pruning.mode = "coarse")
-  ref <- ref %>%
-    as_tibble() %>%
-    filter(type == "gene") %>%
-    select(seqnames, start, end, strand, gene_id, gene_name)%>%
-    GRanges()
-  
-  
-  
-  # Convert to tpm, which is calculated by:
-  # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
-  # 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
-  # 3. Divide the RPK values by the “per million” scaling factor.
-  dds_rpk <- ddsSE %>%
-    assay() %>%
-    as_tibble(rownames = "gene") %>%
-    tidyr::pivot_longer(cols = -c("gene"),
-                        names_to = "recount_id",
-                        values_to = "counts") %>%
-    filter(recount_id %in% age_samples_clusters_tidy$run) %>%
-    dplyr::inner_join(ref %>%
-                        as_tibble() %>%
-                        dplyr::select(gene_id, gene_name, width),
-                      by = c("gene" = "gene_id")) %>%
-    dplyr::mutate(rpk = counts/width)
-  
-  
-  dds_tpm <- dds_rpk %>%
-    group_by(recount_id) %>%
-    mutate(scaling_factor = sum(rpk)/1e6) %>%
-    ungroup() %>%
-    dplyr::mutate(tpm = rpk/scaling_factor) 
-  
-  dds_tpm
-  
-  ## Add age supercluster info
-  dds_tpm <- merge(x = dds_tpm %>% data.table::as.data.table(),
-                   y = age_samples_clusters_tidy %>% 
-                     select(age_group, run) %>% 
-                     data.table::as.data.table(),
-                   by.x = "recount_id",
-                   by.y = "run",
-                   all.x = T)
-  
-  return(dds_tpm)
-  
-  # ## Calculate median values across samples  
-  # tpm <- dds_tpm %>%
-  #   select(gene, gene_name, age_group, tpm) %>%
-  #   #drop_na() %>%
-  #   dplyr::group_by(gene, age_group) %>%
-  #   mutate(tpm_median = tpm %>% median()) %>%
-  #   mutate(tpm_mean = tpm %>% mean()) %>%
-  #   distinct(gene, .keep_all = T) %>%
-  #   dplyr::ungroup() %>%
-  #   select(gene, gene_name, age_group, tpm_median, tpm_mean) 
-  # 
-  # 
-  # # saveRDS(object = dds_tpm,
-  # #         file = paste0("/home/sruiz/PROJECTS/splicing-project/markdowns/age_stratification/tpm.rds"))
-  # 
-  # saveRDS(object = tpm,
-  #         file = paste0("/home/sruiz/PROJECTS/splicing-project/markdowns/age_stratification/tpm.rds"))
-  # 
-  # 
-  # ###################################################################
-  # ## LOAD THE TMP DATA
-  # ###################################################################
-  # 
-  # tpm <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/markdowns/age_stratification/tpm.rds"))
-  # 
-  # tpm_tidy <- tpm %>%
-  #   filter(gene_name %in% c('SF3B4','U2AF2','SF3B4','SF3A3','SMNDC1','GPKOW','SMNDC1','U2AF2','SF3B1','BUD13','EFTUD2','U2AF2','XRN2','XRN2','LSM11','U2AF1','EFTUD2','CDC40','BUD13','RBM22','DDX42','KHSRP','U2AF1','PRPF8','TDP43','SUPV3L1','TBRG4','RBM22')   )
-  # 
-  # 
-  # wilcox.test(x = tpm_tidy %>% filter(age_group == "20-39") %>% pull(tpm_median),
-  #             y = tpm_tidy %>% filter(age_group == "40-59") %>% pull(tpm_median),
-  #             alternative = "greater")
-  # wilcox.test(x = tpm_tidy %>% filter(age_group == "20-39") %>% pull(tpm_median),
-  #             y = tpm_tidy %>% filter(age_group == "60-79") %>% pull(tpm_median),
-  #             alternative = "greater")
-  # 
-  # ggplot(data = tpm_tidy) +
-  #   geom_density(mapping = aes(x = tpm_mean, fill = age_group), alpha = 0.6) + 
-  #   facet_zoom(xlim = c(0,100))
-  # 
-  # tpm_tidy %>%
-  #   select(-gene, -tpm_mean) %>%
-  #   spread(key = age_group, value = tpm_median)
-  # 
-  # tpm_tidy_hm <- tpm_tidy %>%
-  #   group_by(age_group, gene_name) %>%
-  #   distinct(tpm_median, .keep_all = T) %>%
-  #   select(gene_name, age_group, tpm_median) 
-  # 
-  # ggplot(data = tpm_tidy_hm, aes(x = age_group, y = gene_name, fill= tpm_median)) + 
-  #   geom_tile()
-  # 
-  # tpm_tidy_hm %>% as.data.frame()
-  # 
-  # 
-  # # filter(gene %in% c("ENSG00000160201", "ENSG00000063244", "ENSG00000136450",
-  # #                    "ENSG00000115524", "ENSG00000011304" )) %>%
-  # tpm %>%
-  #   spread(key = age_group, value = tpm_median)
-  
-}
 
-project_id <- "SMALL_INTESTINE"
-metadata <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                   project_id, "/raw_data/samples_metadata.rds")) %>% as_tibble()
+
+# project_id <- "SMALL_INTESTINE"
+# metadata <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+#                                    project_id, "/raw_data/samples_metadata.rds")) %>% as_tibble()
 
 ################################
 ## CALLS
 ################################
 
-project_id <- "SMALL_INTESTINE"
-gtf_version <- 105
-folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
+age_groups <- c("50-59","60-69","70-79")
+
+age_samples_clusters <- age_stratification_clustering(age_groups = age_groups)
+
+age_samples_clusters_tidy <- merge(x = age_samples_clusters,
+                                   y = data.frame(age = age_groups,
+                                                  age_group =  c("50-59","60-69","70-79")),
+                                   #age_group =  c("20-39","20-39","40-59","40-59","60-79","60-79")),
+                                   
+                                   by = "age",
+                                   all.x = T)
+
+age_samples_clusters_tidy %>% 
+  dplyr::count(age)
+
+# GET THE PCA OF THE VARIABLES TO KNOW WHICH ARE THE MOST IMPORTANT ONES
+
+################################
+
+
 ## Prepare the data -------------------------------------------------------
 
 age_groups <- c("50-59","60-69","70-79")
