@@ -232,9 +232,9 @@ run_PCA_analysis <- function(rse) {
 
 ## RBP EXPRESSION ANALYSIS
 
-# 1. Get the RBP TPM expression using GTEX data
+# 1. Get the RBP TPM expression using GTEX data --------------------------------
 
-project_id <- "BRAIN"
+project_id <- "TESTIS"
 
 rse <- recount3::create_rse_manual(
   project = project_id,
@@ -245,13 +245,80 @@ rse <- recount3::create_rse_manual(
 
 dds_tpm <- get_GTEx_gene_expression(rse)
 
-#saveRDS(object = dds_tpm,
-#        file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/gene_expression.rds"))
+## 1. pivot longer the 'dds_tpm' object
+dds_tpm_pv <- dds_tpm[1:1000000,] %>%
+  select(gene, recount_id, tpm_log10) %>% 
+  pivot_wider(names_from = recount_id, values_from = tpm_log10) %>% column_to_rownames(var = "gene") 
+dds_tpm_pv <- dds_tpm_pv[!is.infinite(rowSums(dds_tpm_pv)),]
 
-# 2. Run the Principal Component Analysis (PCA)
+## 2. input the 'dds_tpm_pv' to the PCA function
+pca <- prcomp(x = dds_tpm_pv %>% drop_na(), 
+              center = TRUE, scale. = T)
+
+# 3. Select PCA1 - ~20 models
+pca_20models <- pca$rotation[,1:20]
+
+# 4. Tidy the metadata
+
+# 5. Foreach column in 'sample_metadata_tidy' do cor.test with each PCA 1 to 20 (cor function)
+
+# 6. point above will return a matrix of correlation metrics
+##  
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+# 2. Run the Principal Component Analysis (PCA) --------------------------------
+
+## The idea of PCA is simple — reduce the number of variables of a data set, while preserving as much information as possible.
 
 pc <- run_PCA_analysis(rse)
 
-sample_metadata_tidy[,1:7]
+## Visualize eigenvalues (scree plot). 
+## Show the percentage of variances explained by each principal component.
+factoextra::fviz_eig(pc)
 
-samples_metadata <- rse %>% metadata()
+
+## Graph of variables. 
+## Positive correlated variables point to the same side of the plot. 
+## Negative correlated variables point to opposite sides of the graph.
+factoextra::fviz_pca_var(pc,
+                         col.var = "contrib", # Color by contributions to the PC
+                         gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+                         repel = TRUE     # Avoid text overlapping
+)
+
+#compute variance
+pr_var <- (pc$sdev)^2
+#proportion of variance explained
+prop_varex <- pr_var/sum(pr_var)
+prop_varex[1:20] ## This shows that first principal component explains 31.5% variance
+
+
+## This plot shows that ~ 20 components explains around 99% variance in the data set.
+plot(prop_varex, xlab = "Principal Component",
+     ylab = "Proportion of Variance Explained",
+     type = "b")
+
+
+#cumulative scree plot
+plot(cumsum(prop_varex), xlab = "Principal Component",
+       ylab = "Cumulative Proportion of Variance Explained",
+       type = "b")
+
+# Therefore, in this case, we’ll select number of components as 20 [PC1 to PC20] and proceed to the modeling stage. 
+# This completes the steps to implement PCA on train data. 
+# For modeling, we’ll use these 20 components as predictor variables and follow the normal procedures.
