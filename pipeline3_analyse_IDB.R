@@ -4,17 +4,22 @@
 
 ## DISTANCES ----------------------------------------
 
+project_id <- "BRAIN"
+
 summarise_distances_tissues <- function() {
   
   if (!exists(gtex_tissues)) {
-    gtex_tissues <-  readRDS(file = "/home/sruiz/PROJECTS/splicing-project/results/base_data/all_tissues_used.rda")
+    gtex_tissues <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/raw_data/all_clusters_used.rds"))
   }
   
   all_data <- map_df(gtex_tissues, function(tissue) {
+    
     print(tissue)
     
-    folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/",
-                          tissue, "/v104/")
+    folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                          project_id, "/results/pipeline3/missplicing-ratio/",
+                          tissue, "/v105/")
     df <- readRDS(file = paste0(folder_name, "/", tissue, "_db_novel.rds")) %>%
       as_tibble()
     
@@ -73,7 +78,8 @@ summarise_distances_tissues <- function() {
   })
   
   saveRDS(object = all_data,
-          file = "/home/sruiz/PROJECTS/splicing-project/results/pipeline3/all_tissues/summary_distances.rds")
+          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+          project_id, "/results/pipeline3/summary_distances.rds"))
 }
 
 ## MODULO -------------------------------------------
@@ -2765,13 +2771,92 @@ get_contamination_rates <- function(cluster = "Brain-FrontalCortex_BA9",
 ##########################
 
 ## DISTANCES
+
 plot_distances <- function(cluster,
                            folder_name,
-                           limit_bp = 30,
-                           #PC = NULL,
-                           gene = NULL,
-                           stats = F,
-                           save_results = F) {
+                           limit_bp = 30) {
+  
+  # cluster <- "Brain-FrontalCortex_BA9"
+  # folder_name <- "/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/"
+  # folder_name <- paste0(folder_name, cluster, "/v104/")
+  # print(stringr::str_c(Sys.time(), " - Plotting distances for '", cluster, "' samples..."))
+  
+  
+  if (file.exists(paste0(folder_name, "/", cluster, "_db_novel.rds"))) {
+    df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
+  } else {
+    print(paste0(paste0(folder_name, "/", cluster, "_db_novel.rds"), " file doesn't exist."))
+  }
+  
+  
+ 
+  
+  #############################
+  ## PLOT THE DISTANCES GRAPH 
+  #############################
+  
+  
+  df_novel_tidy <- df_novel %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " "))
+  
+  df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
+                                    levels = c("novel donor", "novel acceptor"))
+  
+  title <- paste0("Distances - ", cluster)
+  
+
+  #################################
+  ## GENERATE PLOT ################
+  #################################
+
+  plot <- ggplot(data = df_novel_tidy) + 
+    geom_histogram(aes(x = distance, fill = novel_type),
+                   bins = limit_bp * 2,
+                   binwidth = 1,
+                   position = "stack"
+    ) +
+    ggforce::facet_col(vars(novel_type)) +
+    ggtitle(paste0(title)) +
+    #ylim(y_axes) +
+    xlab("Distance to the reference intron (in bp)") +
+    ylab("Number of unique novel junctions") +
+    theme_light() +
+    scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
+                       breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
+    scale_fill_manual(values = c("#35B779FF","#440154FF"),
+                      breaks = c("novel donor", "novel acceptor"),
+                      labels = c("novel donor", "novel acceptor")) +
+    guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
+                               override.aes = list(size = 3),
+                               ncol = 3 )) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.text.x = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text = element_text(colour = "black", size = "12"), 
+          legend.text = element_text(colour = "black", size = "12"),
+          plot.caption = element_text(colour = "black", size = "12"),
+          plot.title = element_text(colour = "black", size = "12"),
+          legend.title = element_text(colour = "black", size = "12"),
+          legend.position = "top") 
+  
+  
+  return(plot)
+ 
+  
+  
+  
+}
+
+plot_distances_PC <- function(cluster,
+                              folder_name,
+                              limit_bp = 30,
+                              #PC = NULL,
+                              gene = NULL,
+                              stats = F,
+                              save_results = F) {
   
   # cluster <- "Brain-FrontalCortex_BA9"
   # folder_name <- "/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/"
@@ -2946,7 +3031,63 @@ plot_distances <- function(cluster,
 ## MIS-SPLICING RATIO
 # cluster <- gtex_tissues[11]
 # folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/", cluster, "/v104/")
+
 plot_missplicing_ratio <- function(cluster,
+                                   folder_name,
+                                   #PC = NULL,
+                                   #intron_type = NULL,
+                                   save_results = F)  {
+  
+  
+  
+  df <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>% as_tibble()
+  df %>% head()
+  df %>% nrow()
+  
+  
+  ##########################
+  ## PLOT MIS-SPLICING RATIO 
+  ##########################
+  
+  y_axes_values <- density(x = df %>% pull(ref_missplicing_ratio_tissue_ND))$y
+  y_axes <- c(0, y_axes_values %>% max() + 
+                y_axes_values %>% max() / 4)
+  
+  plot <- ggplot(data = df) + 
+    geom_density(aes(x = ref_missplicing_ratio_tissue_NA, fill = "#440154FF"),
+                 alpha = 0.8) +
+    geom_density(aes(x = ref_missplicing_ratio_tissue_ND, fill = "#35B779FF"), 
+                 alpha = 0.8) +
+    
+    ggtitle(paste0("Mis-splicing ratio (MSR) - ", cluster)) +
+    xlab("Mis-splicing ratio") +
+    #ylim(y_axes) +
+    facet_zoom(xlim = c(0,0.15)) +
+    theme_light() +
+    scale_fill_manual(values = c("#35B779FF","#440154FF"),
+                      breaks = c("#35B779FF","#440154FF"),
+                      labels = c("MSR_Donor","MSR_Acceptor")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text.x =  element_text(colour = "black", size = "12"),
+          plot.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL,
+                               ncol = 2, 
+                               nrow = 1))
+  
+  
+    return(plot)
+  
+  
+  
+  
+}
+
+plot_missplicing_ratio_PC <- function(cluster,
                                    folder_name,
                                    #PC = NULL,
                                    #intron_type = NULL,
@@ -3056,7 +3197,73 @@ plot_missplicing_ratio <- function(cluster,
 
 
 ## MODULO
+
 plot_distances_modulo <- function(cluster,
+                                     folder_name,
+                                     #PC = NULL,
+                                     save_results = F) {
+  
+  
+  ## Load novel junction database for current tissue
+  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
+  df_novel %>% head()
+  
+  
+  df_novel_tidy <- df_novel %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " ")) %>%
+    mutate(type_p = ifelse(distance < 0, paste0(novel_type," intron"), paste0(novel_type," exon"))) %>% 
+    mutate(module = abs(distance) %% 3)
+  
+  df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
+                                    levels = c("novel donor", "novel acceptor"))
+  df_novel_tidy$type_p = factor(df_novel_tidy$type_p, 
+                                levels = c("novel acceptor intron", 
+                                           "novel acceptor exon",
+                                           "novel donor intron", 
+                                           "novel donor exon"))
+  title <- paste0("Modulo 3 - ", cluster)
+  
+  df_novel_tidy <- df_novel_tidy %>%
+    group_by(module, type_p) %>% 
+    summarise(count = n()) %>% 
+    mutate(perc = count/sum(count))
+
+  plot <- ggplot(data = df_novel_tidy, 
+                 aes(x = factor(module), y = perc*100, fill = factor(type_p))) + 
+    geom_bar(stat = "identity", position = "dodge") +
+    ggtitle(paste0(title)) +
+    # geom_text(aes( label = scales::percent(..prop.., accuracy = 0.1),
+    #                y= ..prop.. ), stat= "count", vjust = 2, colour = "red") +
+    #scale_x_continuous(breaks = c(0, 1, 2)) +
+    #scale_y_continuous(labels = scales::percent) +
+    scale_fill_viridis_d() +
+    ylab("% of novel junctions") +
+    xlab("modulo 3") +
+    theme_light() +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(colour = "black",size = "12"),
+          strip.text = element_text(colour = "black", size = "12"), 
+          strip.text.y = element_blank(),
+          plot.caption = element_text(colour = "black",size = "12"),
+          legend.title = element_text(colour = "black", size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL,
+                               ncol = 2, 
+                               nrow = 2))
+  
+  return(plot)
+  
+  
+  
+  
+}
+
+
+plot_distances_modulo_PC <- function(cluster,
                                   folder_name,
                                   #PC = NULL,
                                   save_results = F) {
@@ -3131,10 +3338,93 @@ plot_distances_modulo <- function(cluster,
 }
 
 
-
 plot_delta_maxentscanscore <- function(cluster,
                                        folder_name,
                                        save_results = F) {
+  
+  df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))  %>% 
+    as_tibble() %>%
+    filter(u2_intron == T)
+  
+  df_introns <- df_introns %>%
+    as.data.frame() %>%
+    mutate(ref_mean_counts = ref_sum_counts/ref_n_individuals) %>%
+    dplyr::select(ref_junID, 
+                  ref_ss5score, ref_ss3score, 
+                  ref_mean_counts, ref_type)
+  df_introns %>% head()
+  df_introns %>% nrow()
+
+  
+  
+  ## Load the novel junction database ---------------------------------------------
+  
+  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
+  df_novel <- df_novel %>%
+    mutate(novel_mean_counts = novel_sum_counts/novel_n_individuals) %>%
+    dplyr::select(ref_junID, 
+                  novel_junID, 
+                  novel_ss5score, novel_ss3score, 
+                  novel_mean_counts, novel_type, gene_id)
+  df_novel %>% head()
+  df_novel %>% nrow()
+  
+  
+  ## Merge both databases ---------------------------------------------------------
+  
+  df_merged <- merge(x = df_novel %>% data.table::as.data.table(),
+                     y = df_introns %>% data.table::as.data.table(),
+                     by = "ref_junID",
+                     all.x = T)
+  
+  df_merged %>% nrow()
+  df_merged %>% head()
+  
+  df_merged <- df_merged %>%
+    mutate(diff_ss5score = ref_ss5score - novel_ss5score,
+           diff_ss3score = ref_ss3score - novel_ss3score)
+  
+  
+  ## Gather
+  df_all_tidy <- df_merged %>% 
+    dplyr::select(diff_ss5score, diff_ss3score, novel_mean_counts, ref_mean_counts, novel_type, gene_id) %>%
+    tidyr::gather(key = "type", value = "mean", -novel_mean_counts, -novel_type, -ref_mean_counts, -gene_id) %>%
+    dplyr::filter(mean != 0)
+  
+  df_all_tidy <- df_all_tidy %>%
+    mutate(type = type %>% as.factor()) %>%
+    mutate(type = relevel(type, ref = "diff_ss5score"))
+  
+  title <- paste0("Delta MaxEntScanScore - ", cluster)
+  
+  ## Plot
+  plot <- ggplot(data = df_all_tidy) +
+    geom_density(mapping = aes(x = mean, fill = type), 
+                 alpha = 0.8) +
+    ggtitle(paste0(title)) +
+    geom_vline(xintercept = 0) +
+    xlab("Delta MaxEntScan score") +
+    theme_light() +
+    scale_color_viridis_d() +
+    scale_fill_manual(values =  c("#35B779FF","#440154FF"),
+                      breaks = c("diff_ss5score", "diff_ss3score"),
+                      labels = c("Delta MES 5'ss (novel donor)", "Delta MES 3'ss (novel acceptor)")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text.x = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
+  
+  return(plot)
+
+}
+
+plot_delta_maxentscanscore_PC <- function(cluster,
+                                          folder_name,
+                                          save_results = F) {
   
   df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))  %>% 
     as_tibble() %>%
@@ -3233,6 +3523,58 @@ plot_delta_maxentscanscore <- function(cluster,
 plot_cons_scores_tissue <- function(cluster,
                                     folder_name,
                                     save_results = F) {
+  
+  
+  db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))   %>% 
+    as_tibble() %>%
+    filter(u2_intron == T)
+  
+  
+  #################################
+  ## CONSERVATION
+  #################################
+  
+  db_introns_cons <- db_introns %>%
+    select(cons_5ss_mean = phastCons20way_5ss_mean, 
+           cons_3ss_mean = phastCons20way_3ss_mean, 
+           #protein_coding,
+           #cons_5ss_median = phastCons20way_5ss_median,
+           #cons_3ss_median = phastCons20way_3ss_median,
+           ref_type) %>%
+    gather(key = cons_type, value = cons_value, -ref_type) %>%
+    mutate(cons_type = cons_type %>% as.factor())
+  
+  
+  db_introns_cons$cons_type = factor(db_introns_cons$cons_type, 
+                                     levels = c("cons_5ss_mean", "cons_3ss_mean"))
+  
+  title <- paste0("Conservation score - ", cluster)
+  plot <- ggplot(db_introns_cons) +
+    geom_density(aes(x = cons_value, 
+                     fill = ref_type), alpha = 0.6) +
+    ggtitle(paste0(title)) +
+    scale_fill_viridis_d() +
+    theme_light() +
+    xlab("Conservation score") +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = "Intron type: ",
+                               ncol = 4, 
+                               nrow = 1))
+  
+  plot %>% return()
+
+}
+
+
+plot_cons_scores_tissue_PC <- function(cluster,
+                                       folder_name,
+                                       save_results = F) {
   
   
   db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))   %>% 
@@ -3370,19 +3712,25 @@ plot_lm_single_tissue <- function(cluster,
   
   idb <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
   
+  # idb <- idb %>%
+  #   as.data.frame() %>%
+  #   dplyr::distinct(ref_junID, .keep_all = T) %>%
+  #   dplyr::rename(intron_length = width,
+  #                 intron_5ss_score = ref_ss5score,
+  #                 intron_3ss_score = ref_ss3score,
+  #                 gene_length = gene_width,
+  #                 gene_tpm = tpm,
+  #                 gene_num_transcripts = transcript_number,
+  #                 CDTS_5ss = CDTS_5ss_mean,
+  #                 CDTS_3ss = CDTS_3ss_mean,
+  #                 mean_phastCons20way_5ss = phastCons20way_5ss_mean,
+  #                 mean_phastCons20way_3ss = phastCons20way_3ss_mean)
   idb <- idb %>%
     as.data.frame() %>%
     dplyr::distinct(ref_junID, .keep_all = T) %>%
     dplyr::rename(intron_length = width,
                   intron_5ss_score = ref_ss5score,
-                  intron_3ss_score = ref_ss3score,
-                  gene_length = gene_width,
-                  gene_tpm = tpm,
-                  gene_num_transcripts = transcript_number,
-                  CDTS_5ss = CDTS_5ss_mean,
-                  CDTS_3ss = CDTS_3ss_mean,
-                  mean_phastCons20way_5ss = phastCons20way_5ss_mean,
-                  mean_phastCons20way_3ss = phastCons20way_3ss_mean)
+                  intron_3ss_score = ref_ss3score)
   
   #########################
   ## LINEAR MODELS
@@ -3392,35 +3740,31 @@ plot_lm_single_tissue <- function(cluster,
   # common_introns_brain <- readRDS(file = file_name)
   # idb <- idb %>%
   #   filter(ref_junID %in% common_introns_brain$ref_junID)
-  
   fit_donor <- lm(ref_missplicing_ratio_tissue_ND ~ intron_length +
                     intron_length + 
                     intron_5ss_score + 
-                    intron_3ss_score + 
-                    gene_tpm + 
-                    gene_length + 
-                    CDTS_5ss + 
-                    CDTS_3ss + 
-                    mean_phastCons20way_5ss +
-                    mean_phastCons20way_3ss +
-                    #clinvar +
-                    protein_coding +
-                    gene_num_transcripts, 
+                    intron_3ss_score, 
                   data = idb) #%>%)
+  # fit_donor <- lm(ref_missplicing_ratio_tissue_ND ~ intron_length +
+  #                   intron_length + 
+  #                   intron_5ss_score + 
+  #                   intron_3ss_score + 
+  #                   gene_tpm + 
+  #                   gene_length + 
+  #                   CDTS_5ss + 
+  #                   CDTS_3ss + 
+  #                   mean_phastCons20way_5ss +
+  #                   mean_phastCons20way_3ss +
+  #                   #clinvar +
+  #                   protein_coding +
+  #                   gene_num_transcripts, 
+  #                 data = idb) #%>%)
   fit_donor %>% summary()
   
   fit_acceptor <- lm(ref_missplicing_ratio_tissue_NA ~ 
                        intron_length + 
                        intron_5ss_score + 
-                       intron_3ss_score + 
-                       gene_tpm + 
-                       gene_length + 
-                       CDTS_5ss + 
-                       CDTS_3ss + 
-                       mean_phastCons20way_5ss +
-                       mean_phastCons20way_3ss +
-                       protein_coding +
-                       gene_num_transcripts, 
+                       intron_3ss_score, 
                      data = idb)
   fit_acceptor %>% summary()
   

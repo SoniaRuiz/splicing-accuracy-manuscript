@@ -20,11 +20,19 @@ get_GTEx_gene_expression <- function(rse) {
     GRanges()
   
   
+  
+  sample_use <- rse %>% 
+    SummarizedExperiment::colData() %>%
+    as_tibble() %>%
+    filter(gtex.smafrze != "EXCLUDE") %>%
+    pull(external_id)
+  
+  
   #dds_tpm <- map_df(project_ids, function(project_id) {
   
   
   
-  ddsSE <- DESeqDataSet(rse, design = ~ 1)
+  ddsSE <- rse#DESeqDataSet(rse, design = ~ 1)
   
   
   # Remove anything after . in ensembl id
@@ -42,7 +50,7 @@ get_GTEx_gene_expression <- function(rse) {
     tidyr::pivot_longer(cols = -c("gene"),
                         names_to = "recount_id",
                         values_to = "counts") %>%
-    # filter(recount_id %in% age_samples_clusters_tidy$run) %>%
+    filter(recount_id %in% sample_use) %>%
     dplyr::inner_join(ref %>%
                         as_tibble() %>%
                         dplyr::select(gene_id, gene_name, width),
@@ -141,18 +149,19 @@ get_GTEx_gene_expression <- function(rse) {
   
 }
 
-run_PCA_analysis <- function(rse) {
+tidy_sample_metadata <- function(rse) {
   
   sample_metadata <- rse %>% 
     SummarizedExperiment::colData() %>%
-    as_tibble() 
+    as_tibble() %>%
+    filter(gtex.smafrze != "EXCLUDE")
   
   age_numeric <- as.numeric(factor(as.matrix(sample_metadata$gtex.age))) 
   sample_metadata$gtex.age <- age_numeric
   
   sample_metadata_tidy <- sample_metadata %>%
-    select(-rail_id,-gtex.sampid,-gtex.smatsscr,-gtex.smcenter,
-           -external_id, -study, -gtex.run_acc, -gtex.subjid,
+    select(-rail_id,-gtex.sampid,-gtex.smatsscr,-gtex.smcenter, -gtex.smubrid,
+           -study, -gtex.run_acc, -gtex.subjid, -gtex.dthhrdy,
            -gtex.smmncv, -gtex.smgebtcht, -gtex.smafrze, -gtex.smpthnts,
            -gtex.smgtc, -gtex.sm350nrm, -gtex.smmncpb, -gtex.smcglgth,
            -gtex.smgappct, -gtex.smnum5cd, -recount_project.project,
@@ -205,25 +214,26 @@ run_PCA_analysis <- function(rse) {
            -recount_qc.star.._of_reads_mapped_to_too_many_loci2,
            -recount_qc.star.._of_reads_mapped_to_multiple_loci2,
            -recount_qc.star.._of_chimeric_reads2
-           )
+           )%>%
+    tibble::column_to_rownames(var = "external_id")
   
-  ## No N/A
-  sample_metadata_tidy[rowSums(is.na(sample_metadata_tidy)) > 0, ] %>% nrow()
+  # ## No N/A
+  # sample_metadata_tidy[rowSums(is.na(sample_metadata_tidy)) > 0, ] %>% nrow()
+  # 
+  # ## No columns with zero or constant values
+  # sample_metadata_tidy %>% head %>% as.data.frame()
   
-  ## No columns with zero or constant values
-  sample_metadata_tidy %>% head %>% as.data.frame()
+  # pc <- prcomp(x = sample_metadata_tidy, center = TRUE, scale. = T)
+  # 
+  # attributes(pc)
+  # pc$center
+  # print(pc)
+  # summary(pc)
+  # 
+  # var_explained <- pc$sdev^2/sum(pc$sdev^2)
+  # var_explained[1:5]
   
-  pc <- prcomp(x = sample_metadata_tidy, center = TRUE, scale. = T)
-  
-  attributes(pc)
-  pc$center
-  print(pc)
-  summary(pc)
-  
-  var_explained <- pc$sdev^2/sum(pc$sdev^2)
-  var_explained[1:5]
-  
-  return(pc)
+  return(sample_metadata_tidy)
 }
 
 ################################
@@ -234,7 +244,7 @@ run_PCA_analysis <- function(rse) {
 
 # 1. Get the RBP TPM expression using GTEX data --------------------------------
 
-project_id <- "TESTIS"
+project_id <- "BRAIN"
 
 rse <- recount3::create_rse_manual(
   project = project_id,
@@ -245,80 +255,137 @@ rse <- recount3::create_rse_manual(
 
 dds_tpm <- get_GTEx_gene_expression(rse)
 
+dds_tpm %>% head
+# 2. Get the best covariates to correct for ------------------------------------
+
 ## 1. pivot longer the 'dds_tpm' object
-dds_tpm_pv <- dds_tpm[1:1000000,] %>%
-  select(gene, recount_id, tpm_log10) %>% 
-  pivot_wider(names_from = recount_id, values_from = tpm_log10) %>% column_to_rownames(var = "gene") 
-dds_tpm_pv <- dds_tpm_pv[!is.infinite(rowSums(dds_tpm_pv)),]
+dds_tpm_pv <- dds_tpm %>%
+  dplyr::filter(gene %in% c("ENSG00000160201", "ENSG00000063244", "ENSG00000136450", "ENSG00000115524", "ENSG00000011304")) %>%
+  select(gene, recount_id, tpm) %>% 
+  group_by(gene) %>%
+  distinct(recount_id, .keep_all = T) %>%
+  pivot_wider(names_from = recount_id, values_from = tpm, values_fill = 0)
+
+# dds_tpm_pv <- dds_tpm_pv %>% 
+#   as.data.frame() %>%
+#   tibble::rownames_to_column(var = "gene") 
+
+is.na(dds_tpm_pv) <- sapply(dds_tpm_pv, is.infinite)
+dds_tpm_pv[is.na(dds_tpm_pv)]<-0
+
+write.csv(x = dds_tpm_pv %>%
+            tibble::column_to_rownames(var = "gene"),
+          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                        "/results/pipeline3/rbp/tpm.csv"))
+
 
 ## 2. input the 'dds_tpm_pv' to the PCA function
-pca <- prcomp(x = dds_tpm_pv %>% drop_na(), 
+pca <- prcomp(x = dds_tpm_pv %>%
+                tibble::column_to_rownames(var = "gene"), 
               center = TRUE, scale. = T)
 
+
 # 3. Select PCA1 - ~20 models
-pca_20models <- pca$rotation[,1:20]
+pca_20models <- pca$rotation
+
 
 # 4. Tidy the metadata
+sample_metadata <- tidy_sample_metadata(rse)
+
 
 # 5. Foreach column in 'sample_metadata_tidy' do cor.test with each PCA 1 to 20 (cor function)
+cor_matrix <- cor(x = sample_metadata,
+                  y = pca_20models)
 
-# 6. point above will return a matrix of correlation metrics
-##  
+saveRDS(object = cor_matrix,
+        file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                      "/results/pipeline3/rbp/correlation_matrix.rds"))
+# 6. Point above will return a matrix of correlation metrics
+# (highest correlation values & p-values are the covariates influencing the most)
+
+gattered_cor_matrix <- reshape2::melt(cor_matrix)
+head(gattered_cor_matrix)
+
+ggplot(data = gattered_cor_matrix, aes(x=Var2, y=Var1, fill = value)) +
+  geom_tile()+ 
+  theme_minimal() +
+  scale_fill_gradient2(
+    name = "Scaled Value",
+    low = "darkblue",
+    mid = "gray",
+    high = "darkred"
+  ) +
+  theme(
+    axis.text.x = element_text(
+      angle = 90,
+      hjust = 1,
+      vjust = 0.5
+    ))
+
+# 7. Order covariates by PC 2
+covariates <- gattered_cor_matrix %>% 
+  as_tibble() %>%
+  filter(Var2 == "PC2") %>%
+  mutate(value = abs(value)) %>%
+  arrange(desc(value)) %>%
+  filter(value > 0.1) %>%
+  pull(Var1)
+  
+
+# 8. Save the covariates ---------------------------
+
+sample_metadata_t <- as.data.frame(t(sample_metadata %>%
+                                       select(all_of(covariates))))
+
+write_csv(x = sample_metadata_t, 
+          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                        project_id, "/results/pipeline3/rbp/covariates.csv"))
+
+###############################
+# 9. Call Aine's function
+###############################
 
 
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-# 2. Run the Principal Component Analysis (PCA) --------------------------------
-
-## The idea of PCA is simple — reduce the number of variables of a data set, while preserving as much information as possible.
-
-pc <- run_PCA_analysis(rse)
-
-## Visualize eigenvalues (scree plot). 
-## Show the percentage of variances explained by each principal component.
-factoextra::fviz_eig(pc)
-
-
-## Graph of variables. 
-## Positive correlated variables point to the same side of the plot. 
-## Negative correlated variables point to opposite sides of the graph.
-factoextra::fviz_pca_var(pc,
-                         col.var = "contrib", # Color by contributions to the PC
-                         gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
-                         repel = TRUE     # Avoid text overlapping
-)
-
-#compute variance
-pr_var <- (pc$sdev)^2
-#proportion of variance explained
-prop_varex <- pr_var/sum(pr_var)
-prop_varex[1:20] ## This shows that first principal component explains 31.5% variance
-
-
-## This plot shows that ~ 20 components explains around 99% variance in the data set.
-plot(prop_varex, xlab = "Principal Component",
-     ylab = "Proportion of Variance Explained",
-     type = "b")
-
-
-#cumulative scree plot
-plot(cumsum(prop_varex), xlab = "Principal Component",
-       ylab = "Cumulative Proportion of Variance Explained",
-       type = "b")
-
-# Therefore, in this case, we’ll select number of components as 20 [PC1 to PC20] and proceed to the modeling stage. 
-# This completes the steps to implement PCA on train data. 
-# For modeling, we’ll use these 20 components as predictor variables and follow the normal procedures.
+# # 2. Run the Principal Component Analysis (PCA) --------------------------------
+# 
+# ## The idea of PCA is simple — reduce the number of variables of a data set, while preserving as much information as possible.
+# 
+# pc <- run_PCA_analysis(rse)
+# 
+# ## Visualize eigenvalues (scree plot). 
+# ## Show the percentage of variances explained by each principal component.
+# factoextra::fviz_eig(pc)
+# 
+# 
+# ## Graph of variables. 
+# ## Positive correlated variables point to the same side of the plot. 
+# ## Negative correlated variables point to opposite sides of the graph.
+# factoextra::fviz_pca_var(pc,
+#                          col.var = "contrib", # Color by contributions to the PC
+#                          gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+#                          repel = TRUE     # Avoid text overlapping
+# )
+# 
+# #compute variance
+# pr_var <- (pc$sdev)^2
+# #proportion of variance explained
+# prop_varex <- pr_var/sum(pr_var)
+# prop_varex[1:20] ## This shows that first principal component explains 31.5% variance
+# 
+# 
+# ## This plot shows that ~ 20 components explains around 99% variance in the data set.
+# plot(prop_varex, xlab = "Principal Component",
+#      ylab = "Proportion of Variance Explained",
+#      type = "b")
+# 
+# 
+# #cumulative scree plot
+# plot(cumsum(prop_varex), xlab = "Principal Component",
+#        ylab = "Cumulative Proportion of Variance Explained",
+#        type = "b")
+# 
+# # Therefore, in this case, we’ll select number of components as 20 [PC1 to PC20] and proceed to the modeling stage. 
+# # This completes the steps to implement PCA on train data. 
+# # For modeling, we’ll use these 20 components as predictor variables and follow the normal procedures.

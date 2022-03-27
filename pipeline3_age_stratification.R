@@ -1,4 +1,7 @@
 library(tidyverse)
+library(data.table)
+library(GenomicRanges)
+library(ggforce)
 # library(data.table)
 # library(DBI)
 # library(stringr)
@@ -22,40 +25,101 @@ get_mode <- function(vector) {
   uniqv[which.max(tabulate(match(vector, uniqv)))]
 }
 
-
-age_stratification_clustering <- function (age_groups,
-                                           project_id = "BRAIN",
-                                           clusters = NULL) {
-  metadata <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                              project_id, "/raw_data/samples_metadata.rds")) %>% as_tibble()
-  samples <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                    project_id, "/raw_data/samples.rds"))
+age_stratification_init_data <- function (project_id) {
   
-  ## 1. Cluster people in different age groups (only Whole Blood)
+  # project_id <- "BRAIN"
   
-  if (is.null(clusters)) {
-    clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                      project_id, "/raw_data/all_clusters_used.rds"))
-    # tissues <- c("Brain - Anterior cingulate cortex (BA24)",
-    #              "Brain - Caudate (basal ganglia)",
-    #              "Brain - Putamen (basal ganglia)",
-    #              "Brain - Nucleus accumbens (basal ganglia)",
-    #              "Brain - Substantia nigra", 
-    #              "Brain - Hypothalamus",
-    #              "Brain - Hippocampus", 
-    #              "Brain - Amygdala", 
-    #              "Brain - Cerebellar Hemisphere", 
-    #              "Brain - Spinal cord (cervical c-1)",
-    #              "Brain - Frontal Cortex (BA9)")
+  if (!file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                          "/raw_data/sample_metadata.rds"))) {
+    
+    rse <- recount3::create_rse_manual(
+      project = project_id,
+      project_home = "data_sources/gtex",
+      organism = "human",
+      annotation = "gencode_v29",
+      type = "gene")
+    
+    
+    sample_metadata <- rse %>% 
+      SummarizedExperiment::colData() %>%
+      as_tibble() %>%
+      filter(gtex.smafrze != "EXCLUDE")
+    
+    
+    saveRDS(object = sample_metadata,
+            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                          "/raw_data/sample_metadata.rds"))
+    
+    rm(rse)
+    gc()
+    
+  } else {
+    
+    sample_metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                                             "/raw_data/sample_metadata.rds"))
   }
   
+  age_samples_clusters <- age_stratification_clustering(sample_metadata)
   
+  age_samples_clusters_tidy <- age_samples_clusters %>%
+    mutate(age_group = "")
+  
+  for (age_cluster in (age_samples_clusters$age %>% unique())) {
+    
+    # age_cluster = (age_samples_clusters$age %>% unique())[1]
+    
+    switch(age_cluster, 
+           '20-29' = {
+             indx <- which(age_samples_clusters_tidy$age == age_cluster)
+             age_samples_clusters_tidy[indx, "age_group"] <- "20-39"
+           },
+           '30-39' = {
+             indx <- which(age_samples_clusters_tidy$age == age_cluster)
+             age_samples_clusters_tidy[indx, "age_group"] <- "20-39"
+           },
+           '40-49' = {
+             indx <- which(age_samples_clusters_tidy$age == age_cluster)
+             age_samples_clusters_tidy[indx, "age_group"] <- "40-59"
+           },
+           '50-59' = {
+             indx <- which(age_samples_clusters_tidy$age == age_cluster)
+             age_samples_clusters_tidy[indx, "age_group"] <- "40-59"
+           },
+           '60-69' = {
+             indx <- which(age_samples_clusters_tidy$age == age_cluster)
+             age_samples_clusters_tidy[indx, "age_group"] <- "60-79"
+           },
+           '70-79' = {
+             indx <- which(age_samples_clusters_tidy$age == age_cluster)
+             age_samples_clusters_tidy[indx, "age_group"] <- "60-79"
+           },
+           {
+             print('not found')
+           }
+    )
+  }
+  
+ return(age_samples_clusters_tidy)
+  
+}
+
+age_stratification_clustering <- function (sample_metadata) {
+  
+
+  
+  ## 1. Get key metadata
+  
+  clusters <- sample_metadata$gtex.smtsd %>% unique()
+  age_groups <- sample_metadata$gtex.age %>% unique()
+  samples <- sample_metadata$external_id %>% unique()
+  
+  ## 2. Loop through the individuals
   
   gtex_age_clustering <- map_df(samples, function(individual) {
     
     # individual <- (samples)[1]
     
-    person <- metadata %>%
+    person <- sample_metadata %>%
       filter(external_id == individual)
     
     # print(person$smtsd %>% unique)
@@ -81,40 +145,9 @@ age_stratification_clustering <- function (age_groups,
   
   gtex_age_clustering %>% 
     return()
-  
-  # gtex_age_clustering
-  # gtex_age_clustering %>% count(age)
-  # gtex_age_clustering %>% count(individual, age)
-  
-  
-  # df_brain_regions_eq <- data.frame(region = c("Brain - Anterior cingulate cortex (BA24)",
-  #                                              "Brain - Caudate (basal ganglia)",
-  #                                              "Brain - Putamen (basal ganglia)",
-  #                                              "Brain - Nucleus accumbens (basal ganglia)",
-  #                                              "Brain - Substantia nigra", 
-  #                                              "Brain - Hypothalamus",
-  #                                              "Brain - Hippocampus", 
-  #                                              "Brain - Amygdala", 
-  #                                              "Brain - Cerebellar Hemisphere", 
-  #                                              "Brain - Spinal cord (cervical c-1)",
-  #                                              "Brain - Frontal Cortex (BA9)"),
-  #                                   tissue_tidy = c("Brain-Anteriorcingulatecortex_BA24",
-  #                                                   "Brain-Caudate_basalganglia",
-  #                                                   "Brain-Putamen_basalganglia",
-  #                                                   "Brain-Nucleusaccumbens_basalganglia",
-  #                                                   "Brain-Substantianigra", 
-  #                                                   "Brain-Hypothalamus",
-  #                                                   "Brain-Hippocampus", 
-  #                                                   "Brain-Amygdala", 
-  #                                                   "Brain-CerebellarHemisphere", 
-  #                                                   "Brain-Spinalcord_cervicalc-1",
-  #                                                   "Brain-FrontalCortex_BA9"))
-  
-  # merge(gtex_age_clustering,
-  #       df_brain_regions_eq,
-  #       by = "region",
-  #       all.x = T) %>% return()
+
 }
+
 
 age_stratification_annotate <- function (age_groups,
                                          project_id = "BRAIN",
@@ -223,14 +256,11 @@ age_stratification_annotate <- function (age_groups,
 
 
 age_stratification_IDB <- function (age_groups,
+                                    project_id,
                                     age_samples_clusters) {
   
   source("/home/sruiz/PROJECTS/splicing-project/pipeline3_methods.R")
   
-  
-  ## Connect to the split-read counts DB
-  con <- dbConnect(RSQLite::SQLite(), "~/PROJECTS/splicing-project/data/splicing_tolerance.sqlite")
-  dbListTables(con)
   
   
   ## Loop
@@ -242,7 +272,9 @@ age_stratification_IDB <- function (age_groups,
     print(paste0(Sys.time(), " - Starting analysis for '", age_cluster, "' samples..."))
     
     ## SET RESULTS FOLDER
-    folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline3/distances/age/", age_cluster, "/")
+    folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                          project_id, "/results/pipeline3/distances/age/", age_cluster, "/")
+    
     dir.create(file.path(folder_name), showWarnings = T, recursive = T)
     
     
@@ -258,29 +290,30 @@ age_stratification_IDB <- function (age_groups,
     split_read_counts_age <- readRDS(file = paste0(folder_name, "/split_read_counts.rds")) %>%
       as_tibble()
     
-    all_split_reads_details_104_age <- readRDS(file = paste0(folder_name, "/all_split_reads_details_104.rds")) %>%
+    all_split_reads_details_105_age <- readRDS(file = paste0(folder_name, "/all_split_reads_details_105.rds")) %>%
       as_tibble()
     
     
     
     ## Call functions ----------------------------------------------------------------
     
-    # get_distances(cluster = age_cluster,
-    #               samples = samples_age,
-    #               split_read_counts = split_read_counts_age,
-    #               all_split_reads_details_104 = all_split_reads_details_104_age,
-    #               folder_name = folder_name)
-    # 
-    # extract_distances(cluster = age_cluster,
-    #                   samples = samples_age,
-    #                   split_read_counts = split_read_counts_age,
-    #                   folder_name = folder_name)
-    # 
-    # get_never_misspliced(cluster = age_cluster,
-    #                      split_read_counts = split_read_counts_age,
-    #                      all_split_reads_details_104 = all_split_reads_details_104_age,
-    #                      samples = samples_age,
-    #                      folder_name = folder_name)
+    get_distances(cluster = age_cluster,
+                  samples = samples_age,
+                  split_read_counts = split_read_counts_age,
+                  all_split_reads_details = all_split_reads_details_105_age,
+                  folder_name = folder_name)
+    
+
+    extract_distances(cluster = age_cluster,
+                      samples = samples_age,
+                      split_read_counts = split_read_counts_age,
+                      folder_name = folder_name)
+
+    get_never_misspliced(cluster = age_cluster,
+                         split_read_counts = split_read_counts_age,
+                         all_split_reads_details = all_split_reads_details_105_age,
+                         samples = samples_age,
+                         folder_name = folder_name)
     
     extract_never_misspliced(cluster = age_cluster,
                              split_read_counts = split_read_counts_age,
@@ -288,14 +321,15 @@ age_stratification_IDB <- function (age_groups,
                              folder_name = folder_name)
     
     add_never_misspliced_to_df(cluster = age_cluster, 
-                               all_split_reads_details_104 = all_split_reads_details_104_age,
+                               all_split_reads_details = all_split_reads_details_105_age,
                                samples = samples_age,
                                folder_name = folder_name)
     
     
     ## Get mis-splicing ratio
     
-    folder_idb_name <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/age/", age_cluster)
+    folder_idb_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/" ,
+                              project_id, "/results/pipeline3/missplicing-ratio/age/", age_cluster)
     dir.create(file.path(folder_idb_name), showWarnings = F, recursive = T)
     
     get_missplicing_ratio(cluster = age_cluster,
@@ -307,11 +341,35 @@ age_stratification_IDB <- function (age_groups,
     add_missplicing_class_to_df(cluster = age_cluster,
                                 folder_name = folder_idb_name)
     
+    ############################################
+    ## ADD FEATURES TO THE IDB
+    ############################################
+    
+    remove_MT_genes(cluster = age_cluster,
+                    folder_name = folder_idb_name)
+    
+    add_intron_type(cluster = age_cluster,
+                    folder_name = folder_idb_name)
+    
+    clinvar_analysis(cluster = age_cluster,
+                     folder_name = folder_idb_name)
+    
+    add_MANE_info(cluster = age_cluster,
+                  folder_name = folder_idb_name)
+    
+    
+    ############################################
+    ## QC
+    ############################################
+    
     get_missplicing_QC(cluster = age_cluster,
                        split_read_counts = split_read_counts_age,
-                       all_split_reads_details_104 = all_split_reads_details_104_age,
+                       all_split_reads_details = all_split_reads_details_105_age,
                        samples = samples_age,
                        folder_name = folder_idb_name)
+    
+    
+    
     # }
   }
 }
@@ -1220,11 +1278,11 @@ age_stratification_plot_MSRA <- function(df = NULL,
     # mutate(ref_type = factor(ref_type, levels = c("novel_donor", "novel_acceptor"))) %>%
     mutate(sample_type = factor(sample_type, levels = age_levels))
   
-  ggplot(data = df_age_groups_tidy) + 
+  plot <- ggplot(data = df_age_groups_tidy) + 
     geom_density(aes(x = ref_missplicing_ratio_tissue_NA, fill = sample_type), alpha = 0.8) +
     ggtitle(title) +
     xlab("MSR_Acceptor") +
-    facet_zoom(xlim = c(0,0.2)) +
+    ggforce::facet_zoom(xlim = c(0,0.2)) +
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
           axis.text = element_text(colour = "black", size = "12"),
@@ -1234,7 +1292,9 @@ age_stratification_plot_MSRA <- function(df = NULL,
           legend.text = element_text(size = "12"),
           legend.title = element_text(size = "12"),
           legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) %>% return()
+    guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1))
+  
+  return(plot)
   
   
 }
@@ -1261,81 +1321,72 @@ age_stratification_GO_enrichment <- function(genes,
 }
 
 
+age_stratification_RBP_analysis <- function(age_samples_clusters_tidy,
+                                            project_id) {
+  
+  
+  ###############################
+  # # 10. Load output from Aine's function
+  ###############################
+  tpm_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                          project_id, "/results/pipeline3/rbp/tpm_residuals.csv"),
+                            header = T)
+  tpm_corrected[1,]
+  age_samples_clusters_tidy[1,]
+  
+  tpm_20_39 <- tpm_corrected %>%
+    filter(X %in% (age_samples_clusters_tidy %>%
+                     filter(age_group == "20-39") %>% pull(individual)))
+  
+  
+  tpm_40_59 <-tpm_corrected %>%
+    filter(X %in% (age_samples_clusters_tidy %>%
+                     filter(age_group == "40-59") %>% pull(individual))) 
+  
+  tpm_60_79 <- tpm_corrected %>%
+    filter(X %in% (age_samples_clusters_tidy %>%
+                     filter(age_group == "60-79") %>% pull(individual)))
+  
+  intersect(tpm_20_39$X, tpm_60_79$X)
+  
+  #####################
+  ## U2AF1
+  #####################
+  
+  wilcox.test(x = tpm_20_39$ENSG00000160201, 
+              y = tpm_40_59$ENSG00000160201, 
+              correct = T,
+              alternative = "greater")
+  
+  wilcox.test(x = tpm_20_39$ENSG00000160201, 
+              y = tpm_60_79$ENSG00000160201, 
+              alternative = "greater")
+  
+  wilcox.test(x = tpm_40_59$ENSG00000160201, 
+              y = tpm_60_79$ENSG00000160201,
+              alternative = "greater")
+  
+}
 
-# project_id <- "SMALL_INTESTINE"
-# metadata <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-#                                    project_id, "/raw_data/samples_metadata.rds")) %>% as_tibble()
+
+
 
 ################################
 ## CALLS
 ################################
 
-age_groups <- c("50-59","60-69","70-79")
 
-age_samples_clusters <- age_stratification_clustering(age_groups = age_groups)
+# age_samples_clusters_tidy <- age_samples_clusters %>% dplyr::rename(age_group = age)
 
-age_samples_clusters_tidy <- merge(x = age_samples_clusters,
-                                   y = data.frame(age = age_groups,
-                                                  age_group =  c("50-59","60-69","70-79")),
-                                   #age_group =  c("20-39","20-39","40-59","40-59","60-79","60-79")),
-                                   
-                                   by = "age",
-                                   all.x = T)
-
-age_samples_clusters_tidy %>% 
-  dplyr::count(age)
-
-# GET THE PCA OF THE VARIABLES TO KNOW WHICH ARE THE MOST IMPORTANT ONES
-
-################################
+# age_stratification_annotate(age_groups = clusters,
+#                             age_samples_clusters = age_samples_clusters_tidy,
+#                             project_id = project_id)
+# 
+# age_stratification_IDB(age_groups = clusters,
+#                        project_id = project_id,
+#                        age_samples_clusters = age_samples_clusters_tidy)
 
 
-## Prepare the data -------------------------------------------------------
-
-age_groups <- c("50-59","60-69","70-79")
-
-age_samples_clusters <- age_stratification_clustering(age_groups = age_groups)
-
-age_samples_clusters_tidy <- merge(x = age_samples_clusters,
-                                   y = data.frame(age = age_groups,
-                                                  age_group =  c("50-59","60-69","70-79")),
-                                                  #age_group =  c("20-39","20-39","40-59","40-59","60-79","60-79")),
-                                   
-                                   by = "age",
-                                   all.x = T)
-
-age_samples_clusters_tidy %>% 
-  dplyr::count(age)
  
 
 
-# age_samples_clusters_tidy %>%
-#   select(-individual, -region, -age, -sample_recount_id) %>%
-#   group_by(age_group) %>%
-#   mutate(median_rin = rin %>% median()) %>%
-#   mutate(mean_read_depth = round(mapped_read_count %>% mean())) %>%
-#   select(-rin,-mapped_read_count) %>%
-#   mutate(N_samples = n()) %>%
-#   ungroup() %>%
-#   #group_by(region, age_group) %>%
-#   #mutate(N_samples_tissue = n()) %>%
-#   #ungroup() %>%
-#   group_by(age_group, sex) %>%
-#   mutate(sex_ratio = round(n()/N_samples, digits = 2)) %>%
-#   distinct(age_group, .keep_all = T) %>%
-#   spread(key = sex, value = sex_ratio) %>%
-#   dplyr::rename(ratio_females = female,
-#                 ratio_males = male) %>%
-#   relocate(N_samples, .after = age_group) %>%
-#   DT::datatable(rownames = F)
-
-age_stratification_annotate(age_groups = age_samples_clusters_tidy$age_group %>% unique(),
-                            age_samples_clusters = age_samples_clusters_tidy,
-                            project_id = "BRAIN")
-
-# age_stratification_IDB(age_groups = (age_samples_clusters_tidy$age_group %>% unique()),
-#                        age_samples_clusters = age_samples_clusters_tidy)
-# 
-# 
-# age_stratification_plot_distances(age_groups = (age_samples_clusters_tidy$age_group %>% unique()),
-#                                   common = T)
