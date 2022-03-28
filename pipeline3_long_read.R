@@ -2,6 +2,8 @@ library(tidyverse)
 
 ###########################
 ## LOAD DATA
+## Junctions generated from source data: 
+## https://www.encodeproject.org/search/?type=Experiment&status=released&assay_slims=Transcription&assay_title=long+read+RNA-seq&replicates.library.biosample.donor.organism.scientific_name=Homo+sapiens&assembly=GRCh38&files.platform.term_name=Pacific+Biosciences+Sequel+II&biosample_ontology.classification=tissue
 ###########################
 
 source("/home/sruiz/PROJECTS/splicing-project/pipeline0_prepare_data.R")
