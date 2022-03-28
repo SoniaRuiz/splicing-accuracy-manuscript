@@ -20,6 +20,7 @@ output:
 knitr::opts_chunk$set(echo = TRUE)
 
 library(tidyverse)
+library(rutils)
 
 project_id <- "BRAIN"
 
@@ -618,6 +619,7 @@ genes_MSRD_dcreasing <- df_MSRD %>%
   unnest(gene_name)
 
 
+
 gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRD_increasing$gene_name, 
                                                     genes_MSRD_dcreasing$gene_name),
                                     custom_bg = bg_genes,
@@ -626,10 +628,39 @@ gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRD_increasing$gene_n
                                     correction_method = "bonferroni",
                                     significant = T)
 
-gene_enrichment$result %>%
-  as_tibble() %>%
+GO_enrichment <- gene_enrichment$result %>% filter(str_detect(source, pattern = "GO")) %>%
+  mutate(go_type = str_sub(source, start = 4, end = 5))
+
+GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                             go_id = GO_enrichment$term_id,
+                                                             go_term = GO_enrichment$term_name),
+                                     orgdb = "org.Hs.eg.db",
+                                     threshold = 0.7,
+                                     scores = NULL,
+                                     measure = "Wang"
+)
+
+df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                   y = GO_enrich_reduc,
+                   by.x = "term_id",
+                   by.y = "go_id",
+                   all.x = T)
+
+## JOIN with KEGG results and add pvalues
+
+rbind(df_result %>%
+        as_tibble() %>%
+        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+        group_by(parent_term, source) %>%
+        mutate(p_value = p_value %>% max) %>%
+        ungroup() %>%
+        distinct(parent_term, .keep_all = T),
+      df_result %>% 
+        filter(source == "KEGG")%>%
+        dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+        dplyr::rename(parent_term = term_name)) %>%
+  arrange(p_value) %>%
   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-  select(p_value, term_size, query_size, intersection_size, source, term_name) %>%
   #filter(source == "KEGG") %>%
   DT::datatable()
 
@@ -645,10 +676,10 @@ gene_enrichment$result %>%
 
 
 df_MSRA <- df_age_groups_intron_tidy %>%
-  select(ref_junID,
-         sample_type,
-         MSR_A = ref_missplicing_ratio_tissue_NA,
-         gene_name) %>%
+  dplyr::select(ref_junID,
+                sample_type,
+                MSR_A = ref_missplicing_ratio_tissue_NA,
+                gene_name) %>%
   mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
   spread(sample_type, MSR_A)
 
@@ -666,21 +697,49 @@ genes_MSRA_dcreasing <- df_MSRA %>%
   unnest(gene_name)
 
 gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRA_increasing$gene_name, 
-                                                    genes_MSRA_dcreasing),
+                                                    genes_MSRA_dcreasing$gene_name),
                                     custom_bg = bg_genes,
                                     organism = "hsapiens",
                                     ordered_query = F,
                                     correction_method = "bonferroni",
                                     significant = T)
 
-gene_enrichment$result %>%
-  as_tibble() %>%
+
+GO_enrichment <- gene_enrichment$result %>% filter(str_detect(source, pattern = "GO")) %>%
+  mutate(go_type = str_sub(source, start = 4, end = 5))
+
+GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                             go_id = GO_enrichment$term_id,
+                                                             go_term = GO_enrichment$term_name),
+                                     orgdb = "org.Hs.eg.db",
+                                     threshold = 0.7,
+                                     scores = NULL,
+                                     measure = "Wang"
+)
+
+df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                   y = GO_enrich_reduc,
+                   by.x = "term_id",
+                   by.y = "go_id",
+                   all.x = T)
+
+## JOIN with KEGG results and add pvalues
+
+rbind(df_result %>%
+        as_tibble() %>%
+        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+        group_by(parent_term, source) %>%
+        mutate(p_value = p_value %>% max) %>%
+        ungroup() %>%
+        distinct(parent_term, .keep_all = T),
+      df_result %>% 
+        filter(source == "KEGG")%>%
+        dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+        dplyr::rename(parent_term = term_name)) %>%
+  arrange(p_value) %>%
   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-  select(p_value, term_size, query_size, intersection_size, source, term_name) %>%
   #filter(source == "KEGG") %>%
   DT::datatable()
-
-
 
 
 ```
