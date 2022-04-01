@@ -25,6 +25,7 @@ get_mode <- function(vector) {
   uniqv[which.max(tabulate(match(vector, uniqv)))]
 }
 
+
 age_stratification_init_data <- function (project_id) {
   
   # project_id <- "BRAIN"
@@ -102,6 +103,7 @@ age_stratification_init_data <- function (project_id) {
  return(age_samples_clusters_tidy)
   
 }
+
 
 age_stratification_clustering <- function (sample_metadata) {
   
@@ -497,6 +499,7 @@ age_stratification_plot_distances <- function(df = NULL,
   
   ggplot(data = df_age_groups_tidy) + 
     geom_histogram(aes(x = distance, fill = sample_type),
+                   alpha = 0.9,
                    bins = distance_limit * 2,
                    binwidth = 1,
                    position = "identity"
@@ -645,7 +648,7 @@ age_stratification_plot_distances_proportion <- function(df = NULL,
     pull
   
   
-  title <- paste0("Proportion of noise per distance locus\n", n_ref_jun, " common ref introns.")
+  title <- paste0("Proportion of noise per distance locus.\n", n_ref_jun, " common ref introns.")
   
   
   df_age_groups_tidy <- df_age_groups_tidy %>%

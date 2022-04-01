@@ -6,18 +6,11 @@ library(tidyverse)
 ## FUNCTIONS       
 ################################
 
-get_GTEx_gene_expression <- function(rse) {
+get_GTEx_gene_expression <- function(rse, ref) {
   
   library("DESeq2")
   
-  ## Load reference gtf and get only the genes
-  ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-  ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22,"X","Y"), pruning.mode = "coarse")
-  ref <- ref %>%
-    as_tibble() %>%
-    filter(type == "gene") %>%
-    select(seqnames, start, end, strand, gene_id, gene_name)%>%
-    GRanges()
+  
   
   
   
@@ -242,7 +235,26 @@ tidy_sample_metadata <- function(rse) {
 
 ## RBP EXPRESSION ANALYSIS
 
-# 1. Get the RBP TPM expression using GTEX data --------------------------------
+
+# 0. Prepare the necessary data ------------------------------------------------
+
+## Load reference gtf and get only the genes
+ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22,"X","Y"), pruning.mode = "coarse")
+ref <- ref %>%
+  as_tibble() %>%
+  filter(type == "gene") %>%
+  select(seqnames, start, end, strand, gene_id, gene_name)%>%
+  GRanges()
+
+
+RBPs <- read.table(file = 'PROJECTS/splicing-project-recount3/markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
+  as_tibble() %>%
+  distinct(Target.gene.symbol)
+RBPs_tidy <- merge(x = RBPs %>% data.table::as.data.table() %>% dplyr::rename(gene_name = Target.gene.symbol), 
+                   y = ref %>% data.table::as.data.table() %>% select(gene_id, gene_name),
+                   by = "gene_name")
+
 
 project_id <- "BRAIN"
 
@@ -253,22 +265,25 @@ rse <- recount3::create_rse_manual(
   annotation = "gencode_v29",
   type = "gene")
 
-dds_tpm <- get_GTEx_gene_expression(rse)
+
+
+# 1. Get the RBP TPM expression using GTEX data --------------------------------
+
+dds_tpm <- get_GTEx_gene_expression(rse, ref)
 
 dds_tpm %>% head
+
+
 # 2. Get the best covariates to correct for ------------------------------------
 
 ## 1. pivot longer the 'dds_tpm' object
+
 dds_tpm_pv <- dds_tpm %>%
-  dplyr::filter(gene %in% c("ENSG00000160201", "ENSG00000063244", "ENSG00000136450", "ENSG00000115524", "ENSG00000011304")) %>%
-  select(gene, recount_id, tpm) %>% 
+  dplyr::filter(gene %in% RBPs_tidy$gene_id) %>%
+  select(gene, recount_id, tpm_log10) %>% 
   group_by(gene) %>%
   distinct(recount_id, .keep_all = T) %>%
-  pivot_wider(names_from = recount_id, values_from = tpm, values_fill = 0)
-
-# dds_tpm_pv <- dds_tpm_pv %>% 
-#   as.data.frame() %>%
-#   tibble::rownames_to_column(var = "gene") 
+  pivot_wider(names_from = recount_id, values_from = tpm_log10, values_fill = 0)
 
 is.na(dds_tpm_pv) <- sapply(dds_tpm_pv, is.infinite)
 dds_tpm_pv[is.na(dds_tpm_pv)]<-0
@@ -280,13 +295,14 @@ write.csv(x = dds_tpm_pv %>%
 
 
 ## 2. input the 'dds_tpm_pv' to the PCA function
+
 pca <- prcomp(x = dds_tpm_pv %>%
                 tibble::column_to_rownames(var = "gene"), 
               center = TRUE, scale. = T)
 
 
 # 3. Select PCA1 - ~20 models
-pca_20models <- pca$rotation
+pca_20models <- pca$rotation[,1:20]
 
 
 # 4. Tidy the metadata
@@ -300,13 +316,14 @@ cor_matrix <- cor(x = sample_metadata,
 saveRDS(object = cor_matrix,
         file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
                       "/results/pipeline3/rbp/correlation_matrix.rds"))
+
 # 6. Point above will return a matrix of correlation metrics
 # (highest correlation values & p-values are the covariates influencing the most)
 
 gattered_cor_matrix <- reshape2::melt(cor_matrix)
 head(gattered_cor_matrix)
 
-ggplot(data = gattered_cor_matrix, aes(x=Var2, y=Var1, fill = value)) +
+ggplot(data = gattered_cor_matrix, aes(x=Var1, y=Var2, fill = value)) +
   geom_tile()+ 
   theme_minimal() +
   scale_fill_gradient2(
@@ -325,10 +342,11 @@ ggplot(data = gattered_cor_matrix, aes(x=Var2, y=Var1, fill = value)) +
 # 7. Order covariates by PC 2
 covariates <- gattered_cor_matrix %>% 
   as_tibble() %>%
-  filter(Var2 == "PC2") %>%
+  #filter(Var2 == "PC2") %>%
   mutate(value = abs(value)) %>%
   arrange(desc(value)) %>%
-  filter(value > 0.1) %>%
+  filter(value > 0.25) %>%
+  #filter(Var1 != "gtex.age") %>%
   pull(Var1)
   
 
@@ -337,9 +355,11 @@ covariates <- gattered_cor_matrix %>%
 sample_metadata_t <- as.data.frame(t(sample_metadata %>%
                                        select(all_of(covariates))))
 
-write_csv(x = sample_metadata_t, 
+write_csv(x = sample_metadata_t %>%
+            tibble::rownames_to_column(var = "covariate"), 
           file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                         project_id, "/results/pipeline3/rbp/covariates.csv"))
+
 
 ###############################
 # 9. Call Aine's function

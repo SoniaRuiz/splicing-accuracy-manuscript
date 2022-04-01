@@ -1,5 +1,5 @@
 ---
-title: "Age Stratification - MUSCLE"
+title: "Age Stratification - BRAIN"
 author: "Sonia Garcia-Ruiz"
 date: "27/03/2022"
 output: 
@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(rutils)
 
-project_id <- "MUSCLE"
+project_id <- "BRAIN"
 
 source(paste0("/home/sruiz/PROJECTS/splicing-project/pipeline3_age_stratification.R"))
 
