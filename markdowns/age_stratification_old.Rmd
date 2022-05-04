@@ -1,0 +1,1215 @@
+---
+title: "Age Stratification - BRAIN"
+author: "Sonia Garcia-Ruiz"
+date: "27/03/2022"
+output: 
+  html_document:
+    code_folding: hide
+    toc: true
+    toc_depth: 2
+    toc_float:
+      collapsed: false
+      smooth_scroll: false
+    #number_sections: true
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+
+knitr::opts_chunk$set(echo = TRUE)
+
+library(tidyverse)
+library(rutils)
+
+project_id <- "BRAIN"
+
+source(paste0("/home/sruiz/PROJECTS/splicing-project/pipeline3_age_stratification.R"))
+
+
+age_samples_clusters_tidy <- age_stratification_init_data(project_id)
+age_supergroups <- age_samples_clusters_tidy$age_group %>% unique()
+
+
+folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                      "/results/pipeline3/missplicing-ratio/age/")
+
+## Load the IDBs
+df_age_groups_intron <- map_df(age_supergroups, function(age_group) {
+  
+  # age_group <- age_supergroups[1]
+  readRDS(file = paste0(folder_root, "/", age_group, "/", age_group, "_db_introns.rds")) %>%
+    #mutate(ref_junID = ref_junID %>% as.integer()) %>%
+    mutate(sample_type = age_group) %>%
+    return()
+  
+})
+df_age_groups_novel <- map_df(age_supergroups, function(age_group) {
+  
+  #print(paste0(Sys.time(), " - loading IDB for '", age_group, "' samples ..."))
+  readRDS(file = paste0(folder_root, "/", age_group, "/", age_group, "_db_novel.rds")) %>%
+    #mutate(ref_junID = ref_junID %>% as.integer()) %>%
+    #mutate(novel_junID = novel_junID %>% as.integer()) %>%
+    mutate(sample_type = age_group) %>%
+    return()
+  
+}) 
+
+## Get the junctions that are common across age supergroups
+
+common_introns_misspliced <- df_age_groups_novel %>%
+  group_by(sample_type) %>%
+  distinct(ref_junID, .keep_all = T) %>%
+  ungroup() %>%
+  dplyr::count(ref_junID) %>%
+  filter(n == age_supergroups %>% length()) %>%
+  pull(ref_junID)
+
+common_introns <- df_age_groups_intron %>%
+  group_by(sample_type) %>%
+  distinct(ref_junID, .keep_all = T) %>%
+  ungroup() %>%
+  dplyr::count(ref_junID) %>%
+  filter(n == age_supergroups %>% length()) %>%
+  pull(ref_junID)
+
+# setdiff(common_introns_misspliced,common_introns)
+# setdiff(common_introns,common_introns_misspliced)
+# common_introns_misspliced %>% length()
+# common_introns %>% length()
+# intersect(common_introns_misspliced,common_introns) %>% length()
+
+## Filter by the common junctions
+df_age_groups_intron_tidy <- merge(x = df_age_groups_intron %>% data.table::as.data.table(),
+                                   y = data.table::data.table(ref_junID = common_introns_misspliced),
+                                   by = "ref_junID",
+                                   all.y = T)
+
+
+
+df_age_groups_novel_tidy <- merge(x = df_age_groups_novel %>% data.table::as.data.table(),
+                                  y = data.table::data.table(ref_junID = common_introns_misspliced),
+                                  by = "ref_junID",
+                                  all.y = T)
+
+
+
+bg_genes <- df_age_groups_novel_tidy %>% distinct(gene_name) %>% pull() %>% unlist %>% unique()
+# bg_genes2 <- df_age_groups_intron_tidy %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+# 
+# 
+# bg_genes %>% length()
+# bg_genes2 %>% length()
+# identical(bg_genes,bg_genes2)
+
+```
+
+# Data used
+
+This document contains the age analysis performed using RNA-seq data from the GTEx v8 project and processed by [recount3](https://jhubiostatistics.shinyapps.io/recount3-study-explorer/).
+
+Samples were grouped together within the following age clusters:
+
+* 20-39: contains samples from the age groups "20-29" and "30-39"
+* 40-59: contains samples from the age groups "40-49" and "50-59"
+* 60-79: contains samples from the age groups "60-69" and "70-79".
+
+
+# Stats table {.tabset .tabset-fade .tabset-pills}
+
+Samples have been displayed after being grouped by different columns such as 'age', 'sex', 'RIN' and 'body region'.
+
+## Across tissues
+
+```{r mean_values}
+
+age_samples_clusters_tidy %>%
+  select(-individual, -region, -age, -sample_recount_id, -region) %>%
+  group_by(age_group) %>%
+  mutate(median_rin = rin %>% median())%>%
+  mutate(mean_read_depth = round(mapped_read_count %>% mean())) %>%
+  select(-rin,-mapped_read_count) %>%
+  mutate(N_samples = n()) %>%
+  ungroup() %>%
+  #group_by(region, age_group) %>%
+  #mutate(N_samples_tissue = n()) %>%
+  #ungroup() %>%
+  group_by(age_group, sex) %>%
+  mutate(sex_ratio = round(n()/N_samples, digits = 2)) %>%
+  distinct(age_group, .keep_all = T) %>%
+  spread(key = sex, value = sex_ratio) %>%
+  dplyr::rename(ratio_females = female,
+                ratio_males = male) %>%
+  relocate(N_samples, .after = age_group) %>%
+  DT::datatable(rownames = F)
+  
+```
+
+
+Column description:
+
+* **N_samples:** total number of samples clustered within the age super-group.
+* **median_rin:** this is the median RIN number of all samples clustered within the age group. 
+* **mean_read_depth**: this is the mean 'mapped_read_depth' of all samples clustered within the age group. 
+* **ratio_females:** this is the ratio of female samples available within the age group.
+* **ratio_males:** this is the ratio of male samples available within the age group.
+
+
+## Per tissue
+
+```{r brain_region}
+
+age_samples_clusters_tidy %>% as_tibble() %>%
+  select(-individual, -age, -sex,-sample_recount_id) %>%
+  group_by(age_group) %>%
+  mutate(median_rin = rin %>% median()) %>%
+  mutate(mean_read_depth = round(mapped_read_count %>% mean())) %>%
+  select(-rin,-mapped_read_count) %>%
+  mutate(N_samples = n()) %>%
+  ungroup() %>%
+    
+  group_by(region, age_group) %>%
+  mutate(N_samples_tissue = n()) %>%
+  ungroup() %>%
+
+  # group_by(age_group, sex) %>%
+  # mutate(sex_ratio = round(x = n()/N_samples,
+  #                          digits = 2)) %>%
+  # ungroup() %>%
+  
+  group_by(region, age_group) %>%
+  distinct(age_group, .keep_all = T) %>%
+  #spread(key = sex, value = sex_ratio) %>%
+  dplyr::arrange(region) %>%
+    #ungroup() %>%
+    #group_by(age_group) %>%
+    #mutate(mean_samples_across_tissues = N_samples_tissue %>% mean) %>%
+    #mutate(median_samples_across_tissues = N_samples_tissue %>% median) %>%
+  spread(key = region, value = N_samples_tissue) %>% 
+    #select(-region, -N_samples_tissue) %>%
+  distinct(age_group, .keep_all = T) %>% 
+  #spread(key = sex, value = sex_ratio)  %>%
+  as.data.frame()  %>%
+  # dplyr::rename(ratio_females = female,
+  #               ratio_males = male) %>%
+  relocate(N_samples, .after = age_group) %>%
+  DT::datatable(rownames = F)
+  
+```
+
+
+Column description:
+
+* **N_samples:** total number of samples clustered within the age group.
+* **median_rin:** this is the median RIN number of all samples clustered within the age group. 
+* **mean_read_depth**: this is the mean 'mapped_read_depth' of all samples clustered within the age group. 
+* **tissue**: This is the exact number of samples available per body region clustered within each age group.
+
+
+# Plots {.tabset .tabset-fade .tabset-pills}
+
+## Distances
+
+<!-- In this graph it has only been included **116,847** reference introns that were common across all three age supergroups. -->
+<!-- The plot below shows the distances from all novel junction located within a window of -60/+60 bp to their reference introns.  -->
+
+In this graph it has only been included common reference introns across all three age supergroups.
+The plot below shows the distances from all novel junction located within a window of -30/+30 bp from their reference introns.
+
+Interestingly, the distances peak at the donor exon location is not there anymore if we compare these results with the ones obtained using GTEx v6 data. This is the same type of distances result that we obtained using data from the ENCODE RBP knockdown projects. 
+
+
+```{r distances_plot, warning=FALSE}
+
+age_stratification_plot_distances(df = df_age_groups_novel_tidy, 
+                                  age_levels = c("60-79","40-59","20-39" ), 
+                                  distance_limit = 60) %>% print()
+
+```
+
+ENCODE Pipeline overview:
+
+* Illumina TruSeq protocol to create a polyA selected strand specific library.
+* RNA populations ~200bp 
+* Mapping of the reads to the genome using STAR.
+* Gene annotation files using GENCODE
+
+Recount3/GTEx v8 pipeline overview:
+
+* The Illumina TruSeq protocol was used to create an unstranded polyA+ library sequenced on the Illumina HiSeq 2000 and HiSeq 2500 platforms.
+* 76-bp paired end reads with a coverage goal of 50M (median achieved was ~82M total reads).
+* Raw sequencing data processed with Monorail. Monorail uses STAR to align RNA-seq reads in a spliced fashion to a reference genome, without using any annotation.
+* GENCODE 26 transcriptome definition. 
+
+## Proportion of splicing noise
+
+To be able to stablish fair comparisons across different age supergroups, we first had to account for any differences lying within the number of samples from each age cluster.
+
+To account for these differences, we calculated the proportion of splicing noise lying at each distance point and age super-group. 
+
+This proportion was calculated by dividing the total number of novel events located at a particular distance point by the total number of novel junctions available within the window of -60/+60bp distances to the reference intron.
+
+
+```{r distances_plot_proportion, warning=FALSE}
+
+age_stratification_plot_distances_proportion(df = df_age_groups_novel_tidy, 
+                                             age_levels = c("60-79","40-59","20-39" ), 
+                                             distance_limit = 60) %>% 
+  print()
+
+```
+
+
+<!-- ## Novel junctions (% noise) per age supergroup -->
+
+<!-- The table below shows the total number of novel junctions per age supergroup. -->
+
+<!-- ```{r novel_junctions, warning=FALSE} -->
+
+
+<!-- df_age_groups_novel_prop <- df_age_groups_novel_tidy %>% -->
+<!--   group_by(novel_type) %>% -->
+<!--   mutate(total_noise = n()) %>% -->
+<!--   ungroup() %>% -->
+<!--   group_by(sample_type, novel_type) %>% -->
+<!--   mutate(noise = round((n() / total_noise) * 100, digits = 2)) %>% -->
+<!--   ungroup()  -->
+
+<!-- ## Process the final dataset with the N numbers -->
+<!-- map_df(age_supergroups, function(age) { -->
+<!--   # age <- age_supergroups[1] -->
+<!--   map_df(c("novel_donor", "novel_acceptor"), function(type) { -->
+<!--     # type <- c("novel_donor", "novel_acceptor")[1] -->
+<!--     data.frame("AgeCluster" = age, -->
+<!--                "NovelType" = type, -->
+<!--                # "N_ref_introns" = df_age_groups_novel_prop %>% -->
+<!--                #   filter(sample_type == age, -->
+<!--                #          novel_type == type) %>% -->
+<!--                #   distinct(ref_junID) %>%  -->
+<!--                #   nrow(), -->
+<!--                "n_novel_junc" = df_age_groups_novel_prop %>% -->
+<!--                  filter(sample_type == age, -->
+<!--                         novel_type == type) %>% -->
+<!--                  distinct(novel_junID) %>%  -->
+<!--                  nrow(), -->
+<!--                "N_novel_junc" = df_age_groups_novel_prop %>% -->
+<!--                  filter(sample_type == age, -->
+<!--                         novel_type == type) %>% -->
+<!--                  distinct(total_noise) %>% pull, -->
+<!--                "%noise" = df_age_groups_novel_prop %>% -->
+<!--                  filter(sample_type == age, -->
+<!--                         novel_type == type) %>% -->
+<!--                  distinct(noise) %>% pull)  -->
+<!--   }) -->
+
+
+<!-- }) %>%  -->
+<!--   DT::datatable() %>% -->
+<!--   return() -->
+
+
+<!-- ``` -->
+
+<!-- ## N novel junctions (-60/+60 bp) -->
+
+<!-- The table below shows the number of novel junctions that are located in close distance to known introns (-60/+60 bp) and classified by age supergroup. -->
+
+<!-- ```{r novel_junctions_60, warning=FALSE} -->
+
+<!-- ## Filter by the common junctions -->
+<!-- df_age_groups_tidy_60 <- df_age_groups_novel_tidy %>% -->
+<!--   filter(abs(distance) < 60) -->
+
+<!-- df_age_groups_tidy_60 <- df_age_groups_tidy_60 %>% -->
+<!--   group_by(novel_type) %>% -->
+<!--   mutate(total_noise = n()) %>% -->
+<!--   ungroup() %>% -->
+<!--   group_by(sample_type, novel_type) %>% -->
+<!--   mutate(noise = round((n() / total_noise) * 100, digits = 2)) %>% -->
+<!--   ungroup() -->
+
+<!-- ## Process the final dataset with the N numbers -->
+<!-- map_df(age_supergroups, function(age) { -->
+
+<!--   map_df(c("novel_donor", "novel_acceptor"), function(type) { -->
+
+<!--     data.frame(age_cluster = age, -->
+<!--                novel_type = type, -->
+<!--                "n_novel_junc" = df_age_groups_tidy_60 %>% -->
+<!--                  filter(sample_type == age, -->
+<!--                         novel_type == type) %>% -->
+<!--                  distinct(novel_junID) %>%  -->
+<!--                  nrow(), -->
+<!--                "N_novel_junc" = df_age_groups_tidy_60 %>% -->
+<!--                  filter(sample_type == age, -->
+<!--                         novel_type == type) %>% -->
+<!--                  distinct(total_noise) %>% pull, -->
+<!--                "%noise" = df_age_groups_tidy_60 %>% -->
+<!--                  filter(sample_type == age, -->
+<!--                         novel_type == type) %>% -->
+<!--                  distinct(noise) %>% pull) -->
+<!--   }) -->
+
+
+<!-- })  %>%  -->
+<!--   DT::datatable() %>% -->
+<!--   return() -->
+
+
+<!-- ``` -->
+
+
+## MSR_Donor
+
+There is a slight increase with age of highly-misspliced introns (peak at MSR_D ~ 1). Digging into the properties of these highly-misspliced introns, they seem to present such a high MSR_D values because they present novel donor junctions that are highly shared among individuals. 
+
+```{r MSRD_Plot, warning=FALSE}
+
+age_stratification_plot_MSRD(df = df_age_groups_intron_tidy,
+                             age_levels = c("20-39","40-59","60-79" )) %>% 
+  print()
+
+```
+
+
+## MSR_Donor - Wilcoxon Tests
+
+To statistically test whether overlapping introns across age supergroups presented a change in the distribution of their MSR_D toward smaller values within the 20-39 supergroup than in the 40-59, and also smaller than in 60-79, we used the Wilcoxon test. 
+
+We used the MSR measures to stablish a fair comparison across the age supergroups because these measures were calculated taking across samples from each supergroup. Therefore, both MSR_D and MSR_A measures were normalised figures that contemplate the different number of reads assigned to every intron across samples from each age cluster.
+
+Results from this analysis showed that *the median value corresponding to the distribution of MSR_D values of the overlapping introns across age supergroups significantly increased with age*:
+
+<!-- To statistically test whether overlapping introns across age supergroups presented smaller MSR_D values within the 20-39 supergroup than in the 40-59 and smaller than in 60-79, we used the Wilcoxon test. -->
+
+<!-- Previous analyses have demonstrated significant **changes in the distribution of splicing noise with age occurring in close distance to reference introns**. -->
+
+<!-- However, we **these analyses do not necessarily imply an increase in splicing noise with age**. To test whether the levels of splicing noise at the donor splice site of the introns that were common across all three age supergroups increased with age, we used the **Wilcoxon** test. -->
+
+<!-- We used the MSR measures to stablish a fair comparison across the age supergroups because these measures were calculated taking into account the different number of reads assigned to every intron across samples from each supergroup. Therefore, both MSR_D and MSR_A measures were normalised figures at the cluster level. -->
+
+<!-- Results from this analysis showed that *the median value corresponding to the distribution of MSR_D values of the 116,847 introns that were common across age supergroups significantly increased with age*: -->
+
+<!-- * MSR_D from common introns in "20-39" samples < MSR_D from common introns in "40-59" samples -->
+<!-- * MSR_D from common introns in "20-39" samples < MSR_D from common introns in "60-79" samples -->
+<!-- * MSR_D from common introns in "40-59" samples < MSR_D from common introns in "60-79" samples -->
+
+```{r MSR_D_wilcoxon, warning=FALSE}
+
+## Testing using Wilcoxon
+
+df_wilcoxon <- df_age_groups_intron_tidy %>%
+  select(ref_junID, sample_type, MSR_D = ref_missplicing_ratio_tissue_ND) %>%
+  mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+  spread(sample_type, MSR_D)
+
+wilcox.test(x = df_wilcoxon$`20-39`,
+            y = df_wilcoxon$`40-59`,
+            alternative = "less") %>% print()
+
+
+wilcox.test(x = df_wilcoxon$`20-39`,
+            y = df_wilcoxon$`60-79`,
+            alternative = "less")%>% print()
+
+
+wilcox.test(x = df_wilcoxon$`40-59`,
+            y = df_wilcoxon$`60-79`,
+            alternative = "less")%>% print()
+
+```
+
+
+## MSR_Acceptor 
+
+There is a slight increase with age of highly-misspliced introns (peak at MSR_A ~ 1). Digging into the properties of these highly-misspliced introns, they seem to present such a high MSR_A values because they present novel acceptor junctions that are highly shared among individuals. 
+
+```{r MSRA_Plot, warning=FALSE}
+
+age_stratification_plot_MSRA(df = df_age_groups_intron_tidy,
+                             age_levels = c("20-39","40-59","60-79" )) %>% print()
+
+```
+
+## MSR_Acceptor - Wilcoxon Tests
+
+To statistically test whether overlapping introns across age supergroups presented a change in the distribution of their MSR_A toward smaller values within the 20-39 supergroup than in the 40-59, and also smaller than in 60-79, we used the Wilcoxon test.
+
+Results from this analysis showed that *the median value corresponding to the distribution of MSR_A values of the overlapping introns across age supergroups significantly increased with age*:
+  
+```{r MSR_A_wilcoxon, warning=FALSE}
+
+df_wilcoxon_MSR_A <- df_age_groups_intron_tidy %>%
+  select(ref_junID, sample_type, MSR_A = ref_missplicing_ratio_tissue_NA) %>%
+  mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+  spread(sample_type, MSR_A)
+
+
+wilcox.test(x = df_wilcoxon_MSR_A$`20-39`,
+            y = df_wilcoxon_MSR_A$`40-59`,
+            alternative = "less") %>% print()
+
+
+wilcox.test(x = df_wilcoxon_MSR_A$`20-39`,
+            y = df_wilcoxon_MSR_A$`60-79`,
+            alternative = "less")%>% print()
+
+
+wilcox.test(x = df_wilcoxon_MSR_A$`40-59`,
+            y = df_wilcoxon_MSR_A$`60-79`,
+            alternative = "less")%>% print()
+
+```
+
+
+# RBP TPM  {.tabset .tabset-fade .tabset-pills}
+
+RNA binding proteins (RBPs) have emerged as central players in regulating gene expression, controlling when, where, and at what rate RNAs are processed, trafficked, translated, and degraded within the cell. 
+
+For regulation of alternative splicing, where RBP binding can cause either inclusion or exclusion of alternative exons, it is common to identify RBP-responsive events by knocking down or over-expressing the RBP and performing RNA-seq. 
+
+*In 2017 the ENCODE project published eCLIP data sets for 150 RBPs across K562 and HepG2 cell types, as well as identification of alternative splicing for shRNA knockdown of 263 RBPs in HepG2 and K562 cell types.* [A Large-Scale Binding and Functional Map of Human RNA Binding Proteins](http://ericvannostrand.com/content/papers/ENCODE_2018_allfigs_small.pdf).
+
+Functionally, these 150 RBPs are most commonly known to play roles in the regulation of RNA splicing (98 RBPs, 28%), RNA stability and decay (71, 20%), and translation (70, 20%), with 162 RBPs (46%) having more than one function reported in the literature.
+
+## Covariate correction
+
+Method followed:
+
+* 1. Calculate the TPM expression of the 150 ENCODE RBPs across samples from GTEX v8 data. The TPM value has been is calculated by:
+    * 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
+    * 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
+    * 3. Divide the RPK values by the “per million” scaling factor.
+    
+* 2. Get the best covariates to correct for:
+    * 1. PCA of the 'TPM' values across samples from the 150 ENCODE RBPs.
+    * 2. Select PCA1 - ~20 models
+    * 3. Foreach covariate do a 'cor.test' with each PCA 1 to 20 (cor function)
+    * 4. Point above will return a matrix of correlation metrics- The highest correlation values & p-values are the
+    covariates influencing the most.
+    * 5. Get the top covariates from PC1 or PC2
+    * 6. Run a TPM covariate correction
+
+```{r cor_matrix, warning=FALSE}
+
+cor_matrix <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                                    "/results/pipeline3/rbp/correlation_matrix.rds"))
+gattered_cor_matrix <- reshape2::melt(cor_matrix)
+#head(gattered_cor_matrix)
+
+ggplot(data = gattered_cor_matrix, aes(x=Var1, y=Var2, fill = value)) +
+  geom_tile()+ 
+   ggtitle("Correlation metrics beteen PCA of the TPM values across samples and sample covariates.") +
+  theme_minimal() +
+  scale_fill_gradient2(
+    name = "Scaled Value",
+    low = "darkblue",
+    mid = "gray",
+    high = "darkred"
+  ) +
+  theme(
+    axis.text.x = element_text(
+      angle = 65,
+      hjust = 1,
+      vjust = 1
+    )) %>% return()
+
+
+```
+
+## Mean TPM  
+
+The heat map below contains the mean TPM values calculated across samples from the same cluster per RBP.
+
+There are some RBPs which present much higher mean covariate-corrected TPM values in 20-39 samples than in 40-59 and 60-79 samples (darker red colours).
+
+```{r mean_tpm, warning=FALSE}
+
+  tpm_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                          project_id, "/results/pipeline3/rbp/tpm_residuals.csv"),
+                            header = T)
+  # tpm_corrected[1,]
+  # age_samples_clusters_tidy[1,]
+  
+  
+  
+  tpm_20_39 <- tpm_corrected %>%
+    filter(X %in% (age_samples_clusters_tidy %>%
+                     filter(age_group == "20-39") %>% pull(individual))) %>%
+    gather(key = "RBP", value = "TPM", -X ) %>%
+    mutate(age_text = paste("20-39_", X)) %>%
+    mutate(age = "20-39") %>% as_tibble()
+  
+  
+  tpm_40_59 <-tpm_corrected %>%
+    filter(X %in% (age_samples_clusters_tidy %>%
+                     filter(age_group == "40-59") %>% pull(individual)))  %>%
+    gather(key = "RBP", value = "TPM", -X ) %>%
+    mutate(age_text = paste("40-59_", X)) %>%
+    mutate(age = "40-59") %>% as_tibble()
+  
+  tpm_60_79 <- tpm_corrected %>%
+    filter(X %in% (age_samples_clusters_tidy %>%
+                     filter(age_group == "60-79") %>% pull(individual))) %>%
+    gather(key = "RBP", value = "TPM", -X ) %>%
+    mutate(age_text = paste("60-79_", X)) %>%
+    mutate(age = "60-79") %>% as_tibble()
+  
+  gattered_matrix <- do.call("rbind", list(tpm_20_39, tpm_40_59, tpm_60_79)) %>%
+    dplyr::rename(sample = X) %>% as_tibble() %>%
+    group_by(age, RBP) %>%
+    mutate(mean_tpm = (TPM %>% mean())) %>%
+    distinct(mean_tpm, .keep_all = T)  %>%
+    ungroup() %>%
+    arrange(age , mean_tpm) %>%
+    mutate(RBP = fct_inorder(RBP))
+  
+  
+  
+  ggplot(data = gattered_matrix, 
+         aes(x=age, y=RBP, fill = mean_tpm)) +
+    geom_tile() + 
+    scale_fill_gradient(low = "green", high = "red") +
+    ggtitle("Mean RBP level of expression across samples\nfrom each age cluster.\nTPM values have been covariate corrected.")+
+    ylab("RBP") +
+    xlab("age cluster") +
+    theme(axis.text.y = element_blank()) %>% 
+    return()
+  #intersect(tpm_20_39$X, tpm_60_79$X)
+  
+  
+  
+```
+  
+## Median TPM  
+
+Same data used than in the previous graph. In this case, instead of calculating the mean TPM values across samples from the same cluster per RBP, it has been calculated the median TPM values.
+
+
+
+```{r median_tpm, warning=FALSE}
+
+  gattered_matrix <- do.call("rbind", list(tpm_20_39, tpm_40_59, tpm_60_79)) %>%
+    dplyr::rename(sample = X) %>% as_tibble() %>%
+    group_by(age, RBP) %>%
+    mutate(median_tpm = (TPM %>% median())) %>%
+    distinct(median_tpm, .keep_all = T) %>%
+    ungroup() %>%
+    arrange(age , median_tpm) %>%
+    mutate(RBP = fct_inorder(RBP))
+  
+  ggplot(data = gattered_matrix, 
+         aes(x=age, y=RBP, fill = median_tpm)) +
+    geom_tile() + 
+    scale_fill_gradient(low = "green", high = "red") +
+    ggtitle("Median RBP level of expression across samples\nfrom each age cluster.\nTPM values have been covariate corrected.")+
+    ylab("RBP") +
+    xlab("age supercluster") %>%
+    return()
+  #intersect(tpm_20_39$X, tpm_60_79$X)
+  
+  
+```  
+## U2AF1
+
+Focusing now in a core spliceosomal RBP responsible for targeting the 3'ss signal, I ran a Wilcoxon test to test whether the set of TPM values across samples from 20-39 presented a skewed distribution towards bigger values than in 40-59 and 60-79 samples.
+
+```{r U2AF1_tpm, warning=FALSE}
+
+U2AF1_20_39 <- tpm_20_39 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM)
+U2AF1_40_59 <- tpm_40_59 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM)
+U2AF1_60_79 <- tpm_60_79 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM)
+
+wilcox.test(x = U2AF1_20_39, 
+            y = U2AF1_40_59, 
+            correct = T,
+            alternative = "greater") %>% print()
+
+wilcox.test(x = U2AF1_20_39, 
+            y = U2AF1_60_79, 
+            correct = T,
+            alternative = "greater") %>% print()
+
+
+wilcox.test(x = U2AF1_40_59, 
+            y = U2AF1_60_79,
+            correct = T,
+            alternative = "greater") %>% print()
+  
+  
+```
+
+## U2AF2
+
+```{r U2AF2_tpm, warning=FALSE}
+
+U2AF2_20_39 <- tpm_20_39 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM)
+U2AF2_40_59 <- tpm_40_59 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM)
+U2AF2_60_79 <- tpm_60_79 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM)
+
+wilcox.test(x = U2AF2_20_39, 
+            y = U2AF2_40_59, 
+            correct = T,
+            alternative = "greater") %>% print()
+
+wilcox.test(x = U2AF2_20_39, 
+            y = U2AF2_60_79, 
+            correct = T,
+            alternative = "greater") %>% print()
+
+
+wilcox.test(x = U2AF2_40_59, 
+            y = U2AF2_60_79,
+            correct = T,
+            alternative = "greater") %>% print()
+  
+  
+```
+
+
+# GO Enrichment {.tabset .tabset-fade .tabset-pills}
+
+We obtained the gene enrichment of the genes containing introns whose MSR_D values explicitly increased with age.
+
+The approach followed consisted of:
+
+* Obtain all common introns whose MSR_D value is always smaller in "20-39" than in "40-59" than in "60-79" (i.e introns that are MORE misspliced with age). 
+* Obtain their gene name.
+* From this data set of genes, remove any overlapping gene containing introns whose MSR_D value is always greater in "20-39" than in "40-59" than in "60-79" (i.e introns that are LESS misspliced as age increases).
+* Perform their Go & KEGG Enrichment.
+* The custom background used was formed by all genes from all common introns across age super-groups.
+
+
+## MSR_D increasing with age
+
+```{r GO_never_MRSD, warning = FALSE, message = F, echo = FALSE}
+
+#####################################
+## NEVER MISSPLICED - GENE ENRICHMENT
+#####################################
+
+df_MSRD <- df_age_groups_intron_tidy %>%
+  select(ref_junID,
+         sample_type,
+         MSR_D = ref_missplicing_ratio_tissue_ND,
+         gene_name) %>%
+  mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+  spread(sample_type, MSR_D)
+
+
+genes_MSRD_increasing <- df_MSRD %>%
+  filter(`20-39` < `40-59`,
+         `40-59` < `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name) 
+
+
+genes_MSRD_dcreasing <- df_MSRD %>%
+  filter(`20-39` > `40-59`,
+         `40-59` > `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name)
+
+
+
+gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRD_increasing$gene_name, 
+                                                    genes_MSRD_dcreasing$gene_name),
+                                    custom_bg = bg_genes,
+                                    organism = "hsapiens",
+                                    ordered_query = F,
+                                    correction_method = "bonferroni",
+                                    significant = T)
+
+GO_enrichment <- gene_enrichment$result %>% filter(str_detect(source, pattern = "GO")) %>%
+  mutate(go_type = str_sub(source, start = 4, end = 5))
+
+GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                             go_id = GO_enrichment$term_id,
+                                                             go_term = GO_enrichment$term_name),
+                                     orgdb = "org.Hs.eg.db",
+                                     threshold = 0.7,
+                                     scores = NULL,
+                                     measure = "Wang"
+)
+
+df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                   y = GO_enrich_reduc,
+                   by.x = "term_id",
+                   by.y = "go_id",
+                   all.x = T)
+
+## JOIN with KEGG results and add pvalues
+
+rbind(df_result %>%
+        as_tibble() %>%
+        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+        group_by(parent_term, source) %>%
+        mutate(p_value = p_value %>% max) %>%
+        ungroup() %>%
+        distinct(parent_term, .keep_all = T),
+      df_result %>% 
+        filter(source == "KEGG")%>%
+        dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+        dplyr::rename(parent_term = term_name)) %>%
+  arrange(p_value) %>%
+  mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+  #filter(source == "KEGG") %>%
+  DT::datatable()
+
+
+
+
+```
+
+
+## MSR_A increasing with age
+
+```{r GO_MRSA, warning = FALSE, message = F, echo = FALSE}
+
+df_MSRA <- df_age_groups_intron_tidy %>%
+  dplyr::select(ref_junID,
+                sample_type,
+                MSR_A = ref_missplicing_ratio_tissue_NA,
+                gene_name) %>%
+  mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+  spread(sample_type, MSR_A)
+
+
+genes_MSRA_increasing <- df_MSRA %>%
+  filter(`20-39` < `40-59`,
+         `40-59` < `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name)
+
+genes_MSRA_dcreasing <- df_MSRA %>%
+  filter(`20-39` > `40-59`,
+         `40-59` > `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name)
+
+gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRA_increasing$gene_name, 
+                                                    genes_MSRA_dcreasing$gene_name),
+                                    custom_bg = bg_genes,
+                                    organism = "hsapiens",
+                                    ordered_query = F,
+                                    correction_method = "bonferroni",
+                                    significant = T)
+
+
+GO_enrichment <- gene_enrichment$result %>% filter(str_detect(source, pattern = "GO")) %>%
+  mutate(go_type = str_sub(source, start = 4, end = 5))
+
+GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                             go_id = GO_enrichment$term_id,
+                                                             go_term = GO_enrichment$term_name),
+                                     orgdb = "org.Hs.eg.db",
+                                     threshold = 0.7,
+                                     scores = NULL,
+                                     measure = "Wang"
+)
+
+df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                   y = GO_enrich_reduc,
+                   by.x = "term_id",
+                   by.y = "go_id",
+                   all.x = T)
+
+## JOIN with KEGG results and add pvalues
+
+rbind(df_result %>%
+        as_tibble() %>%
+        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+        group_by(parent_term, source) %>%
+        mutate(p_value = p_value %>% max) %>%
+        ungroup() %>%
+        distinct(parent_term, .keep_all = T),
+      df_result %>% 
+        filter(source == "KEGG")%>%
+        dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+        dplyr::rename(parent_term = term_name)) %>%
+  arrange(p_value) %>%
+  mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+  #filter(source == "KEGG") %>%
+  DT::datatable()
+
+
+```
+
+<!-- ## GO Enrichment - Never mis-spliced at MSR_A -->
+
+<!-- We obtained the gene enrichment of those genes containing introns whose MSR_A values explicitly increased with age. -->
+
+<!-- The approach followed consisted of: -->
+
+<!-- * Obtain all common introns whose MSR_A value is always equal to 0 in "20-39", "40-59" and "60-79"`. In other words, we obtained all never mis-spliced introns across age groupgroups. These were a total of 8,114 out of 231,461. -->
+<!-- * Obtain their gene name. -->
+<!-- * Get their Go & KEGG Enrichment. -->
+<!-- * The custom background used was formed by all 5,918 genes from all 116,847 common introns across age supergroups. -->
+
+
+<!-- Results show that genes containing never misspliced introns were enriched with terms such as "Pathways of neurodegeneration - multiple diseases" (pval = 2.12e-08). -->
+
+
+<!-- ```{r GO_never_MRSA, warning=FALSE, message=F} -->
+
+
+
+<!-- ##################################### -->
+<!-- ## NEVER MISSPLICED - GENE ENRICHMENT -->
+<!-- ##################################### -->
+
+<!-- df_correlation_MSRA <- df_age_groups_intron_tidy %>% -->
+<!--   select(ref_junID, sample_type,  -->
+<!--          MSR_A = ref_missplicing_ratio_tissue_NA,  -->
+<!--          gene_name) %>% -->
+<!--   dplyr::group_by(ref_junID, sample_type) %>% -->
+<!--   filter(MSR_A == 0) %>% -->
+<!--   spread(sample_type, MSR_A) %>% -->
+<!--   drop_na() -->
+<!-- genes_never_MSRA <- (df_correlation_MSRA %>% unnest(gene_name) %>% distinct(gene_name) %>% drop_na()) %>% -->
+<!--   pull(gene_name) %>% unique() -->
+
+
+<!-- gene_enrichment <- gprofiler2::gost(query = genes_never_MSRA, -->
+<!--                                     custom_bg = bg_genes, -->
+<!--                                     organism = "hsapiens", -->
+<!--                                     ordered_query = F, -->
+<!--                                     correction_method = "bonferroni", -->
+<!--                                     significant = T) -->
+
+
+<!-- #gene_enrichment$result %>% as_tibble() -->
+<!-- gene_enrichment$result %>%  -->
+<!--   as_tibble() %>%  -->
+<!--   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>% -->
+<!--   select(p_value, term_size, query_size, intersection_size, source, term_name) %>%  -->
+<!--   filter(source == "KEGG") %>%  -->
+<!--   DT::datatable() -->
+
+
+<!-- ```   -->
+
+
+
+<!-- ## GO Enrichment at the Donor {.tabset .tabset-fade .tabset-pills} -->
+
+<!-- We obtained the gene enrichment of all genes containing introns whose MSR_D values explicitly increased with age. -->
+
+<!-- The approach followed consisted of: -->
+
+<!-- * Obtaining all common introns whose MSR_D value was smaller in `20-39` than in `40-59` and smaller in `40-59` than in `60-79`. In other words, we obtained the subset of introns whose MSR_D values were incresing with age. These were a total of 33,679 out of 116,874 introns. -->
+<!-- * Then, we obtained the MSR_D delta values between the `20-39` and `60-79` groups. -->
+<!-- * We ordered the introns in a descending way, being the ones at the top the introns presenting the highest increase in their MSR_D with age, this is, presenting the highest **delta MSR_D values**. -->
+
+<!-- An example of the data used for the Gene Enrichment analysis is shown below: -->
+
+<!-- ```{r MSR_D_GO, warning=FALSE, message=F} -->
+
+<!-- ##################################### -->
+<!-- ## MSR_D - GENE ENRICHMENT -->
+<!-- ##################################### -->
+
+<!-- df_age_groups_intron_tidy <- df_age_groups_intron %>% -->
+<!--   filter(ref_junID %in% common_introns_misspliced) -->
+
+
+<!-- df_MSRD <- df_age_groups_intron_tidy %>% -->
+<!--   select(ref_junID,  -->
+<!--          sample_type,  -->
+<!--          MSR_D = ref_missplicing_ratio_tissue_ND,  -->
+<!--          gene_name) %>% -->
+<!--   mutate(MSR_D = MSR_D %>% round(digits = 4)) %>% -->
+<!--   spread(sample_type, MSR_D) -->
+
+
+<!-- genes_MSRD_increasing <- df_MSRD %>% -->
+<!--   filter(`20-39` < `40-59`, -->
+<!--          `40-59` < `60-79`) %>% -->
+<!--   unnest(gene_name) %>% -->
+<!--   mutate(delta_MSRD = `60-79` - `20-39`) %>% -->
+<!--   arrange(desc(delta_MSRD)) %>%  -->
+<!--   drop_na() -->
+
+<!-- ten_p <- round(((genes_MSRD_increasing %>% nrow()) * 10) / 100) -->
+
+<!-- genes_top10_MSRD <- genes_MSRD_increasing[1:ten_p,"gene_name"] %>% pull(gene_name) %>% unique -->
+<!-- genes_bottom10_MSRD <- genes_MSRD_increasing[((genes_MSRD_increasing %>% nrow())-ten_p):(genes_MSRD_increasing %>% nrow()),"gene_name"] %>% pull(gene_name) %>% unique() -->
+
+
+<!-- genes_MSRD_increasing[1:5,] %>% -->
+<!--   dplyr::rename(intronID = ref_junID) %>% -->
+<!--   DT::datatable() -->
+<!-- # genes_top10_MSRD %>% length() -->
+<!-- # genes_bottom10_MSRD %>% length() -->
+<!-- # intersect(genes_top10_MSRD,genes_bottom10_MSRD) %>% length() -->
+
+<!-- ```  -->
+
+<!-- Then, I -->
+
+<!-- * Obtained the top and down 10% of introns with the highest and lowest delta MSR_D values.  -->
+<!-- * The top 10% of introns corresponded to a total number of 2847 genes. -->
+<!-- * The down 10% of introns corresponded to a total number of 2688 genes. -->
+<!-- * There were an intersection of 638 genes between both groups. -->
+
+<!-- Finally, I: -->
+
+<!-- * Run a Go & KEGG Enrichment from the genes corresponding to the top 10%, bottom 10% and non-overlapping bottom 10% of introns presenting the highest/lowest delta MSR_D values.  -->
+<!-- * The custom background I used was formed by all 12,162 genes from all 116,847 common introns found across the three age supergroups. -->
+
+<!-- **Results obtained from the GO Analyses significantly changed depending on whether the list of genes was ordered or unordered by the delta MSR_D values.** -->
+
+<!-- ### top 10% genes ordered -->
+
+<!-- ```{r MSR_D_top10_ord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_top10_MSRD, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = T) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### top 10% unordered -->
+
+<!-- ```{r MSR_D_top10_nonor, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_top10_MSRD, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = F) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### bottom 10% ordered -->
+
+<!-- ```{r MSR_D_bottom10_ord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_bottom10_MSRD, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = T) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+
+<!-- ### bottom 10% unordered -->
+
+<!-- ```{r MSR_D_bottom10_unord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_bottom10_MSRD, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = F) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### bottom 10% without overlapping genes - ordered -->
+
+<!-- This gene enrichment was performed over the set of 2050 bottom genes obtained after removing the 638 overlapping genes also found within the set of top10% genes. -->
+
+<!-- ```{r MSR_D_bottom-top_ord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = setdiff(genes_bottom10_MSRD, genes_top10_MSRD), -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = T) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### bottom 10% without overlapping genes - unordered -->
+
+<!-- This gene enrichment was performed over the set of 2050 bottom genes obtained after removing the 638 overlapping genes also found within the set of top10% genes. -->
+
+<!-- ```{r MSR_D_bottom-top_unord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = setdiff(genes_bottom10_MSRD,genes_top10_MSRD), -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = F) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+
+
+<!-- ## GO Enrichment at the Acceptor  {.tabset .tabset-fade .tabset-pills} -->
+
+<!-- We mirrored the approach followed to obtain MSR_Donor values, and performed a gene enrichment from the top10% and bottom10% of genes presenting the highest and lowest delta MSR_Acceptor values between common introns from the "20-39" and "60-79" age supergroups. -->
+
+<!-- An example of the data used for the Gene Enrichment analysis is shown below: -->
+
+<!-- ```{r MSR_A_GO, warning=FALSE, message=F} -->
+
+<!-- ##################################### -->
+<!-- ## MSR_A - GENE ENRICHMENT -->
+<!-- ##################################### -->
+
+<!-- df_age_groups_intron_tidy <- df_age_groups_intron %>% -->
+<!--   filter(ref_junID %in% common_introns_misspliced) -->
+
+<!-- df_MSRA <- df_age_groups_intron_tidy %>% -->
+<!--   select(ref_junID, sample_type, MSR_A = ref_missplicing_ratio_tissue_NA, gene_name) %>% -->
+<!--   mutate(MSR_A = MSR_A %>% round(digits = 4)) %>% -->
+<!--   spread(sample_type, MSR_A) -->
+
+
+<!-- genes_MSRA_increasing <- df_MSRA %>% -->
+<!--   filter(`20-39` < `40-59`, -->
+<!--          `40-59` < `60-79`) %>% -->
+<!--   unnest(gene_name) %>% -->
+<!--   mutate(delta_MSRA = `60-79` - `20-39`) %>% -->
+<!--   arrange(desc(delta_MSRA)) %>%  -->
+<!--   drop_na()  -->
+
+<!-- ten_p <- round(((genes_MSRA_increasing %>% nrow()) * 10) / 100) -->
+
+<!-- genes_top10_MSRA <- genes_MSRA_increasing[1:ten_p,"gene_name"] %>% pull(gene_name) %>% unique -->
+<!-- genes_bottom10_MSRA <- genes_MSRA_increasing[((genes_MSRA_increasing %>% nrow()) - ten_p):(genes_MSRA_increasing %>% nrow()),"gene_name"] %>% pull(gene_name) %>% unique -->
+
+<!-- genes_MSRA_increasing[1:5,] %>% -->
+<!--   dplyr::rename(intronID = ref_junID) %>% -->
+<!--   DT::datatable() -->
+
+<!-- ```   -->
+
+<!-- ### top 10% - ordered -->
+
+<!-- ```{r MSR_A_top10_ord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_top10_MSRA, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = T) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### top 10% - unordered -->
+
+<!-- ```{r MSR_A_top10_unord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_top10_MSRA, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = F) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### bottom 10% - ordered -->
+
+<!-- ```{r MSR_A_bottom10_ord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_bottom10_MSRA, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = T) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+
+<!-- ### bottom 10% - unordered -->
+
+<!-- ```{r MSR_A_bottom10_unord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = genes_bottom10_MSRA, -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = F) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### bottom 10% without overlapping - ordered -->
+
+<!-- ```{r MSR_A_bottom-top10_ord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = setdiff(genes_bottom10_MSRA,genes_top10_MSRA), -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = T) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- ### bottom 10% without overlapping - unordered -->
+
+<!-- ```{r MSR_A_bottom-top10_unord, warning=FALSE, message=F} -->
+
+<!-- age_stratification_GO_enrichment(genes = setdiff(genes_bottom10_MSRA,genes_top10_MSRA), -->
+<!--                                  bg = bg_genes, -->
+<!--                                  ordered = F) %>% DT::datatable() -->
+
+<!-- ``` -->
+
+<!-- # RBP expression level - Analysis {.tabset .tabset-fade .tabset-pills} -->
+
+<!-- 28 spliceosomal RBPs analysed: SF3B4, U2AF2, SF3B4, SF3A3, SMNDC1, GPKOW, SMNDC1, U2AF2, SF3B1, BUD13, EFTUD2, U2AF2, XRN2, XRN2, LSM11, U2AF1, EFTUD2, CDC40, BUD13, RBM22, DDX42, KHSRP, U2AF1, PRPF8, TDP43, SUPV3L1, TBRG4, RBM22. -->
+
+<!-- I obtained their median TPM expression values across all samples separately from each supergroup. -->
+
+<!-- ## Distibution of TPM values  -->
+
+<!-- I obtained all TPM values from 28 spliceosomal RBPs across all samples from each age supergroup. Then, I plotted them using the density plot below shown below: -->
+
+<!-- ```{r RBPs_distribution, warning=FALSE, message=F} -->
+
+<!-- dds_tpm <- age_stratification_rbp_expression(age_samples_clusters_tidy) -->
+
+<!-- tpm_tidy <- dds_tpm %>% -->
+<!--   filter(gene_name %in% c('SF3B4','U2AF2','SF3B4','SF3A3','SMNDC1','GPKOW','SMNDC1','U2AF2','SF3B1','BUD13','EFTUD2','U2AF2','XRN2','XRN2','LSM11','U2AF1','EFTUD2','CDC40','BUD13','RBM22','DDX42','KHSRP','U2AF1','PRPF8','TDP43','SUPV3L1','TBRG4','RBM22')) -->
+
+<!--   ggplot(data = tpm_tidy) + -->
+<!--     geom_density(mapping = aes(x = tpm, fill = age_group), alpha = 0.6) +  -->
+<!--     facet_zoom(xlim = c(0,100)) +  -->
+<!--     ggtitle("TPM values obtained across samples from each age supergroup\nfrom 28 spliceosomal RBPs") %>% -->
+<!--     return() -->
+
+
+
+<!-- ``` -->
+
+<!-- ## Wilcoxon Tests -->
+
+<!-- Then, I tested whether the median value of the distribution of TPM values corresponding to the 20-39 samples was statistically greater than the one form the 40-59 and greater as well from the median TPM value of the distribution of 60-79. -->
+
+
+<!-- ```{r RBPs_wilcoxon, warning=FALSE, message=F} -->
+
+<!--   tpm_20_39 <- tpm_tidy %>% filter(age_group == "20-39") %>% pull(tpm) -->
+<!--   tpm_40_59 <- tpm_tidy %>% filter(age_group == "40-59") %>% pull(tpm) -->
+<!--   tpm_60_79 <- tpm_tidy %>% filter(age_group == "60-79") %>% pull(tpm) -->
+
+<!--   wilcox.test(x = tpm_20_39, -->
+<!--               y = tpm_40_59, -->
+<!--               alternative = "greater") -->
+<!--    wilcox.test(x = tpm_20_39, -->
+<!--               y = tpm_60_79, -->
+<!--               alternative = "greater") -->
+<!--   wilcox.test(x = tpm_40_59, -->
+<!--               y = tpm_60_79, -->
+<!--               alternative = "greater") -->
+
+<!-- ``` -->
+
+<!-- ## Median TPM values of Core Spliceosomal RBPs Tests -->
+
+<!-- The table below shows the median TPM values across samples from each age supergroup, corresponding to each Core Spliceosomal RBP that we previously studied using the ENCODE data: -->
+
+
+<!-- ```{r RBPs_median, warning=FALSE, message=F} -->
+
+<!--   tpm <- dds_tpm %>% -->
+<!--     select(gene, gene_name, age_group, tpm) %>% -->
+<!--     #drop_na() %>% -->
+<!--     dplyr::group_by(gene, age_group) %>% -->
+<!--     mutate(tpm_median = tpm %>% median()) %>% -->
+<!--     mutate(tpm_mean = tpm %>% mean()) %>% -->
+<!--     distinct(gene, .keep_all = T) %>% -->
+<!--     dplyr::ungroup() %>% -->
+<!--     select(gene, gene_name, age_group, tpm_median, tpm_mean) -->
+
+
+<!--  tpm %>%  -->
+<!--    filter(gene %in% c("ENSG00000160201", "ENSG00000063244", "ENSG00000136450", -->
+<!--                       "ENSG00000115524", "ENSG00000011304" )) %>% -->
+<!--    select(-gene,-tpm_mean) %>% -->
+<!--    spread(key = age_group, value = tpm_median) %>% -->
+<!--    DT::datatable(rownames = F) %>% -->
+<!--    return() -->
+
+<!-- ``` -->
+
+<!-- # Conclusions -->
+
+<!-- * There are significant changes ocurring in the distribution of splicing noise with age and in close distance to known introns. -->
+<!-- * The level of splicing noise generated at the donor and acceptor splice sites (MSR_D & MSR_A) of the 116,847 introns that were common across age supergroups presented a smaller median value in samples from 20-39 than in samples from 40-59 than in samples from 60-79 (Wilcoxon test, pval < 2.2e-16) -->
+<!-- * Results show that genes containing introns whose MSR_D and MSR_A values increased with age were related with terms such as "Pathways of neurodegeneration - multiple diseases" (pval < 2.12e-08). -->
+
+
+

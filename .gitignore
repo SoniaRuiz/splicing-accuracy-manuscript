@@ -41,4 +41,6 @@ vignettes/*.pdf
 ############################
 markdowns/*.html
 markdowns/*.tsv
+markdowns/*.csv
+markdowns/*.xlsx
 .Renviron
