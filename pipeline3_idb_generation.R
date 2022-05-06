@@ -2557,18 +2557,19 @@ add_MANE_info <- function(cluster,
 ## PROTEIN PERCENTAGE  ----------------------------
 
 
+
 add_protein_percentage_to_database <- function(cluster,
-                                               protein_folder,
+                                               protein_file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds",
                                                folder_root) {
   
   
   ## Import HUMAN REFERENCE transcriptome
-  homo_sapiens_v104_gtf <- rtracklayer::import(con = "/data/references/ensembl/gtf_gff3/v104/Homo_sapiens.GRCh38.104.gtf") %>% 
-    as.data.frame()
+  # homo_sapiens_v104_gtf <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
+  #   as.data.frame()
   
   print(paste0(Sys.time(), " - adding biotypes percentage to junctions..."))
   
-  df_protein <- readRDS(file = protein_folder)
+  df_protein <- readRDS(file = protein_file)
   df_protein %>% head()
   df_protein %>% nrow()
   
@@ -2581,7 +2582,7 @@ add_protein_percentage_to_database <- function(cluster,
     folder_name <- paste0(folder_root, "/", cluster, "/pipeline3/missplicing-ratio/")
     df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
   } else {
-    folder_name <- paste0(folder_root, "/", cluster, "/v104")
+    folder_name <- paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v105")
     df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
       filter(u12_intron == T | u2_intron == T)
   }
@@ -2592,8 +2593,7 @@ add_protein_percentage_to_database <- function(cluster,
   df_introns %>% distinct(ref_junID) %>% nrow()
   
   df_protein_local <- df_protein %>%
-    filter(junID %in% df_introns$ref_junID) %>%
-    mutate(junID = junID %>% as.integer())
+    filter(junID %in% df_introns$ref_junID) 
   
   df_protein_local %>% head()
   df_protein_local %>% nrow()
@@ -2653,6 +2653,7 @@ add_protein_percentage_to_database <- function(cluster,
               file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
       
       print(paste0(Sys.time(), " - ", cluster, " finished!"))
+      
     } else {
       print(paste0(Sys.time(), " - ", cluster, " error - the two datasets present different refIDs of rows!"))
     }
@@ -3024,7 +3025,6 @@ add_gene_tpm_length <- function(cluster,
   
   #########################
   ## GENE TPM 
-  #########################
   
   if (GTEx) {
     
@@ -3034,7 +3034,8 @@ add_gene_tpm_length <- function(cluster,
     
     library(GSRI)
     
-    tpm <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/data/GTEx_gene_median_tpm_tidy.rds")
+    tpm <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/tpm_tidy.rds")
+
     tpm %>% head()
     tpm %>% nrow()
     
@@ -3071,25 +3072,7 @@ add_gene_tpm_length <- function(cluster,
   df_merged %>% head()
   df_merged %>% nrow()
   
-  # if (any(is.na(df_merged$tpm))) {
-  #   
-  #   print("Error: some genes don't have their TPM attached!")
-  # 
-  #   # ind <- which(is.na(df_merged$tpm))
-  #   # print(ind %>% length())
-  #   # ind <- which(df_merged$tpm == 0)
-  #   # print(ind %>% length())
-  #   ## 6550 FCTX junctions discarded
-  # 
-  #   df_merged %>% nrow()
-  #   df_merged <- df_merged %>%
-  #     filter(!is.na(tpm))
-  #   df_merged %>% nrow()
-  # 
-  # }
-  
-  df_merged %>% nrow()
-  
+
   
   ############################
   ## ADD NUMBER OF TRANSCRIPTS
@@ -3101,7 +3084,7 @@ add_gene_tpm_length <- function(cluster,
   
   if (!exists("homo_sapiens_v104")) {
     
-    homo_sapiens_v104 <- rtracklayer::import("/data/references/ensembl/gtf_gff3/v104/Homo_sapiens.GRCh38.104.gtf") %>%
+    homo_sapiens_v104 <- rtracklayer::import("/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>%
       as.data.frame()
     
     hsv104_transcripts <- homo_sapiens_v104 %>%

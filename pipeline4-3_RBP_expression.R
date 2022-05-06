@@ -1,4 +1,5 @@
 library(tidyverse)
+library(GenomicRanges)
 
 ## source("/home/sruiz/PROJECTS/splicing-project/pipeline3_RBP_expression.R")
 
@@ -152,63 +153,38 @@ tidy_sample_metadata <- function(rse) {
   age_numeric <- as.numeric(factor(as.matrix(sample_metadata$gtex.age))) 
   sample_metadata$gtex.age <- age_numeric
   
-  sample_metadata_tidy <- sample_metadata %>%
-    select(-rail_id,-gtex.sampid,-gtex.smatsscr,-gtex.smcenter, -gtex.smubrid,
-           -study, -gtex.run_acc, -gtex.subjid, -gtex.dthhrdy,
-           -gtex.smmncv, -gtex.smgebtcht, -gtex.smafrze, -gtex.smpthnts,
-           -gtex.smgtc, -gtex.sm350nrm, -gtex.smmncpb, -gtex.smcglgth,
-           -gtex.smgappct, -gtex.smnum5cd, -recount_project.project,
-           -recount_project.organism, -recount_project.file_source,-recount_project.date_processed ,
-           -recount_project.metadata_source,-gtex.smnumgps,-gtex.sm550nrm,
-           -gtex.smgebtch,-gtex.smgebtchd,-gtex.smtspax,-gtex.smnabtch,-gtex.smnabtcht,
-           -gtex.smnabtchd,-gtex.smtsd,-gtex.smts,
-           -BigWigURL,-gtex.sme2mprt,-gtex.smchmprs,-gtex.smntrart,-gtex.smmaprt,
-           -gtex.smexncrt,-gtex.smgnsdtc,-gtex.smunmprt,-gtex.smrdlgth,-gtex.sme1mmrt,
-           -gtex.smsflgth,-gtex.smestlbs,-gtex.smmppd,-gtex.smnterrt,-gtex.smrrnanm,
-           -gtex.smrdttl,-gtex.smvqcfl,-gtex.smtrscpt,-gtex.smmppdpr,-gtex.smunpdrd,
-           -gtex.smntrnrt,-gtex.smmpunrt,-gtex.smexpeff,-gtex.smmppdun,-gtex.sme2mmrt,
-           -gtex.sme2anti,-gtex.smaltalg,-gtex.sme2snse,-gtex.smmflgth,-gtex.sme1anti,
-           -gtex.smspltrd,-gtex.smbsmmrt,-gtex.sme1snse,-gtex.sme1pcts,-gtex.smrrnart,
-           -gtex.sme1mprt,-gtex.smdpmprt,-gtex.sme2pcts,-recount_qc.star.uniquely_mapped_reads_.2,
-           -recount_qc.star.uniquely_mapped_reads_number2,-recount_qc.star.number_of_splices._total2,
-           -recount_qc.star.number_of_splices._non.canonical2,-recount_qc.star.number_of_splices._gt.ag2,
-           -recount_qc.star.number_of_splices._gc.ag2,
-           -recount_qc.star.number_of_reads_unmapped._too_many_mismatches_both,
-           -recount_qc.star.._reads_unmapped._too_many_mismatches_both,
-           -recount_qc.star.._reads_unmapped._other_both,
-           -recount_qc.star.number_of_splices._annotated_.sjdb.2,
-           -recount_qc.star.number_of_splices._at.ac2,
-           -recount_qc.star.number_of_splices._annotated_.sjdb.,
-           -recount_qc.star.number_of_reads_unmapped._too_many_mismatches2,
-           -recount_qc.star.number_of_reads_unmapped._too_short2,
-           -recount_qc.star.number_of_reads_unmapped._other2,
-           -recount_qc.star.number_of_reads_unmapped._too_many_mismatches,
-           -recount_qc.star.number_of_reads_mapped_to_too_many_loci2,
-           -recount_qc.star.number_of_reads_mapped_to_multiple_loci2,
-           -recount_qc.star.number_of_input_reads2,
-           -recount_qc.star.number_of_chimeric_reads2,
-           -recount_qc.star.insertion_average_length2,
-           -recount_qc.star.insertion_rate_per_base,
-           -recount_qc.star.insertion_rate_per_base2,
-           -recount_qc.star.deletion_average_length2,
-           -recount_qc.star.deletion_rate_per_base,
-           -recount_qc.star.deletion_rate_per_base2,
-           -recount_qc.star.mismatch_rate_per_base._.2,
-           -recount_qc.star.mapping_speed._million_of_reads_per_hour2,
-           -recount_qc.star.mapping_speed._million_of_reads_per_hour2,
-           -recount_qc.star.average_input_read_length2,
-           -recount_qc.star.average_mapped_length2,
-           -recount_qc.star.all_mapped_reads2,
-           -recount_qc.star.average_input_read_length,
-           -recount_qc.star.._of_reads_unmapped._too_short2,
-           -recount_qc.star.._of_reads_unmapped._too_many_mismatches,
-           -recount_qc.star.._of_reads_unmapped._too_many_mismatches2,
-           -recount_qc.star.._of_reads_unmapped._other2,
-           -recount_qc.star.._of_reads_mapped_to_too_many_loci2,
-           -recount_qc.star.._of_reads_mapped_to_multiple_loci2,
-           -recount_qc.star.._of_chimeric_reads2
-           )%>%
+  sample_metadata <- sample_metadata %>%
     tibble::column_to_rownames(var = "external_id")
+  
+  covariates <- c("gtex.age", "gtex.smcenter", "gtex.smtsd",
+                  "gtex.smgebtch", "gtex.smgebtchd",
+                  "gtex.smnabtch", "gtex.smnabtchd", "gtex.smnabtcht",
+                  "gtex.dthhrdy", "gtex.sex", "gtex.smrin")
+  
+  
+  smcenter <- as.numeric(factor(as.matrix(sample_metadata$gtex.smcenter))) 
+  sample_metadata$gtex.smcenter <- smcenter
+  
+  gtex.smgebtch <- as.numeric(factor(as.matrix(sample_metadata$gtex.smgebtch))) 
+  sample_metadata$gtex.smgebtch <- gtex.smgebtch
+  
+  gtex.smgebtchd <- as.numeric(factor(as.matrix(sample_metadata$gtex.smgebtchd))) 
+  sample_metadata$gtex.smgebtchd <- gtex.smgebtchd
+  
+  gtex.smnabtch <- as.numeric(factor(as.matrix(sample_metadata$gtex.smnabtch))) 
+  sample_metadata$gtex.smnabtch <- gtex.smnabtch
+  
+  gtex.smnabtchd <- as.numeric(factor(as.matrix(sample_metadata$gtex.smnabtchd))) 
+  sample_metadata$gtex.smnabtchd <- gtex.smnabtchd
+  
+  gtex.smnabtcht <- as.numeric(factor(as.matrix(sample_metadata$gtex.smnabtcht))) 
+  sample_metadata$gtex.smnabtcht <- gtex.smnabtcht
+  
+  
+  # 8. Save the covariates ---------------------------
+  
+  sample_metadata_t <- as.data.frame(t(sample_metadata %>%
+                                         dplyr::select(all_of(covariates))))
   
   # ## No N/A
   # sample_metadata_tidy[rowSums(is.na(sample_metadata_tidy)) > 0, ] %>% nrow()
@@ -226,7 +202,7 @@ tidy_sample_metadata <- function(rse) {
   # var_explained <- pc$sdev^2/sum(pc$sdev^2)
   # var_explained[1:5]
   
-  return(sample_metadata_tidy)
+  return(sample_metadata_t)
 }
 
 ################################
@@ -248,7 +224,7 @@ ref <- ref %>%
   GRanges()
 
 
-RBPs <- read.table(file = 'PROJECTS/splicing-project-recount3/markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
+RBPs <- read.table(file = 'markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
   as_tibble() %>%
   distinct(Target.gene.symbol)
 RBPs_tidy <- merge(x = RBPs %>% data.table::as.data.table() %>% dplyr::rename(gene_name = Target.gene.symbol), 
@@ -256,7 +232,7 @@ RBPs_tidy <- merge(x = RBPs %>% data.table::as.data.table() %>% dplyr::rename(ge
                    by = "gene_name")
 
 
-project_id <- "BRAIN"
+project_id <- "BLOOD"
 
 rse <- recount3::create_rse_manual(
   project = project_id,
@@ -309,53 +285,50 @@ pca_20models <- pca$rotation[,1:20]
 sample_metadata <- tidy_sample_metadata(rse)
 
 
-# 5. Foreach column in 'sample_metadata_tidy' do cor.test with each PCA 1 to 20 (cor function)
-cor_matrix <- cor(x = sample_metadata,
-                  y = pca_20models)
-
-saveRDS(object = cor_matrix,
-        file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                      "/results/pipeline3/rbp/correlation_matrix.rds"))
-
-# 6. Point above will return a matrix of correlation metrics
-# (highest correlation values & p-values are the covariates influencing the most)
-
-gattered_cor_matrix <- reshape2::melt(cor_matrix)
-head(gattered_cor_matrix)
-
-ggplot(data = gattered_cor_matrix, aes(x=Var1, y=Var2, fill = value)) +
-  geom_tile()+ 
-  theme_minimal() +
-  scale_fill_gradient2(
-    name = "Scaled Value",
-    low = "darkblue",
-    mid = "gray",
-    high = "darkred"
-  ) +
-  theme(
-    axis.text.x = element_text(
-      angle = 90,
-      hjust = 1,
-      vjust = 0.5
-    ))
-
-# 7. Order covariates by PC 2
-covariates <- gattered_cor_matrix %>% 
-  as_tibble() %>%
-  #filter(Var2 == "PC2") %>%
-  mutate(value = abs(value)) %>%
-  arrange(desc(value)) %>%
-  filter(value > 0.25) %>%
-  #filter(Var1 != "gtex.age") %>%
-  pull(Var1)
+# # 5. Foreach column in 'sample_metadata_tidy' do cor.test with each PCA 1 to 20 (cor function)
+# cor_matrix <- cor(x = sample_metadata,
+#                   y = pca_20models)
+# 
+# saveRDS(object = cor_matrix,
+#         file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+#                       "/results/pipeline3/rbp/correlation_matrix.rds"))
+# 
+# # 6. Point above will return a matrix of correlation metrics
+# # (highest correlation values & p-values are the covariates influencing the most)
+# 
+# gattered_cor_matrix <- reshape2::melt(cor_matrix)
+# head(gattered_cor_matrix)
+# 
+# ggplot(data = gattered_cor_matrix, aes(x=Var1, y=Var2, fill = value)) +
+#   geom_tile()+ 
+#   theme_minimal() +
+#   scale_fill_gradient2(
+#     name = "Scaled Value",
+#     low = "darkblue",
+#     mid = "gray",
+#     high = "darkred"
+#   ) +
+#   theme(
+#     axis.text.x = element_text(
+#       angle = 90,
+#       hjust = 1,
+#       vjust = 0.5
+#     ))
+# 
+# # 7. Order covariates by PC 2
+# covariates <- gattered_cor_matrix %>% 
+#   as_tibble() %>%
+#   #filter(Var2 == "PC2") %>%
+#   mutate(value = abs(value)) %>%
+#   arrange(desc(value)) %>%
+#   filter(value > 0.25) %>%
+#   #filter(Var1 != "gtex.age") %>%
+#   pull(Var1)
   
 
 # 8. Save the covariates ---------------------------
 
-sample_metadata_t <- as.data.frame(t(sample_metadata %>%
-                                       select(all_of(covariates))))
-
-write_csv(x = sample_metadata_t %>%
+write_csv(x = sample_metadata %>%
             tibble::rownames_to_column(var = "covariate"), 
           file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                         project_id, "/results/pipeline3/rbp/covariates.csv"))

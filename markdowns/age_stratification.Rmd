@@ -832,56 +832,8 @@ intersect(x = RBP_decrease,
 
 ```
 
-Their GO Enrichment below (no background used as when the dataset of all RBPs was used as a bg, no significant results were returned):
+The GO Enrichment below of these decreasing-expression-with-age RBPs (using as background the dataset of all 250 RBPs) did not return significant terms.
 
-```{r rbp_lm_decreasing_go, echo = FALSE}
-  gene_enrichment <- gprofiler2::gost(query = RBP_decrease %>% unique(),
-                                      #custom_bg = RBP_bg,
-                                      organism = "hsapiens",
-                                      ordered_query = T,
-                                      correction_method = "bonferroni",
-                                      significant = T)
-  
-  GO_enrichment <- gene_enrichment$result %>% 
-    filter(str_detect(source, pattern = "GO")) %>%
-    mutate(go_type = str_sub(source, start = 4, end = 5))
-  
-  GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
-                                                               go_id = GO_enrichment$term_id,
-                                                               go_term = GO_enrichment$term_name),
-                                       orgdb = "org.Hs.eg.db",
-                                       #threshold = 0.7,
-                                       scores = NULL,
-                                       measure = "Wang")
-  
-  df_result <- merge(x = gene_enrichment$result %>% 
-                       filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
-                     y = GO_enrich_reduc,
-                     by.x = "term_id",
-                     by.y = "go_id",
-                     all.x = T)
-  
-  rbind(df_result %>%
-          as_tibble() %>%
-          dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
-          group_by(parent_term, source) %>%
-          mutate(p_value = p_value %>% max) %>%
-          ungroup() %>%
-          distinct(parent_term, .keep_all = T) %>%
-          drop_na(), 
-        df_result %>%
-          as_tibble() %>%
-          dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>%
-          filter(source == "KEGG") %>%
-          group_by(parent_term, source) %>%
-          mutate(p_value = p_value %>% max) %>%
-          ungroup() %>%
-          distinct(parent_term, .keep_all = T))%>%
-    arrange(p_value) %>%
-    mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-    DT::datatable()
-  
-```
 
 ## TPM increasing with age
 

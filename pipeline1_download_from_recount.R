@@ -1,16 +1,3 @@
-library(tidyverse)
-
-
-
-# packageVersion("dasper")
-# 
-# if (!exists("homo_sapiens_v104")) {
-#   homo_sapiens_v104 <- rtracklayer::import("/data/references/ensembl/gtf_gff3/v104/Homo_sapiens.GRCh38.104.gtf")
-#   print("'homo_sapiens' v104 file loaded!")
-# } else {
-#   print("'homo_sapiens' v104 file already loaded!")
-# }
-
 ################################
 ## FUNCTIONS
 ################################
@@ -145,7 +132,8 @@ separate_samples <- function(clusters_ID,
     if (GTEx) {
       cluster_samples <- metadata.info %>% 
         as_tibble() %>%
-        filter(gtex.smtsd == cluster) %>%
+        filter(gtex.smtsd == cluster,
+               gtex.smafrze != "EXCLUDE") %>%
         distinct(external_id) %>% 
         pull()
       
@@ -192,7 +180,7 @@ separate_split_read_counts_cluster <- function(clusters_ID,
                                                folder_origin,
                                                folder_destiny,
                                                rse = NULL,
-                                               GTEx) {
+                                               GTEx = T) {
   
   all_split_reads <- readRDS(file = paste0(folder_destiny, "/all_split_reads.rds"))$junID
   gc()
@@ -225,6 +213,7 @@ separate_split_read_counts_cluster <- function(clusters_ID,
   for (cluster in clusters_ID) { 
     # cluster <- clusters_ID[1]
     cluster_samples <- readRDS(file = paste0(folder_destiny, "/", cluster, "/", project_id, "_", cluster, "_samples.rds"))
+    
     print(paste0(Sys.time(), " - getting split_read_counts from ", cluster_samples %>% length(), 
                  " '", cluster, "' samples..."))
     
@@ -574,7 +563,181 @@ generate_median_tpm <- function() {
 }
 
 
+############################################
+## EXTRA FUNCTIONS NEEDED TO GENERATE 
+## DEPENDENCIES
+############################################
+
+tidy_gtex_tpm <- function() {
+  
+  all_projects <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
+                     "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", "HEART", "KIDNEY", "LIVER", "LUNG",
+                     "MUSCLE","NERVE", "OVARY", "PANCREAS", "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
+                     "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", "THYROID", "UTERUS", "VAGINA") %>% sort()
+  saveRDS(object = all_projects,
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  
+  all_clusters_used <- NULL
+  for (project in all_projects) {
+    clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                      project, "/raw_data/all_clusters_used.rds"))
+    all_clusters_used <- c(all_clusters_used, clusters)
+  }
+  all_clusters_used %>% head()
+  
+  saveRDS(object = all_clusters_used,
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+
+  
+  ## LOAD THE TPM DATA
+  tpm <- aws.s3::s3read_using(FUN = CePa::read.gct,
+                              object = "GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct",
+                              bucket = "data-references") %>%
+    as.data.frame()
+  
+  colnames(tpm) <- all_clusters_used[-24]
+  tpm <- tpm %>%
+    tibble::rownames_to_column("gene_id") %>%
+    mutate(gene_id = gene_id %>% str_remove("\\..*"))
+  
+  tpm %>% head()
+  
+  ## Save
+  saveRDS(object = tpm,
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/tpm_tidy.rds")
 
 
+}
 
+generate_protein_percentage <- function() {
+  
+  print(paste0(Sys.time(), " - loading the human reference transcriptome ... "))
+  
+  ## Import HUMAN REFERENCE transcriptome
+  homo_sapiens_v105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
+    as.data.frame()
+  
+  ## Get v104 transcripts
+  transcripts_v105 <- homo_sapiens_v105 %>%
+    filter(type == "transcript") %>%
+    dplyr::select(transcript_id, transcript_biotype, gene_id)
+  
+  transcripts_v105 %>% head()
+  
+  print(paste0(Sys.time(), " - loading the recount3 split reads ... "))
+  
+  
+  #########################################################
+  ## LOAD ALL ANNOTATED RECOUNT3 JUNCTIONS
+  ## We load all projects, one by one to load the SR data 
+  #########################################################
 
+  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  
+  df_all <- map_df(all_projects, function(project) {
+    
+    print(project)
+    all_clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                          project, "/raw_data/all_clusters_used.rds"))
+    
+    df_all <- map_df(all_clusters, function(cluster) {
+      print(cluster)
+      # cluster <- all_clusters[1]
+      df_all <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                      project, "/results/base_data/", cluster, "/", cluster, "_annotated_SR_details_length_105.rds")) %>%
+        dplyr::select(junID, tx_id_junction) %>%
+        unnest(tx_id_junction) %>%
+        mutate(protein_coding = NA)
+    })
+    
+    df_all <- df_all %>%
+      distinct(junID, .keep_all = T)
+    
+  })
+  
+  
+  df_all %>% head()
+  df_all %>% nrow()
+  print(object.size(df_all), units = "Gb")
+  
+  
+  
+  ############################################
+  ## Merge datasets to add transcript biotype
+  ############################################
+  
+  
+  print(paste0(Sys.time(), " --> adding transcript biotype..."))
+  
+  df_all <- merge(df_all %>% data.table::as.data.table(),
+                  transcripts_v105 %>% data.table::as.data.table(),
+                  by.x = "tx_id_junction",
+                  by.y = "transcript_id",
+                  all.x = T)
+  
+  df_all %>% head()
+  df_all %>% nrow()
+  
+  print(object.size(df_all), units = "Gb")
+  
+  saveRDS(object = df_all,
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_junc_tx.rds")
+  
+
+  
+  
+  #######################################
+  #######################################
+  
+  
+  print(paste0(Sys.time(), " --> starting protein-coding percentage calculation!"))
+  print(paste0(Sys.time(), " --> ", df_all$junID %>% unique() %>% length(), " total number of junctions."))
+  
+  df_all_percentage <- df_all %>% 
+    group_by(junID, transcript_biotype) %>%
+    summarise(n = n()) %>%
+    mutate(percent = (n / sum(n)) * 100) %>%
+    ungroup()
+  
+  df_all_percentage[1:1000,] %>% group_by(junID) %>% filter(!any(transcript_biotype == "protein_coding"))  %>% tail()
+  df_all_percentage %>% filter(junID == "chr1:100143210-100144068:+")
+  
+  
+  df_all_percentage_tidy <- df_all_percentage %>% 
+    #filter(junID == "1003624") %>%
+    group_by(junID) %>%
+    rowwise() %>%
+    mutate(percent = ifelse (transcript_biotype == "protein_coding", percent, 0)) %>%
+    ungroup() %>%
+    group_by(junID) %>%
+    filter(percent == max(percent)) %>%
+    select(-transcript_biotype, -n) %>%
+    distinct(junID, .keep_all = T) %>%
+    ungroup()
+  
+  
+  df_all_percentage_tidy %>% head()
+  
+  
+  df_all_percentage_tidy <- df_all_percentage_tidy %>%
+    dplyr::rename(protein_coding = percent)
+  
+  
+  df_all_percentage_tidy %>% head()
+  
+  
+  print(object.size(df_all_percentage), units = "Gb")
+  print(object.size(df_all_percentage_tidy), units = "Gb")
+  
+  saveRDS(object = df_all_percentage_tidy,
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds")
+  
+  
+  ##########################################
+  ## FREE UP SOME MEMORY 
+  ##########################################
+  
+  rm(homo_sapiens_v105)
+  rm(transcripts_v105)
+  print(paste0(Sys.time(), " - file saved!"))
+}

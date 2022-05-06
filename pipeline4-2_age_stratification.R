@@ -1411,12 +1411,10 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
   sample_metadata_t <- t(sample_metadata) %>% as.data.frame()
   colnames(sample_metadata_t) <- sample_metadata_t[1,]
   sample_metadata_t <- sample_metadata_t[-1,] %>%
+    dplyr::mutate(gtex.smtsd = gtex.smtsd %>% as.factor()) %>%
     dplyr::mutate_if(is.character, as.double) %>%
     tibble::rownames_to_column(var = "sample") %>%
-    as_tibble() %>%
-    mutate(gtex.age = ifelse(gtex.age == 1 | gtex.age == 2, "20-39", gtex.age),
-           gtex.age = ifelse(gtex.age == 3 | gtex.age == 4, "40-59", gtex.age),
-           gtex.age = ifelse(gtex.age == 5 | gtex.age == 6, "60-79", gtex.age))
+    as_tibble() 
   
   
 
@@ -1430,6 +1428,8 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
   df_lm_output <- map_df((tpm_uncorrected_t %>% names)[-1], function(RBP) {
     
     # RBP <- ((tpm_uncorrected_t %>% names)[-1])[1]
+    
+    print(RBP)
     
     tpm <- tpm_uncorrected_t[all_of(c("sample",RBP))]
     
@@ -1451,34 +1451,40 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
                       gtex.smnabtcht +
                       gtex.dthhrdy +
                       gtex.sex +
+                      gtex.smtsd +
                       gtex.smrin,
                     data = df)
     
     lm_output <- lm_output %>% summary()
     df_lm_output <- lm_output$coefficients %>% as_tibble(rownames = "covariate")
     
-
+cor(df)
+    df_lm_output <- df_lm_output %>%
+      mutate(RBP_ID = RBP) %>%
+      dplyr::select(covariate, Estimate, pval = `Pr(>|t|)`, RBP_ID)
+    
     return(df_lm_output %>%
-             mutate(RBP_ID = RBP) %>%
-             filter( `Pr(>|t|)` < 0.05,
-                     str_detect(string = covariate, pattern = "gtex.age")) %>%
-             dplyr::select(covariate, Estimate, pval = `Pr(>|t|)`, RBP_ID))
+             mutate(pval_adj = p.adjust(p = df_lm_output$pval, method = "fdr")))
     
   }) 
   
   
-  any(df_lm_output$pval > 0.05)
+  # any(df_lm_output$pval > 0.05)
+  
+ 
   
   ## Filter by age covariate and order
-  df_lm_age <- df_lm_output %>%
+  df_lm_output <- df_lm_output %>%
+    filter( pval_adj < 0.05,
+            str_detect(string = covariate, pattern = "gtex.age")) %>%
     arrange(Estimate)
   
   ## Add gene SYMBOL info
   gene_IDs <- getBM(filters= "ensembl_gene_id", 
                     attributes = c("ensembl_gene_id", "hgnc_symbol"),
-                    values = df_lm_age$RBP_ID, 
+                    values = df_lm_output$RBP_ID, 
                     mart = mart)
-  df_lm_age_tidy <- left_join(df_lm_age, gene_IDs, by = c("RBP_ID" = "ensembl_gene_id"))
+  df_lm_age_tidy <- left_join(df_lm_output, gene_IDs, by = c("RBP_ID" = "ensembl_gene_id"))
   
   ###############################################
   ## Get RBPs that decrease expression with age
@@ -1499,6 +1505,9 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
   intersect(RBP_decrease$hgnc_symbol,
             RBP_increase$hgnc_symbol)
   
+  RBP_decrease$hgnc_symbol %>% sort()
+  RBP_increase$hgnc_symbol %>% sort()
+  
   ###############################################
   ## GO ENRICHMENT
   ###############################################
@@ -1506,12 +1515,13 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
   ## Get RBPs that increase expression with age
   
   gene_enrichment <- gprofiler2::gost(query = RBP_decrease$hgnc_symbol %>% unique(),
-                                      #custom_bg = RBP_bg,
+                                      custom_bg = RBP_bg,
                                       organism = "hsapiens",
                                       ordered_query = T,
                                       correction_method = "bonferroni",
                                       significant = T)
   
+  if (!is.null(gene_enrichment)) {
   GO_enrichment <- gene_enrichment$result %>% 
     filter(str_detect(source, pattern = "GO")) %>%
     mutate(go_type = str_sub(source, start = 4, end = 5))
@@ -1550,7 +1560,7 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
     arrange(p_value) %>%
     mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
     as.data.frame()
-  
+  }
   
   
   ##############################################
@@ -1560,14 +1570,16 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
   
   
   gene_enrichment <- gprofiler2::gost(query = RBP_increase$hgnc_symbol %>% unique,
-                                      #custom_bg = RBP_bg,
+                                      custom_bg = RBP_bg,
                                       organism = "hsapiens",
                                       ordered_query = T,
                                       correction_method = "bonferroni",
                                       significant = T)
+  if (!is.null(gene_enrichment)) {
   gene_enrichment$result%>%
     dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>% 
     filter(str_detect(source, pattern = c("GO","WP")))
+  }
   
   
   

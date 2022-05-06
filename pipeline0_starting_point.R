@@ -13,10 +13,10 @@ get_mode <- function(vector) {
 }
 
 ##################################
-## CALLS - PREPARE RECOUNT2 DATA
+## CALLS - PREPARE RECOUNT3 DATA
 ##################################
 
-source("/home/sruiz/PROJECTS/splicing-project/pipeline0_prepare_data.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
 
 download_from_recount <- function(project_id,
                                   recount_version = 3,
@@ -111,7 +111,7 @@ download_from_recount <- function(project_id,
 ## CALLS - ANNOTATION
 ############################
 
-source("/home/sruiz/PROJECTS/splicing-project/pipeline1_QC_split_reads.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline2_annotate_from_recount.R")
 
 
 annotate_from_recount <- function(project_id,
@@ -198,7 +198,7 @@ annotate_from_recount <- function(project_id,
 ## IDB GENERATION
 ############################
 
-source("/home/sruiz/PROJECTS/splicing-project/pipeline3_methods.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_generation.R")
 
 idb_generation <- function(project_id,
                            clusters_ID = NULL,
@@ -257,7 +257,6 @@ idb_generation <- function(project_id,
                       folder_name = folder_name)
 
 
-    ## "ESOPHAGUS" needs to continue by here
     get_never_misspliced(cluster = cluster,
                          samples = samples,
                          split_read_counts = split_read_counts,
@@ -316,27 +315,27 @@ idb_generation <- function(project_id,
                   folder_name = folder_idb_name)
     
     
-    # add_cdts_cons_scores(cluster = cluster,
-    #                      CNC_CDTS_CONS_gr = CNC_CDTS_CONS_gr,
-    #                      folder_name = folder_idb_name)
-    
-    # add_gene_tpm_length(cluster = cluster,
-    #                     folder_name = folder_idb_name,
-    #                     GTEx = F)
-    
     
     #################################
-    ## ADD PROTEIN PERCENTAGE
+    ## CONFIGURE TO ADD THESE PROPERTIES TO THE IDB
+    ## Note: is the Shiny app the portal in which I
+    ## restrict the info that I show there.
     #################################
     
     
-    # protein_folder <- "/home/sruiz/PROJECTS/splicing-project/results/base_data/all_annotated_SR_details_length_104_biotype.rds"
-    # folder_root <- "/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/"
-    # 
-    # 
-    # add_protein_percentage_to_database(cluster = cluster,
-    #                                    protein_folder = protein_folder,
-    #                                    folder_root = folder_root)
+    add_cdts_cons_scores(cluster = cluster,
+                         CNC_CDTS_CONS_gr = CNC_CDTS_CONS_gr,
+                         folder_name = folder_idb_name)
+    
+    add_gene_tpm_length(cluster = cluster,
+                        folder_name = folder_idb_name)
+    
+    
+    protein_file <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds"
+
+    add_protein_percentage_to_database(cluster = cluster,
+                                       protein_folder = protein_file,
+                                       folder_root = folder_idb_name)
     
   }
 }
@@ -381,15 +380,10 @@ idb_generation <- function(project_id,
 # "NERVE"
 # "LUNG"
 
+projects <- c("VAGINA") # the 2nd tissue from blood project # ask if file doesn't exist
 
-## TODO:
-
-projects <- c("BLOOD") # the 2nd tissue from blood project # ask if file doesn't exist
-              
-              
-  
-              
-
+## Load the dependency needed for the conservation/constraint scores              
+aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references")
 
 for (project_id in projects) {
   
@@ -416,11 +410,14 @@ for (project_id in projects) {
                         folder_root = folder_root)
 
   rm(rse)
+  
+  
   gc()
 
   annotate_from_recount(project_id = project_id,
                         folder_root = folder_root)
 
+  
   gc()
   
   idb_generation(project_id = project_id,
@@ -431,6 +428,3 @@ for (project_id in projects) {
   gc()
   
 }
-
-
-
