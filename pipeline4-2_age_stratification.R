@@ -1324,7 +1324,7 @@ age_stratification_GO_enrichment <- function(genes,
 }
 
 
-age_stratification_RBP_analysis <- function(project_id = "BRAIN") {
+age_stratification_RBP_corrected_TPM_analysis <- function(project_id = "BRAIN") {
   
   
   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
@@ -1386,63 +1386,77 @@ age_stratification_RBP_analysis <- function(project_id = "BRAIN") {
 age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
 
   
+  ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+  
   ## Load and tidy the uncorrected TPMs
   ## TPMs here should be uncorrected as the covariates are going to be included in the linear models
-  tpm_uncorrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                                      "/results/pipeline3/rbp/tpm.csv"))
-  tpm_uncorrected_t <- t(tpm_uncorrected) %>% as.data.frame()
-  colnames(tpm_uncorrected_t) <- tpm_uncorrected_t[1,]
-  tpm_uncorrected_t <- tpm_uncorrected_t[-1,] %>%
-    tibble::rownames_to_column(var = "sample")
+  tpm_batch_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                                                project_id, "/results/pipeline3/rbp/tpm.csv")) ##tpm_residuals.csv
+  tpm_batch_corrected <- tpm_batch_corrected %>%
+    dplyr::rename(gene = "X") %>%
+    as_tibble()
+  # tpm_batch_corrected_t <- t(tpm_batch_corrected) %>% as.data.frame() 
+  # colnames(tpm_batch_corrected_t) <- tpm_batch_corrected_t[1,]
+  # tpm_batch_corrected_t <- tpm_batch_corrected_t[-1,] %>% as_tibble(rownames = "gene")
   
-  ## Get all RBPs name to use them as bg
-  library(biomaRt)
-  mart <- useDataset("hsapiens_gene_ensembl", useMart("ensembl"))
-  RBP_IDs <- getBM(filters= "ensembl_gene_id", 
-                    attributes = c("ensembl_gene_id", "hgnc_symbol"),
-                    values = (tpm_uncorrected_t %>% names())[-1], 
-                    mart = mart)
-  RBP_bg <- RBP_IDs$hgnc_symbol
+
   
   
   ## Load and tidy the sample metadata
   sample_metadata <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                              project_id, "/results/pipeline3/rbp/covariates.csv"))
-  sample_metadata_t <- t(sample_metadata) %>% as.data.frame()
-  colnames(sample_metadata_t) <- sample_metadata_t[1,]
-  sample_metadata_t <- sample_metadata_t[-1,] %>%
-    dplyr::mutate(gtex.smtsd = gtex.smtsd %>% as.factor()) %>%
-    dplyr::mutate_if(is.character, as.double) %>%
-    tibble::rownames_to_column(var = "sample") %>%
-    as_tibble() 
+                                              project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
+                              fileEncoding = "UTF-8") %>% as_tibble()
+  
+  # sample_metadata_t <- t(sample_metadata) %>% as_tibble(rownames = "sample")
+  # colnames(sample_metadata_t) <- sample_metadata_t[1,]
+  # sample_metadata_t <- sample_metadata_t[-1,] %>%
+  #   dplyr::rename(sample = "covariates") %>%
+  #   mutate(gtex.age = gtex.age %>% as.double(),
+  #          gtex.sex = gtex.sex %>% as.double(),
+  #          gtex.smrin = gtex.smrin %>% as.double())
   
   
-
+  
   ## Check the samples are the same
-  identical(x = tpm_uncorrected_t$sample,
-            y = sample_metadata_t$sample)
+  identical(x = names(tpm_batch_corrected)[-1],
+            y = names(sample_metadata)[-1])
   
   
+  
+  RBPs <- (tpm_batch_corrected$gene)
   
   ## Obtain values and run lm
-  df_lm_output <- map_df((tpm_uncorrected_t %>% names)[-1], function(RBP) {
+  df_lm_output <- map_df(RBPs, function(RBP) {
     
-    # RBP <- ((tpm_uncorrected_t %>% names)[-1])[1]
+    # RBP <- RBPs[1]
     
     print(RBP)
     
-    tpm <- tpm_uncorrected_t[all_of(c("sample",RBP))]
+    tpm <- tpm_batch_corrected %>%
+      filter(gene == RBP) %>%
+      mutate(gene = "tpm")
     
-    df <- merge(x = sample_metadata_t,
-                y = tpm,
-                by = "sample") %>%
-      dplyr::rename(tpm = all_of(RBP)) %>%
-      dplyr::mutate(tpm = tpm %>% as.double()) %>%
+    df <- rbind(tpm %>% 
+                  dplyr::rename(covariates = "gene"),
+                sample_metadata) %>%
+      gather(sample, value, -covariates)  %>%
+      spread(key = covariates, value) %>%
+      dplyr::mutate(gtex.age = gtex.age %>% as.double(),
+                    gtex.dthhrdy = gtex.dthhrdy %>% as.double(),
+                    gtex.sex = gtex.sex %>% as.double(),
+                    gtex.smcenter = gtex.smcenter %>% as.double(),
+                    gtex.smgebtch = gtex.smgebtch %>% as.double(),
+                    gtex.smgebtchd = gtex.smgebtchd %>% as.double(),
+                    gtex.smnabtch = gtex.smnabtch %>% as.double(),
+                    gtex.smnabtchd = gtex.smnabtchd %>% as.double(),
+                    gtex.smnabtcht = gtex.smnabtcht %>% as.double(),
+                    gtex.smrin = gtex.smrin %>% as.double(),
+                    tpm = tpm %>% as.double()) %>%
       as_tibble()
     
     # print(df)
     lm_output <- lm(tpm ~ 
-                      gtex.age + 
+                      gtex.smrin + 
                       gtex.smcenter +
                       gtex.smgebtch +
                       gtex.smgebtchd +
@@ -1452,19 +1466,18 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
                       gtex.dthhrdy +
                       gtex.sex +
                       gtex.smtsd +
-                      gtex.smrin,
+                      gtex.age,
                     data = df)
     
     lm_output <- lm_output %>% summary()
     df_lm_output <- lm_output$coefficients %>% as_tibble(rownames = "covariate")
     
-cor(df)
+    # cor(df)
     df_lm_output <- df_lm_output %>%
       mutate(RBP_ID = RBP) %>%
       dplyr::select(covariate, Estimate, pval = `Pr(>|t|)`, RBP_ID)
     
-    return(df_lm_output %>%
-             mutate(pval_adj = p.adjust(p = df_lm_output$pval, method = "fdr")))
+    return(df_lm_output)
     
   }) 
   
@@ -1472,27 +1485,28 @@ cor(df)
   # any(df_lm_output$pval > 0.05)
   
  
-  
   ## Filter by age covariate and order
-  df_lm_output <- df_lm_output %>%
-    filter( pval_adj < 0.05,
+  df_lm_output_age <- df_lm_output %>%
+    filter( pval <= 0.05,
             str_detect(string = covariate, pattern = "gtex.age")) %>%
     arrange(Estimate)
   
   ## Add gene SYMBOL info
-  gene_IDs <- getBM(filters= "ensembl_gene_id", 
-                    attributes = c("ensembl_gene_id", "hgnc_symbol"),
-                    values = df_lm_output$RBP_ID, 
-                    mart = mart)
-  df_lm_age_tidy <- left_join(df_lm_output, gene_IDs, by = c("RBP_ID" = "ensembl_gene_id"))
+  df_lm_age_tidy <- left_join(x = df_lm_output_age, 
+                              y = RBPs_tidy, 
+                              by = c("RBP_ID" = "ensembl_gene_id")) %>%
+    group_by(RBP_ID) %>%
+    distinct(pval, .keep_all = T)
+  
+  
+  write_csv(x = df_lm_age_tidy,
+            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                          "/results/pipeline3/rbp/tpm_lm.csv"))
   
   ###############################################
   ## Get RBPs that decrease expression with age
   ###############################################
   
-  write_csv(x = df_lm_age_tidy,
-          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                        "/results/pipeline3/rbp/tpm_lm.csv"))
   
   RBP_decrease <- df_lm_age_tidy %>%
     filter(Estimate < 0) %>%
@@ -1502,84 +1516,84 @@ cor(df)
     filter(Estimate > 0) %>%
     arrange(desc(Estimate))
   
-  intersect(RBP_decrease$hgnc_symbol,
-            RBP_increase$hgnc_symbol)
+  intersect(RBP_decrease$gene_name,
+            RBP_increase$gene_name)
   
-  RBP_decrease$hgnc_symbol %>% sort()
-  RBP_increase$hgnc_symbol %>% sort()
+  RBP_decrease$hgnc_symbol %>% unique() %>% sort()
+  RBP_increase$hgnc_symbol %>% unique() %>% sort()
   
-  ###############################################
-  ## GO ENRICHMENT
-  ###############################################
-  
-  ## Get RBPs that increase expression with age
-  
-  gene_enrichment <- gprofiler2::gost(query = RBP_decrease$hgnc_symbol %>% unique(),
-                                      custom_bg = RBP_bg,
-                                      organism = "hsapiens",
-                                      ordered_query = T,
-                                      correction_method = "bonferroni",
-                                      significant = T)
-  
-  if (!is.null(gene_enrichment)) {
-  GO_enrichment <- gene_enrichment$result %>% 
-    filter(str_detect(source, pattern = "GO")) %>%
-    mutate(go_type = str_sub(source, start = 4, end = 5))
-  
-  GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
-                                                               go_id = GO_enrichment$term_id,
-                                                               go_term = GO_enrichment$term_name),
-                                       orgdb = "org.Hs.eg.db",
-                                       #threshold = 0.7,
-                                       scores = NULL,
-                                       measure = "Wang")
-  
-  df_result <- merge(x = gene_enrichment$result %>% 
-                       filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
-                     y = GO_enrich_reduc,
-                     by.x = "term_id",
-                     by.y = "go_id",
-                     all.x = T)
-  
-  rbind(df_result %>%
-          as_tibble() %>%
-          dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
-          group_by(parent_term, source) %>%
-          mutate(p_value = p_value %>% max) %>%
-          ungroup() %>%
-          distinct(parent_term, .keep_all = T) %>%
-          drop_na(), 
-        df_result %>%
-          as_tibble() %>%
-          dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>%
-          filter(source == "KEGG") %>%
-          group_by(parent_term, source) %>%
-          mutate(p_value = p_value %>% max) %>%
-          ungroup() %>%
-          distinct(parent_term, .keep_all = T))%>%
-    arrange(p_value) %>%
-    mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-    as.data.frame()
-  }
-  
-  
-  ##############################################
-  ## Get RBPs that increase expression with age
-  ##############################################
-  
-  
-  
-  gene_enrichment <- gprofiler2::gost(query = RBP_increase$hgnc_symbol %>% unique,
-                                      custom_bg = RBP_bg,
-                                      organism = "hsapiens",
-                                      ordered_query = T,
-                                      correction_method = "bonferroni",
-                                      significant = T)
-  if (!is.null(gene_enrichment)) {
-  gene_enrichment$result%>%
-    dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>% 
-    filter(str_detect(source, pattern = c("GO","WP")))
-  }
+  # ###############################################
+  # ## GO ENRICHMENT
+  # ###############################################
+  # 
+  # ## Get RBPs that increase expression with age
+  # 
+  # gene_enrichment <- gprofiler2::gost(query = RBP_decrease$hgnc_symbol %>% unique(),
+  #                                     custom_bg = RBP_bg,
+  #                                     organism = "hsapiens",
+  #                                     ordered_query = T,
+  #                                     correction_method = "bonferroni",
+  #                                     significant = T)
+  # 
+  # if (!is.null(gene_enrichment)) {
+  # GO_enrichment <- gene_enrichment$result %>% 
+  #   filter(str_detect(source, pattern = "GO")) %>%
+  #   mutate(go_type = str_sub(source, start = 4, end = 5))
+  # 
+  # GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+  #                                                              go_id = GO_enrichment$term_id,
+  #                                                              go_term = GO_enrichment$term_name),
+  #                                      orgdb = "org.Hs.eg.db",
+  #                                      #threshold = 0.7,
+  #                                      scores = NULL,
+  #                                      measure = "Wang")
+  # 
+  # df_result <- merge(x = gene_enrichment$result %>% 
+  #                      filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+  #                    y = GO_enrich_reduc,
+  #                    by.x = "term_id",
+  #                    by.y = "go_id",
+  #                    all.x = T)
+  # 
+  # rbind(df_result %>%
+  #         as_tibble() %>%
+  #         dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+  #         group_by(parent_term, source) %>%
+  #         mutate(p_value = p_value %>% max) %>%
+  #         ungroup() %>%
+  #         distinct(parent_term, .keep_all = T) %>%
+  #         drop_na(), 
+  #       df_result %>%
+  #         as_tibble() %>%
+  #         dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>%
+  #         filter(source == "KEGG") %>%
+  #         group_by(parent_term, source) %>%
+  #         mutate(p_value = p_value %>% max) %>%
+  #         ungroup() %>%
+  #         distinct(parent_term, .keep_all = T))%>%
+  #   arrange(p_value) %>%
+  #   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+  #   as.data.frame()
+  # }
+  # 
+  # 
+  # ##############################################
+  # ## Get RBPs that increase expression with age
+  # ##############################################
+  # 
+  # 
+  # 
+  # gene_enrichment <- gprofiler2::gost(query = RBP_increase$hgnc_symbol %>% unique,
+  #                                     custom_bg = RBP_bg,
+  #                                     organism = "hsapiens",
+  #                                     ordered_query = T,
+  #                                     correction_method = "bonferroni",
+  #                                     significant = T)
+  # if (!is.null(gene_enrichment)) {
+  # gene_enrichment$result%>%
+  #   dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>% 
+  #   filter(str_detect(source, pattern = c("GO","WP")))
+  # }
   
   
   
@@ -1591,9 +1605,6 @@ cor(df)
   
  
 }
-
-
-
 
 
 tpm_age_spread <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,

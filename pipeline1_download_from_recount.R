@@ -7,15 +7,23 @@ prepare_data_from_rse <- function(rse,
 
   
   ## Get samples and store
-  samples <- colnames(rse)
+  samples <- rse %>% 
+    SummarizedExperiment::colData() %>%
+    as_tibble() %>%
+    filter(gtex.smafrze != "EXCLUDE") %>%
+    pull(external_id)
   saveRDS(object = samples, file = paste0(folder_path, "/samples.rds"))
   
   ## Save samples metadata info
-  metadata.info <- rse %>% SummarizedExperiment::colData()
+  metadata.info <- rse %>% 
+    SummarizedExperiment::colData() %>%
+    as_tibble() %>%
+    filter(gtex.smafrze != "EXCLUDE")
   saveRDS(object = metadata.info, file = paste0(folder_path, "/samples_metadata.rds"))
   
   ## Save junctions metadata info
-  junctions.info <- rse %>% SummarizedExperiment::elementMetadata()
+  junctions.info <- rse %>% 
+    SummarizedExperiment::elementMetadata()
   saveRDS(object = junctions.info, file = paste0(folder_path, "/junctions_metadata.rds"))
   
   ## Save all_split_reads data
@@ -570,23 +578,33 @@ generate_median_tpm <- function() {
 
 tidy_gtex_tpm <- function() {
   
-  all_projects <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
-                     "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", "HEART", "KIDNEY", "LIVER", "LUNG",
-                     "MUSCLE","NERVE", "OVARY", "PANCREAS", "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
-                     "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", "THYROID", "UTERUS", "VAGINA") %>% sort()
-  saveRDS(object = all_projects,
-          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-  
-  all_clusters_used <- NULL
-  for (project in all_projects) {
-    clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                      project, "/raw_data/all_clusters_used.rds"))
-    all_clusters_used <- c(all_clusters_used, clusters)
+  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")) {
+    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  } else {
+    all_projects <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
+                       "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", "HEART", "KIDNEY", "LIVER", "LUNG",
+                       "MUSCLE","NERVE", "OVARY", "PANCREAS", "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
+                       "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", "THYROID", "UTERUS", "VAGINA") %>% sort()
+    saveRDS(object = all_projects,
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
   }
-  all_clusters_used %>% head()
   
-  saveRDS(object = all_clusters_used,
-          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")) {
+    all_clusters_used <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+  } else {
+    all_clusters_used <- NULL
+    for (project in all_projects) {
+      clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                        project, "/raw_data/all_clusters_used.rds"))
+      all_clusters_used <- c(all_clusters_used, clusters)
+    }
+    all_clusters_used %>% head()
+    
+    saveRDS(object = all_clusters_used,
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+  }
+  
+  
 
   
   ## LOAD THE TPM DATA
@@ -611,47 +629,55 @@ tidy_gtex_tpm <- function() {
 
 generate_protein_percentage <- function() {
   
+  
+  #######################################
+  ## GET THE TRANSCRIPT BIOTYPE
+  #######################################
+
+    
   print(paste0(Sys.time(), " - loading the human reference transcriptome ... "))
   
   ## Import HUMAN REFERENCE transcriptome
   homo_sapiens_v105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
     as.data.frame()
   
-  ## Get v104 transcripts
+  ## Get v105 transcripts
   transcripts_v105 <- homo_sapiens_v105 %>%
     filter(type == "transcript") %>%
     dplyr::select(transcript_id, transcript_biotype, gene_id)
   
   transcripts_v105 %>% head()
   
-  print(paste0(Sys.time(), " - loading the recount3 split reads ... "))
-  
-  
-  #########################################################
+
   ## LOAD ALL ANNOTATED RECOUNT3 JUNCTIONS
   ## We load all projects, one by one to load the SR data 
-  #########################################################
+  
+  print(paste0(Sys.time(), " - loading the recount3 split reads ... "))
 
   all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
   
   df_all <- map_df(all_projects, function(project) {
     
+    # project <- all_projects[1]
     print(project)
+    
     all_clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                           project, "/raw_data/all_clusters_used.rds"))
     
     df_all <- map_df(all_clusters, function(cluster) {
-      print(cluster)
+      
       # cluster <- all_clusters[1]
+      print(cluster)
       df_all <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                       project, "/results/base_data/", cluster, "/", cluster, "_annotated_SR_details_length_105.rds")) %>%
         dplyr::select(junID, tx_id_junction) %>%
         unnest(tx_id_junction) %>%
         mutate(protein_coding = NA)
+      
+      return(df_all)
     })
     
-    df_all <- df_all %>%
-      distinct(junID, .keep_all = T)
+    return(df_all)
     
   })
   
@@ -661,16 +687,14 @@ generate_protein_percentage <- function() {
   print(object.size(df_all), units = "Gb")
   
   
-  
-  ############################################
   ## Merge datasets to add transcript biotype
-  ############################################
-  
-  
   print(paste0(Sys.time(), " --> adding transcript biotype..."))
   
-  df_all <- merge(df_all %>% data.table::as.data.table(),
-                  transcripts_v105 %>% data.table::as.data.table(),
+  df_all <- df_all %>% data.table::as.data.table()
+  transcripts_v105 <- transcripts_v105 %>% data.table::as.data.table()
+  
+  df_all <- merge(x = df_all,
+                  y = transcripts_v105,
                   by.x = "tx_id_junction",
                   by.y = "transcript_id",
                   all.x = T)
@@ -679,30 +703,35 @@ generate_protein_percentage <- function() {
   df_all %>% nrow()
   
   print(object.size(df_all), units = "Gb")
-  
-  saveRDS(object = df_all,
-          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_junc_tx.rds")
-  
+    
 
-  
-  
+
   #######################################
+  ## CALCULATE THE TRANSCRIPT PERCENTAGE
   #######################################
   
   
   print(paste0(Sys.time(), " --> starting protein-coding percentage calculation!"))
   print(paste0(Sys.time(), " --> ", df_all$junID %>% unique() %>% length(), " total number of junctions."))
   
+  df_all %>%
+    filter(junID == "chr1:100007157-100009287:+")
+  
+  ## Calculate each biotype percentage
   df_all_percentage <- df_all %>% 
     group_by(junID, transcript_biotype) %>%
-    summarise(n = n()) %>%
+    distinct(tx_id_junction, .keep_all = T) %>% 
+    summarise(n = n()) %>% 
     mutate(percent = (n / sum(n)) * 100) %>%
     ungroup()
   
-  df_all_percentage[1:1000,] %>% group_by(junID) %>% filter(!any(transcript_biotype == "protein_coding"))  %>% tail()
-  df_all_percentage %>% filter(junID == "chr1:100143210-100144068:+")
+  df_all_percentage %>%
+    filter(junID == "chr1:100007157-100009287:+")
   
+  # df_all_percentage[1:1000,] %>% group_by(junID) %>% filter(!any(transcript_biotype == "protein_coding"))  %>% tail()
+  # df_all_percentage %>% filter(junID == "chr1:100143210-100144068:+")
   
+  ## Only filter by the protein-coding biotype
   df_all_percentage_tidy <- df_all_percentage %>% 
     #filter(junID == "1003624") %>%
     group_by(junID) %>%
@@ -722,10 +751,10 @@ generate_protein_percentage <- function() {
   df_all_percentage_tidy <- df_all_percentage_tidy %>%
     dplyr::rename(protein_coding = percent)
   
+  df_all_percentage_tidy %>%
+    filter(junID == "chr1:100007157-100009287:+")
   
-  df_all_percentage_tidy %>% head()
-  
-  
+
   print(object.size(df_all_percentage), units = "Gb")
   print(object.size(df_all_percentage_tidy), units = "Gb")
   

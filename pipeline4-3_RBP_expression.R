@@ -1,5 +1,7 @@
 library(tidyverse)
 library(GenomicRanges)
+library(DESeq2)
+library(biomaRt)
 
 ## source("/home/sruiz/PROJECTS/splicing-project/pipeline3_RBP_expression.R")
 
@@ -7,139 +9,125 @@ library(GenomicRanges)
 ## FUNCTIONS       
 ################################
 
-get_GTEx_gene_expression <- function(rse, ref) {
-  
-  library("DESeq2")
+get_GTEx_gene_expression <- function(rse, ensembl106, recount3 = T) {
   
   
+  ################################################
+  ## Compute TPM values using MANUAL approach
+  ################################################
+
+  if (!recount3) {
+    ## Counts have been transformed, so they are ready to work with them
+    ddsSE <- rse #DESeqDataSet(rse, design = ~ gtex.smnabtcht)
+    
+    # Remove anything after . in ensembl id
+    rownames(ddsSE) <- rownames(ddsSE) %>%
+      str_remove("\\..*")
+    
+    # Convert to tpm, which is calculated by:
+    # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
+    # 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
+    # 3. Divide the RPK values by the “per million” scaling factor.
+    dds_rpk <- ddsSE %>%
+      SummarizedExperiment::assay("counts") %>%
+      as_tibble(rownames = "gene") %>%
+      tidyr::pivot_longer(cols = -c("gene"),
+                          names_to = "recount_id",
+                          values_to = "counts") %>%
+      #filter(recount_id %in% sample_used) %>%
+      dplyr::inner_join(ref %>%
+                          as_tibble() %>%
+                          dplyr::select(gene_id, gene_name, width),
+                        by = c("gene" = "gene_id")) %>%
+      dplyr::mutate(rpk = counts/width)
+    
+    dds_tpm <- dds_rpk %>%
+      group_by(recount_id) %>%
+      mutate(scaling_factor = sum(rpk)/1e6) %>%
+      ungroup() %>%
+      dplyr::mutate(tpm = rpk/scaling_factor) %>%
+      dplyr::mutate(tpm_log10 = log10(tpm)) ## Normalisation log10
+    
+    # dds_tpm <- dds_tpm %>% dplyr::arrange(gene)
+  }
   
+  ################################################
+  ## Compute TPM values using recount3 approach
+  ################################################
   
+  assays(rse)$TPM <- recount::getTPM(rse)
+  ## Should all be equal to 1
+  colSums(assay(rse, "TPM")) / 1e6
   
-  sample_use <- rse %>% 
+  ## Tidy the dataframe
+  recount_dds_tpm <- assays(rse)$TPM %>%
+    as_tibble(rownames = "gene") %>% 
+    mutate(gene = gene %>% str_remove("\\..*")) %>% 
+    tidyr::gather(key = sample, value = tpm, -gene)
+  
+  # recount_dds_tpm <- recount_dds_tpm %>% dplyr::arrange(gene)
+  
+  ## Filter by 'USE ME' sample
+  
+  ################################################
+  ## Compare both results
+  ################################################
+  
+  ## 1. Filter by only "USE ME" samples
+  
+  sample_used <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
     filter(gtex.smafrze != "EXCLUDE") %>%
     pull(external_id)
   
+  if (!recount3) {
+    dds_tpm <- dds_tpm %>% 
+      filter(recount_id %in% sample_used)
+  }
+
   
-  #dds_tpm <- map_df(project_ids, function(project_id) {
-  
-  
-  
-  ddsSE <- rse#DESeqDataSet(rse, design = ~ 1)
-  
-  
-  # Remove anything after . in ensembl id
-  rownames(ddsSE) <- rownames(ddsSE) %>%
-    str_remove("\\..*")
+  recount_dds_tpm <- recount_dds_tpm %>% 
+    filter(sample %in% sample_used) 
   
   
-  # Convert to tpm, which is calculated by:
-  # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
-  # 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
-  # 3. Divide the RPK values by the “per million” scaling factor.
-  dds_rpk <- ddsSE %>%
-    assay() %>%
-    as_tibble(rownames = "gene") %>%
-    tidyr::pivot_longer(cols = -c("gene"),
-                        names_to = "recount_id",
-                        values_to = "counts") %>%
-    filter(recount_id %in% sample_use) %>%
-    dplyr::inner_join(ref %>%
-                        as_tibble() %>%
-                        dplyr::select(gene_id, gene_name, width),
-                      by = c("gene" = "gene_id")) %>%
-    dplyr::mutate(rpk = counts/width)
+  ## 2. Compare TPM values
+  # dds_tpm %>% filter(gene == "ENSG00000160201")
+  
+  recount_dds_tpm %>%
+    filter(gene == "ENSG00000160201")
+  
+  # df_tpm_merged <- merge(x = dds_tpm %>% data.table::as.data.table(),
+  #                        y = recount_dds_tpm %>% data.table::as.data.table(),
+  #                        by = "gene") 
+  # 
+  # 
+  # dds_tpm %>% distinct(gene) %>% nrow()
+  # recount_dds_tpm %>% distinct(gene) %>% nrow()
   
   
-  dds_tpm <- dds_rpk %>%
-    group_by(recount_id) %>%
-    mutate(scaling_factor = sum(rpk)/1e6) %>%
-    ungroup() %>%
-    dplyr::mutate(tpm = rpk/scaling_factor) %>%
-    dplyr::mutate(tpm_log10 = log10(tpm)) ## Normalisation log10
+
   
-  ## Return df
-  return(dds_tpm %>% 
-           mutate(project = project_id))
   
-  # ggplot2::ggplot(data = dds_tpm %>%
-  #                   filter(gene == "ENSG00000063244")) +
-  #   geom_density(mapping = aes(x = tpm_log10))
-  #                 
-  # 
-  # 
-  # ## Add age supercluster info
-  # dds_tpm <- merge(x = dds_tpm %>% data.table::as.data.table(),
-  #                  y = age_samples_clusters_tidy %>% 
-  #                    select(age_group, run) %>% 
-  #                    data.table::as.data.table(),
-  #                  by.x = "recount_id",
-  #                  by.y = "run",
-  #                  all.x = T)
-  # 
+  ## Return recount3 TPM counts
   
-  #})
   
-  # ## Calculate median values across samples  
-  # tpm <- dds_tpm %>%
-  #   select(gene, gene_name, age_group, tpm) %>%
-  #   #drop_na() %>%
-  #   dplyr::group_by(gene, age_group) %>%
-  #   mutate(tpm_median = tpm %>% median()) %>%
-  #   mutate(tpm_mean = tpm %>% mean()) %>%
-  #   distinct(gene, .keep_all = T) %>%
-  #   dplyr::ungroup() %>%
-  #   select(gene, gene_name, age_group, tpm_median, tpm_mean) 
-  # 
-  # 
-  # # saveRDS(object = dds_tpm,
-  # #         file = paste0("/home/sruiz/PROJECTS/splicing-project/markdowns/age_stratification/tpm.rds"))
-  # 
-  # saveRDS(object = tpm,
-  #         file = paste0("/home/sruiz/PROJECTS/splicing-project/markdowns/age_stratification/tpm.rds"))
-  # 
-  # 
-  # ###################################################################
-  # ## LOAD THE TMP DATA
-  # ###################################################################
-  # 
-  # tpm <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/markdowns/age_stratification/tpm.rds"))
-  # 
-  # tpm_tidy <- tpm %>%
-  #   filter(gene_name %in% c('SF3B4','U2AF2','SF3B4','SF3A3','SMNDC1','GPKOW','SMNDC1','U2AF2','SF3B1','BUD13','EFTUD2','U2AF2','XRN2','XRN2','LSM11','U2AF1','EFTUD2','CDC40','BUD13','RBM22','DDX42','KHSRP','U2AF1','PRPF8','TDP43','SUPV3L1','TBRG4','RBM22')   )
-  # 
-  # 
-  # wilcox.test(x = tpm_tidy %>% filter(age_group == "20-39") %>% pull(tpm_median),
-  #             y = tpm_tidy %>% filter(age_group == "40-59") %>% pull(tpm_median),
-  #             alternative = "greater")
-  # wilcox.test(x = tpm_tidy %>% filter(age_group == "20-39") %>% pull(tpm_median),
-  #             y = tpm_tidy %>% filter(age_group == "60-79") %>% pull(tpm_median),
-  #             alternative = "greater")
-  # 
-  # ggplot(data = tpm_tidy) +
-  #   geom_density(mapping = aes(x = tpm_mean, fill = age_group), alpha = 0.6) + 
-  #   facet_zoom(xlim = c(0,100))
-  # 
-  # tpm_tidy %>%
-  #   select(-gene, -tpm_mean) %>%
-  #   spread(key = age_group, value = tpm_median)
-  # 
-  # tpm_tidy_hm <- tpm_tidy %>%
-  #   group_by(age_group, gene_name) %>%
-  #   distinct(tpm_median, .keep_all = T) %>%
-  #   select(gene_name, age_group, tpm_median) 
-  # 
-  # ggplot(data = tpm_tidy_hm, aes(x = age_group, y = gene_name, fill= tpm_median)) + 
-  #   geom_tile()
-  # 
-  # tpm_tidy_hm %>% as.data.frame()
-  # 
-  # 
-  # # filter(gene %in% c("ENSG00000160201", "ENSG00000063244", "ENSG00000136450",
-  # #                    "ENSG00000115524", "ENSG00000011304" )) %>%
-  # tpm %>%
-  #   spread(key = age_group, value = tpm_median)
+  # listAttributes(ensembl106)
+  # searchAttributes(mart = ensembl106, pattern = "hgnc_symbol")
+  mapping <- getBM(
+    attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
+    filters = 'ensembl_gene_id',
+    values = recount_dds_tpm$gene %>% unique,
+    mart = ensembl106
+  )
+  
+  df_return <- recount_dds_tpm %>% 
+    mutate(project = project_id) %>%
+    dplyr::left_join(mapping,
+                     by =  c("gene" = "ensembl_gene_id"))
+  
+
+  return(df_return)
   
 }
 
@@ -152,6 +140,13 @@ tidy_sample_metadata <- function(rse) {
   
   age_numeric <- as.numeric(factor(as.matrix(sample_metadata$gtex.age))) 
   sample_metadata$gtex.age <- age_numeric
+  
+  sample_metadata <- sample_metadata %>%
+    mutate(gtex.age = ifelse(gtex.age == 1 | gtex.age == 2, 1, gtex.age)) %>%
+    mutate(gtex.age = ifelse(gtex.age == 3 | gtex.age == 4, 2, gtex.age)) %>%
+    mutate(gtex.age = ifelse(gtex.age == 5 | gtex.age == 6, 3, gtex.age))
+  sample_metadata$gtex.age
+  
   
   sample_metadata <- sample_metadata %>%
     tibble::column_to_rownames(var = "external_id")
@@ -181,28 +176,10 @@ tidy_sample_metadata <- function(rse) {
   sample_metadata$gtex.smnabtcht <- gtex.smnabtcht
   
   
-  # 8. Save the covariates ---------------------------
+  # 8. Return covariates ---------------------------
   
-  sample_metadata_t <- as.data.frame(t(sample_metadata %>%
-                                         dplyr::select(all_of(covariates))))
-  
-  # ## No N/A
-  # sample_metadata_tidy[rowSums(is.na(sample_metadata_tidy)) > 0, ] %>% nrow()
-  # 
-  # ## No columns with zero or constant values
-  # sample_metadata_tidy %>% head %>% as.data.frame()
-  
-  # pc <- prcomp(x = sample_metadata_tidy, center = TRUE, scale. = T)
-  # 
-  # attributes(pc)
-  # pc$center
-  # print(pc)
-  # summary(pc)
-  # 
-  # var_explained <- pc$sdev^2/sum(pc$sdev^2)
-  # var_explained[1:5]
-  
-  return(sample_metadata_t)
+  return(t(sample_metadata %>%
+           dplyr::select(all_of(covariates))))
 }
 
 ################################
@@ -211,29 +188,30 @@ tidy_sample_metadata <- function(rse) {
 
 ## RBP EXPRESSION ANALYSIS
 
-
+################################################################################
 # 0. Prepare the necessary data ------------------------------------------------
+################################################################################
 
 ## Load reference gtf and get only the genes
-ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22,"X","Y"), pruning.mode = "coarse")
-ref <- ref %>%
-  as_tibble() %>%
-  filter(type == "gene") %>%
-  select(seqnames, start, end, strand, gene_id, gene_name)%>%
-  GRanges()
+ensembl106 <- biomaRt::useEnsembl(biomart = 'genes', 
+                                  dataset = 'hsapiens_gene_ensembl',
+                                  version = 106)
 
 
+## Load the RBPs and add the ensemblID
 RBPs <- read.table(file = 'markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
   as_tibble() %>%
   distinct(Target.gene.symbol)
-RBPs_tidy <- merge(x = RBPs %>% data.table::as.data.table() %>% dplyr::rename(gene_name = Target.gene.symbol), 
-                   y = ref %>% data.table::as.data.table() %>% select(gene_id, gene_name),
-                   by = "gene_name")
 
+RBPs_tidy <- biomaRt::getBM(
+  attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
+  filters = 'hgnc_symbol',
+  values = RBPs$Target.gene.symbol %>% unique,
+  mart = ensembl106
+)
 
-project_id <- "BLOOD"
-
+## Load the recount3 data
+project_id <- "BRAIN"
 rse <- recount3::create_rse_manual(
   project = project_id,
   project_home = "data_sources/gtex",
@@ -241,47 +219,115 @@ rse <- recount3::create_rse_manual(
   annotation = "gencode_v29",
   type = "gene")
 
+assays(rse)$counts <- recount3::transform_counts(rse)
+
+## See that now we have two assayNames()
+rse
+assayNames(rse)
 
 
+
+
+
+################################################################################
 # 1. Get the RBP TPM expression using GTEX data --------------------------------
+################################################################################
 
-dds_tpm <- get_GTEx_gene_expression(rse, ref)
+dds_tpm <- get_GTEx_gene_expression(rse, ensembl106)
+dds_tpm %>% head()
 
-dds_tpm %>% head
-
-
-# 2. Get the best covariates to correct for ------------------------------------
-
-## 1. pivot longer the 'dds_tpm' object
-
+# Tidy the 'dds_tpm' object
 dds_tpm_pv <- dds_tpm %>%
-  dplyr::filter(gene %in% RBPs_tidy$gene_id) %>%
-  select(gene, recount_id, tpm_log10) %>% 
+  dplyr::filter(gene %in% RBPs_tidy$ensembl_gene_id) %>%
+  dplyr::select(gene, sample, tpm) %>% 
   group_by(gene) %>%
-  distinct(recount_id, .keep_all = T) %>%
-  pivot_wider(names_from = recount_id, values_from = tpm_log10, values_fill = 0)
+  distinct(sample, .keep_all = T) %>%
+  pivot_wider(names_from = sample, values_from = tpm, values_fill = 0)
 
 is.na(dds_tpm_pv) <- sapply(dds_tpm_pv, is.infinite)
-dds_tpm_pv[is.na(dds_tpm_pv)]<-0
+dds_tpm_pv[is.na(dds_tpm_pv)] <- 0
 
 write.csv(x = dds_tpm_pv %>%
-            tibble::column_to_rownames(var = "gene"),
+            tibble::column_to_rownames("gene"),
           file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
                         "/results/pipeline3/rbp/tpm.csv"))
 
 
-## 2. input the 'dds_tpm_pv' to the PCA function
+# 2. Get the best covariates to correct for ------------------------------------
 
-pca <- prcomp(x = dds_tpm_pv %>%
-                tibble::column_to_rownames(var = "gene"), 
-              center = TRUE, scale. = T)
+sample_metadata <- tidy_sample_metadata(rse)
+
+write_csv(x = sample_metadata %>%
+            as_tibble(rownames = "covariates"), 
+          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                        project_id, "/results/pipeline3/rbp/covariates.csv"))
 
 
-# 3. Select PCA1 - ~20 models
-pca_20models <- pca$rotation[,1:20]
 
 
-# 4. Tidy the metadata
+
+
+########################################################
+## 9. Save only batch covariates ---------------------
+
+sample_metadata_batch <- sample_metadata %>%
+  as_tibble(rownames = "covariates") %>%
+  dplyr::filter(covariates %in% c("gtex.smcenter",
+                                  "gtex.smgebtch", "gtex.smgebtchd",
+                                  "gtex.smnabtch", "gtex.smnabtchd",
+                                  "gtex.smnabtcht", "gtex.dthhrdy",
+                                  "gtex.sex", "gtex.smrin"))
+  
+
+write_csv(x = sample_metadata_batch, 
+          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                        project_id, "/results/pipeline3/rbp/batch_covariates.csv"))
+
+
+
+
+
+
+##
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+################################################################################
+################################################################################
+################################################################################
+
+# 2. Get the best covariates to correct for ------------------------------------
+
+# ## 2. input the 'dds_tpm_pv' to the PCA function
+# 
+# pca <- prcomp(x = dds_tpm_pv %>%
+#                 tibble::column_to_rownames(var = "gene"), 
+#               center = TRUE, scale. = T)
+# 
+# 
+# # 3. Select PCA1 - ~20 models
+# pca_20models <- pca$rotation[,1:20]
+# 
+# 
+# # 4. Tidy the metadata
 sample_metadata <- tidy_sample_metadata(rse)
 
 
@@ -324,14 +370,34 @@ sample_metadata <- tidy_sample_metadata(rse)
 #   filter(value > 0.25) %>%
 #   #filter(Var1 != "gtex.age") %>%
 #   pull(Var1)
-  
+
 
 # 8. Save the covariates ---------------------------
 
+
 write_csv(x = sample_metadata %>%
-            tibble::rownames_to_column(var = "covariate"), 
+            dplyr::rename(gtex.age = gtex.age.num), 
           file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                         project_id, "/results/pipeline3/rbp/covariates.csv"))
+
+
+
+
+
+
+########################################################
+## 9. Save only batch covariates ---------------------
+
+sample_metadata_batch <- sample_metadata %>%
+  dplyr::select(all_of(c("sample", "gtex.smcenter",
+                         "gtex.smgebtch", "gtex.smgebtchd",
+                         "gtex.smnabtch", "gtex.smnabtchd",
+                         "gtex.smnabtcht", "gtex.dthhrdy")))
+
+
+write_csv(x = t(sample_metadata_batch), 
+          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                        project_id, "/results/pipeline3/rbp/batch_covariates.csv"))
 
 
 ###############################
@@ -382,3 +448,4 @@ write_csv(x = sample_metadata %>%
 # # Therefore, in this case, we’ll select number of components as 20 [PC1 to PC20] and proceed to the modeling stage. 
 # # This completes the steps to implement PCA on train data. 
 # # For modeling, we’ll use these 20 components as predictor variables and follow the normal procedures.
+
