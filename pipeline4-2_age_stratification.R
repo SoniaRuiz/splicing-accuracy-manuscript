@@ -1332,10 +1332,14 @@ age_stratification_RBP_corrected_TPM_analysis <- function(project_id = "BRAIN") 
   
   
   
-  ## LOAD TPM CORRECTED VALUES AND INIT AGE SUPERGROUPS
+  ## LOAD TPM CORRECTED VALUES
   tpm_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                           project_id, "/results/pipeline3/rbp/tpm_residuals.csv"), header = T)
+  
+  ## LOAD THE REFERENCE TRANSCRIPTOME
   ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+  
+  ## INIT AGE SUPERGROUPS
   age_samples_clusters_tidy <- age_stratification_init_data(project_id)
 
 
@@ -1343,22 +1347,26 @@ age_stratification_RBP_corrected_TPM_analysis <- function(project_id = "BRAIN") 
   ## FIlter TPM by age group and merge
   tpm_20_39 <- tpm_corrected %>%
     filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "20-39") %>% pull(individual))) %>%
+                     filter(age_group == "20-39") %>% 
+                     pull(individual))) %>%
     gather(key = "RBP", value = "TPM", -X ) %>%
     mutate(age_text = paste("20-39_", X)) %>%
-    mutate(age = "20-39") %>% as_tibble()
+    mutate(age = "20-39") %>% 
+    as_tibble()
   
   
   tpm_40_59 <-tpm_corrected %>%
     filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "40-59") %>% pull(individual)))  %>%
+                     filter(age_group == "40-59") %>% 
+                     pull(individual)))  %>%
     gather(key = "RBP", value = "TPM", -X ) %>%
     mutate(age_text = paste("40-59_", X)) %>%
     mutate(age = "40-59") %>% as_tibble()
   
   tpm_60_79 <- tpm_corrected %>%
     filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "60-79") %>% pull(individual))) %>%
+                     filter(age_group == "60-79") %>% 
+                     pull(individual))) %>%
     gather(key = "RBP", value = "TPM", -X ) %>%
     mutate(age_text = paste("60-79_", X)) %>%
     mutate(age = "60-79") %>% as_tibble()
@@ -1372,15 +1380,28 @@ age_stratification_RBP_corrected_TPM_analysis <- function(project_id = "BRAIN") 
     arrange(age , mean_tpm) %>%
     mutate(RBP = fct_inorder(RBP))
   
+  
+  
+  ## SAVE RESULTS
   spread_matrix <- gattered_matrix %>%
     dplyr::select(RBP, age, mean_tpm) %>%
     spread(key = age, value = mean_tpm)
-  
   spread_matrix
-  
   write_csv(x = spread_matrix,
             file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
                           "/results/pipeline3/rbp/tpm_age_spread.csv"))
+  
+  
+  ## PLOT HEATMAP
+  ggplot(data = gattered_matrix, 
+         aes(x = age, y = RBP, fill = mean_tpm)) +
+    geom_tile() + 
+    scale_fill_gradient(low = "green", high = "red") +
+    ggtitle("Mean RBP level of expression across samples\nfrom each age cluster.\nTPM values have been covariate corrected.")+
+    ylab("RBP") +
+    xlab("age cluster") +
+    theme(axis.text.y = element_blank()) 
+  
 }
 
 age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
@@ -1516,8 +1537,8 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
     filter(Estimate > 0) %>%
     arrange(desc(Estimate))
   
-  intersect(RBP_decrease$gene_name,
-            RBP_increase$gene_name)
+  intersect(RBP_decrease$hgnc_symbol,
+            RBP_increase$hgnc_symbol)
   
   RBP_decrease$hgnc_symbol %>% unique() %>% sort()
   RBP_increase$hgnc_symbol %>% unique() %>% sort()
@@ -1606,25 +1627,25 @@ age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN") {
  
 }
 
-
-tpm_age_spread <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                         "/results/pipeline3/rbp/tpm_age_spread.csv")) %>%
-  as_tibble() %>%
-  dplyr::rename(RBP_id = RBP)
-
-tpm_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                 "/results/pipeline3/rbp/tpm_lm.csv")) %>%
-  filter(pval < 0.05) %>% 
-  dplyr::select(-pval) %>%
-  spread(key = covariate, value = "Estimate") %>%
-  replace(is.na(.),0) %>%
-  
-  as_tibble()
-
-merge(x = tpm_age_spread,
-      y = tpm_lm,
-      by = "RBP_id")
-  
+# 
+# tpm_age_spread <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+#                                          "/results/pipeline3/rbp/tpm_age_spread.csv")) %>%
+#   as_tibble() %>%
+#   dplyr::rename(RBP_id = RBP)
+# 
+# tpm_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+#                                  "/results/pipeline3/rbp/tpm_lm.csv")) %>%
+#   filter(pval < 0.05) %>% 
+#   dplyr::select(-pval) %>%
+#   spread(key = covariate, value = "Estimate") %>%
+#   replace(is.na(.),0) %>%
+#   
+#   as_tibble()
+# 
+# merge(x = tpm_age_spread,
+#       y = tpm_lm,
+#       by = "RBP_id")
+#   
 
 ################################
 ## CALLS

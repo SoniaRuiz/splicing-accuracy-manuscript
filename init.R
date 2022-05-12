@@ -232,54 +232,54 @@ idb_generation <- function(project_id,
     ############################################
     
     ## Load samples
-    # samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster,  "_samples.rds"))
-    # 
-    # folder_name <- paste0(folder_root, "/results/pipeline3/distances/", cluster, "/v", gtf_version, "/")
-    # dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
-    # 
-    # 
-    # ## Load split read data
-    # all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
-    #                                                      cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
-    # ## Load split read counts
-    # split_read_counts <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
-    #                                            project_id, "_", cluster, "_split_read_counts.rds"))
+    samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster,  "_samples.rds"))
+
+    folder_name <- paste0(folder_root, "/results/pipeline3/distances/", cluster, "/v", gtf_version, "/")
+    dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
+
+
+    ## Load split read data
+    all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
+                                                         cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
+    ## Load split read counts
+    split_read_counts <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
+                                               project_id, "_", cluster, "_split_read_counts.rds"))
 
     
     ############################################
     ## DISTANCES SUITE OF FUNCTIONS
     ############################################
 
-    # get_distances(cluster = cluster,
-    #               samples = samples,
-    #               split_read_counts = split_read_counts,
-    #               all_split_reads_details = all_split_reads_details_105,
-    #               folder_name)
-    # 
-    # 
-    # extract_distances(cluster = cluster,
-    #                   samples,
-    #                   split_read_counts = split_read_counts,
-    #                   folder_name = folder_name)
-    # 
-    # 
-    # get_never_misspliced(cluster = cluster,
-    #                      samples = samples,
-    #                      split_read_counts = split_read_counts,
-    #                      all_split_reads_details = all_split_reads_details_105,
-    #                      folder_name = folder_name,
-    #                      save_results = T)
-    # 
-    #  
-    # extract_never_misspliced(cluster = cluster,
-    #                          samples = samples,
-    #                          split_read_counts = split_read_counts,
-    #                          folder_name = folder_name)
-    # 
-    # add_never_misspliced_to_df(cluster = cluster,
-    #                            samples = samples,
-    #                            all_split_reads_details = all_split_reads_details_105,
-    #                            folder_name = folder_name)
+    get_distances(cluster = cluster,
+                  samples = samples,
+                  split_read_counts = split_read_counts,
+                  all_split_reads_details = all_split_reads_details_105,
+                  folder_name)
+
+
+    extract_distances(cluster = cluster,
+                      samples,
+                      split_read_counts = split_read_counts,
+                      folder_name = folder_name)
+
+
+    get_never_misspliced(cluster = cluster,
+                         samples = samples,
+                         split_read_counts = split_read_counts,
+                         all_split_reads_details = all_split_reads_details_105,
+                         folder_name = folder_name,
+                         save_results = T)
+
+
+    extract_never_misspliced(cluster = cluster,
+                             samples = samples,
+                             split_read_counts = split_read_counts,
+                             folder_name = folder_name)
+
+    add_never_misspliced_to_df(cluster = cluster,
+                               samples = samples,
+                               all_split_reads_details = all_split_reads_details_105,
+                               folder_name = folder_name)
 
     ############################################
     ## MIS-SPLICING RATIO SUITE OF FUNCTIONS
@@ -288,37 +288,37 @@ idb_generation <- function(project_id,
     folder_idb_name <-paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v", gtf_version, "/")
     dir.create(file.path(folder_idb_name), recursive = T, showWarnings = F)
 
-    # get_missplicing_ratio(cluster = cluster,
-    #                       samples = samples,
-    #                       split_read_counts = split_read_counts,
-    #                       folder_name = folder_name,
-    #                       folder_save_name = folder_idb_name)
-    # 
-    # add_missplicing_class_to_df(cluster = cluster,
-    #                             folder_name = folder_idb_name)
+    get_missplicing_ratio(cluster = cluster,
+                          samples = samples,
+                          split_read_counts = split_read_counts,
+                          folder_name = folder_name,
+                          folder_save_name = folder_idb_name)
 
-    # get_missplicing_QC(cluster = cluster,
-    #                    samples = samples,
-    #                    split_read_counts = split_read_counts,
-    #                    all_split_reads_details = all_split_reads_details_105,
-    #                    folder_name = folder_idb_name)
+    add_missplicing_class_to_df(cluster = cluster,
+                                folder_name = folder_idb_name)
+
+    get_missplicing_QC(cluster = cluster,
+                       samples = samples,
+                       split_read_counts = split_read_counts,
+                       all_split_reads_details = all_split_reads_details_105,
+                       folder_name = folder_idb_name)
 
 
     ############################################
     ## ADD FEATURES TO THE IDB
     ############################################
 
-    # remove_MT_genes(cluster = cluster,
-    #                 folder_name = folder_idb_name)
-    # 
-    # add_intron_type(cluster = cluster,
-    #                 folder_name = folder_idb_name)
-    # 
-    # clinvar_analysis(cluster = cluster,
-    #                  folder_name = folder_idb_name)
-    # 
-    # add_MANE_info(cluster = cluster,
-    #               folder_name = folder_idb_name)
+    remove_MT_genes(cluster = cluster,
+                    folder_name = folder_idb_name)
+
+    add_intron_type(cluster = cluster,
+                    folder_name = folder_idb_name)
+
+    clinvar_analysis(cluster = cluster,
+                     folder_name = folder_idb_name)
+
+    add_MANE_info(cluster = cluster,
+                  folder_name = folder_idb_name)
     
     
     
@@ -349,16 +349,15 @@ idb_generation <- function(project_id,
 ## CALLS 
 ############################
 
-all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-
 ## Load the dependency needed for the conservation/constraint scores        
-
-aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", 
-               bucket = "data-references")
-
+print("Loading the 'CNC_CDTS_CONS_gr.rda' file...")
+aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
 print("'CNC_CDTS_CONS_gr.rda' file loaded!")
 
-for (project_id in all_projects[-c(1:8)]) {
+## Loop through each project
+all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")[1:10]
+
+for (project_id in all_projects) {
   
   # project_id <- "ESOPHAGUS"
   # project_id <- "SKIN"
@@ -369,30 +368,30 @@ for (project_id in all_projects[-c(1:8)]) {
   
   print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
   
-  # rse <- recount3::create_rse_manual(
-  #   project = project_id,
-  #   project_home = "data_sources/gtex",
-  #   organism = "human",
-  #   annotation = "gencode_v29",
-  #   type = "jxn"
-  # )
-  # 
-  # download_from_recount(project_id = project_id,
-  #                       recount_version = 3,
-  #                       clusters_ID = rse$gtex.smtsd %>% unique(),
-  #                       rse = rse,
-  #                       folder_root = folder_root)
-  # 
-  # rm(rse)
-  # 
-  # 
-  # gc()
-  # 
-  # annotate_from_recount(project_id = project_id,
-  #                       folder_root = folder_root)
-  # 
-  # 
-  # gc()
+  rse <- recount3::create_rse_manual(
+    project = project_id,
+    project_home = "data_sources/gtex",
+    organism = "human",
+    annotation = "gencode_v29",
+    type = "jxn"
+  )
+
+  download_from_recount(project_id = project_id,
+                        recount_version = 3,
+                        clusters_ID = rse$gtex.smtsd %>% unique(),
+                        rse = rse,
+                        folder_root = folder_root)
+
+  rm(rse)
+
+
+  gc()
+
+  annotate_from_recount(project_id = project_id,
+                        folder_root = folder_root)
+
+
+  gc()
   
   idb_generation(project_id = project_id,
                  clusters_ID = readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds")),
