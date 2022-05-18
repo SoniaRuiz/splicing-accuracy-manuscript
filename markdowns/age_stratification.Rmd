@@ -520,402 +520,396 @@ rbind(df_result %>%
 
 ```
 
-# RBP TPM  {.tabset .tabset-fade .tabset-pills}
-
-RNA binding proteins (RBPs) have emerged as central players in regulating gene expression, controlling when, where, and at what rate RNAs are processed, trafficked, translated, and degraded within the cell. 
-
-For regulation of alternative splicing, where RBP binding can cause either inclusion or exclusion of alternative exons, it is common to identify RBP-responsive events by knocking down or over-expressing the RBP and performing RNA-seq. 
-
-*In 2020 Van Nostrand et al. published a study reporting the results of studying the functions of 356 human RBPs using integrative approaches consisting of 5 assays (eCLIP, RNA Bind-N-Seq, Immunofluorescence, Knockdown RNA-seq, RBP ChIP-Seq) that focused on different aspects of RBP activity. These hundred and fifty-six RBPs had also been profiled by at least one ENCODE experiment.* [A Large-Scale Binding and Functional Map of Human RNA Binding Proteins](https://www.nature.com/articles/s41586-020-2077-3).
-
-Functionally, these 356 RBPs are most commonly known to play roles in the regulation of RNA splicing (98 RBPs, 28%), RNA stability and decay (71, 20%), and translation (70, 20%), with 162 RBPs (46%) having more than one function reported in the literature.
-
-## Covariate correction
-
-TPM values were calculated following the methodology below:
-
-* 1. Calculate the TPM expression of the 150 ENCODE RBPs across samples from GTEX v8 data. The TPM value has been is calculated by:
-    * 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
-    * 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
-    * 3. Divide the RPK values by the "per million" scaling factor.
-    * 4. TPMs were then log10 and normalised.
-    
-* 2. Get the best covariates to correct for:
-    * 1. TPM values were covariate corrected following the approach proposed by Fairbrother-Browne, A., Ali, A.T., Reynolds, R.H. et al. Mitochondrial-nuclear cross-talk in the human brain is modulated by cell type and perturbed in neurodegenerative disease. Commun Biol 4, 1262 (2021). https://doi.org/10.1038/s42003-021-02792-w.
-    * 2. The covariate selected were: RIN, four batch variables (type of nucleic acid isolation batch, nucleic acid isolation batch ID, genotype or expression batch ID, date of genotype or expression batch), centre, age, gender and cause of death. 
-
-
-## Mean TPM  
-
-The heat map below contains the mean TPM values calculated across samples from the same cluster per RBP.
-
-The mean function was chosen here as the TPM values had been previously normalised using a log10 function.
-
-There are some RBPs which present much higher mean covariate-corrected TPM values in 20-39 samples than in 40-59 and 60-79 samples (please, notice the darker red colours).
-
-```{r RBP_mean_tpm, warning=FALSE}
-
-  tpm_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                          project_id, "/results/pipeline3/rbp/tpm_residuals.csv"),
-                            header = T)
-  # tpm_corrected[1,]
-  # age_samples_clusters_tidy[1,]
-  
-  
-  
-  tpm_20_39 <- tpm_corrected %>%
-    filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "20-39") %>% pull(individual))) %>%
-    gather(key = "RBP", value = "TPM", -X ) %>%
-    mutate(age_text = paste("20-39_", X)) %>%
-    mutate(age = "20-39") %>% as_tibble()
-  
-  
-  tpm_40_59 <-tpm_corrected %>%
-    filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "40-59") %>% pull(individual)))  %>%
-    gather(key = "RBP", value = "TPM", -X ) %>%
-    mutate(age_text = paste("40-59_", X)) %>%
-    mutate(age = "40-59") %>% as_tibble()
-  
-  tpm_60_79 <- tpm_corrected %>%
-    filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "60-79") %>% pull(individual))) %>%
-    gather(key = "RBP", value = "TPM", -X ) %>%
-    mutate(age_text = paste("60-79_", X)) %>%
-    mutate(age = "60-79") %>% as_tibble()
-  
-  gattered_matrix <- do.call("rbind", list(tpm_20_39, tpm_40_59, tpm_60_79)) %>%
-    dplyr::rename(sample = X) %>% as_tibble() %>%
-    group_by(age, RBP) %>%
-    mutate(mean_tpm = (TPM %>% mean())) %>%
-    distinct(mean_tpm, .keep_all = T)  %>%
-    ungroup() %>%
-    arrange(age , mean_tpm) %>%
-    mutate(RBP = fct_inorder(RBP))
-  
-  
-  
-  ggplot(data = gattered_matrix, 
-         aes(x=age, y=RBP, fill = mean_tpm)) +
-    geom_tile() + 
-    scale_fill_gradient(low = "green", high = "red") +
-    ggtitle("Mean RBP level of expression across samples\nfrom each age cluster.\nTPM values have been covariate corrected.")+
-    ylab("RBP") +
-    xlab("age cluster") +
-    theme(axis.text.y = element_blank()) %>% 
-    return()
-  #intersect(tpm_20_39$X, tpm_60_79$X)
-  
-  
-  
-```
-  
-## Stats
-
-```{r RBP_stats, warning = FALSE, message = F, echo = FALSE}
-
-spread_matrix <- gattered_matrix %>%
-  dplyr::select(RBP, age, mean_tpm) %>%
-  spread(key = age, value = mean_tpm)
-
-ref_tidy <- ref %>% 
-  as_tibble() %>% 
-  distinct(gene_id, .keep_all = T) %>%
-  filter(gene_id %in% spread_matrix$RBP) %>%
-  dplyr::select(gene_id, gene_name) %>% 
-  as.data.table()
-
-spread_matrix <- merge(x = spread_matrix,
-                            y = ref_tidy,
-                            by.x = "RBP",
-                            by.y = "gene_id")
-
-
- 
-print(paste0("Total number of RBPs studied: ", spread_matrix %>% nrow()))
-
-print(paste0("RBPs whose TPM decrease in each age group: ", spread_matrix %>% filter(`20-39` >  `40-59`, `40-59` > `60-79`) %>% nrow()))
-print(paste0("RBPs whose TPM decrease from '20-39' compared to the other two age groups: ", spread_matrix %>% filter(`20-39` > `40-59`, `20-39` > `60-79`) %>% nrow()))
-
-print(paste0("RBPs whose TPM increase in each age group: ", spread_matrix %>% filter(`20-39` <  `40-59`, `40-59` < `60-79`) %>% nrow()))
-
-print(paste0("RBPs whose TPM increase from '20-39' compared to the other two age groups: ", spread_matrix %>% filter(`20-39` < `40-59`, `20-39` < `60-79`) %>% nrow()))
-
-# spread_matrix %>% filter(`20-39` <=  `40-59`)
-# spread_matrix %>% filter(`20-39` <= `40-59`)
-# spread_matrix %>% filter(`20-39` >= `40-59`, `40-59` >= `60-79`)
-```
-
-## RBP Go Enrichment
-
-I obtained the gene enrichment of the 272 RBPs whose TPM values explicitly decreased with age from "20-39" to "40-59".
-
-The approach followed consisted of:
-
-* Obtain all RBPs whose covariate-corrected TPM values explicitly decreased with age from "20-39" to "40-59".
-* Obtain their gene name.
-* Perform their Go & KEGG Enrichment.
-* No custom background used. When using the dataset of 272 RBPs as bg, the query did not return any significant results. 
-
-```{r RBP_go_enrichment, warning = FALSE, message = F, echo = FALSE}
+<!-- # RBP TPM  {.tabset .tabset-fade .tabset-pills} -->
 
-#####################################
-## NEVER MISSPLICED - GENE ENRICHMENT
-#####################################
-
 
-spread_matrix_tidy <- spread_matrix %>%
-  filter(`20-39` > `40-59`,
-         `20-39` > `60-79`) %>% 
-  as.data.table()
-
 
+<!-- ## Covariate correction -->
 
-gene_enrichment <- gprofiler2::gost(query = spread_matrix_tidy$gene_name,
-                                    #custom_bg = spread_matrix$gene_name,
-                                    organism = "hsapiens",
-                                    ordered_query = F,
-                                    correction_method = "bonferroni",
-                                    significant = T)
-
-GO_enrichment <- gene_enrichment$result %>% 
-  filter(str_detect(source, pattern = "GO")) %>%
-  mutate(go_type = str_sub(source, start = 4, end = 5))
+<!-- TPM values were calculated following the methodology below: -->
 
-GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
-                                                             go_id = GO_enrichment$term_id,
-                                                             go_term = GO_enrichment$term_name),
-                                     orgdb = "org.Hs.eg.db",
-                                     #threshold = 0.7,
-                                     scores = NULL,
-                                     measure = "Wang"
-)
+<!-- * 1. Calculate the TPM expression of the 150 ENCODE RBPs across samples from GTEX v8 data. The TPM value has been is calculated by: -->
+<!--     * 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK) -->
+<!--     * 2. Count up all the RPK values in a sample and divide this number by 1,000,000. -->
+<!--     * 3. Divide the RPK values by the "per million" scaling factor. -->
+<!--     * 4. TPMs were then log10 and normalised. -->
 
-df_result <- merge(x = gene_enrichment$result %>% 
-                     filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
-                   y = GO_enrich_reduc,
-                   by.x = "term_id",
-                   by.y = "go_id",
-                   all.x = T)
+<!-- * 2. Get the best covariates to correct for: -->
+<!--     * 1. TPM values were covariate corrected following the approach proposed by Fairbrother-Browne, A., Ali, A.T., Reynolds, R.H. et al. Mitochondrial-nuclear cross-talk in the human brain is modulated by cell type and perturbed in neurodegenerative disease. Commun Biol 4, 1262 (2021). https://doi.org/10.1038/s42003-021-02792-w. -->
+<!--     * 2. The covariate selected were: RIN, four batch variables (type of nucleic acid isolation batch, nucleic acid isolation batch ID, genotype or expression batch ID, date of genotype or expression batch), centre, age, gender and cause of death.  -->
 
-rbind(df_result %>%
-        as_tibble() %>%
-        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
-        group_by(parent_term, source) %>%
-        mutate(p_value = p_value %>% max) %>%
-        ungroup() %>%
-        distinct(parent_term, .keep_all = T) %>%
-        drop_na(), 
-      df_result %>%
-        as_tibble() %>%
-        dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>%
-        filter(source == "KEGG") %>%
-        group_by(parent_term, source) %>%
-        mutate(p_value = p_value %>% max) %>%
-        ungroup() %>%
-        distinct(parent_term, .keep_all = T))%>%
-  arrange(p_value) %>%
-  mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-  #filter(source == "KEGG") %>%
-  DT::datatable()
 
-```
+<!-- ## Mean TPM   -->
 
-## U2AF1
+<!-- The heat map below contains the mean TPM values calculated across samples from the same cluster per RBP. -->
 
-Focusing now in a core spliceosomal RBP responsible for targeting the 3'ss signal, I ran a Wilcoxon test to test whether the set of TPM values across samples from 20-39 presented a skewed distribution towards bigger values than in 40-59 and 60-79 samples.
+<!-- The mean function was chosen here as the TPM values had been previously normalised using a log10 function. -->
 
-```{r U2AF1_tpm, warning=FALSE}
+<!-- There are some RBPs which present much higher mean covariate-corrected TPM values in 20-39 samples than in 40-59 and 60-79 samples (please, notice the darker red colours). -->
 
-U2AF1_20_39 <- tpm_20_39 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM)
-U2AF1_40_59 <- tpm_40_59 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM)
-U2AF1_60_79 <- tpm_60_79 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM)
+<!-- ```{r RBP_mean_tpm, warning=FALSE} -->
 
-wilcox.test(x = U2AF1_20_39, 
-            y = U2AF1_40_59, 
-            correct = T,
-            alternative = "greater") %>% print()
+<!--   tpm_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", -->
+<!--                                           project_id, "/results/pipeline3/rbp/tpm_residuals.csv"), -->
+<!--                             header = T) -->
+<!--   # tpm_corrected[1,] -->
+<!--   # age_samples_clusters_tidy[1,] -->
 
-wilcox.test(x = U2AF1_20_39, 
-            y = U2AF1_60_79, 
-            correct = T,
-            alternative = "greater") %>% print()
 
 
-wilcox.test(x = U2AF1_40_59, 
-            y = U2AF1_60_79,
-            correct = T,
-            alternative = "greater") %>% print()
-  
-  
-```
+<!--   tpm_20_39 <- tpm_corrected %>% -->
+<!--     filter(X %in% (age_samples_clusters_tidy %>% -->
+<!--                      filter(age_group == "20-39") %>% pull(individual))) %>% -->
+<!--     gather(key = "RBP", value = "TPM", -X ) %>% -->
+<!--     mutate(age_text = paste("20-39_", X)) %>% -->
+<!--     mutate(age = "20-39") %>% as_tibble() -->
 
-## U2AF2
 
-```{r U2AF2_tpm, warning=FALSE}
+<!--   tpm_40_59 <-tpm_corrected %>% -->
+<!--     filter(X %in% (age_samples_clusters_tidy %>% -->
+<!--                      filter(age_group == "40-59") %>% pull(individual)))  %>% -->
+<!--     gather(key = "RBP", value = "TPM", -X ) %>% -->
+<!--     mutate(age_text = paste("40-59_", X)) %>% -->
+<!--     mutate(age = "40-59") %>% as_tibble() -->
 
-U2AF2_20_39 <- tpm_20_39 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM)
-U2AF2_40_59 <- tpm_40_59 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM)
-U2AF2_60_79 <- tpm_60_79 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM)
+<!--   tpm_60_79 <- tpm_corrected %>% -->
+<!--     filter(X %in% (age_samples_clusters_tidy %>% -->
+<!--                      filter(age_group == "60-79") %>% pull(individual))) %>% -->
+<!--     gather(key = "RBP", value = "TPM", -X ) %>% -->
+<!--     mutate(age_text = paste("60-79_", X)) %>% -->
+<!--     mutate(age = "60-79") %>% as_tibble() -->
 
-wilcox.test(x = U2AF2_20_39, 
-            y = U2AF2_40_59, 
-            correct = T,
-            alternative = "greater") %>% print()
+<!--   gattered_matrix <- do.call("rbind", list(tpm_20_39, tpm_40_59, tpm_60_79)) %>% -->
+<!--     dplyr::rename(sample = X) %>% as_tibble() %>% -->
+<!--     group_by(age, RBP) %>% -->
+<!--     mutate(mean_tpm = (TPM %>% mean())) %>% -->
+<!--     distinct(mean_tpm, .keep_all = T)  %>% -->
+<!--     ungroup() %>% -->
+<!--     arrange(age , mean_tpm) %>% -->
+<!--     mutate(RBP = fct_inorder(RBP)) -->
 
-wilcox.test(x = U2AF2_20_39, 
-            y = U2AF2_60_79, 
-            correct = T,
-            alternative = "greater") %>% print()
 
 
-wilcox.test(x = U2AF2_40_59, 
-            y = U2AF2_60_79,
-            correct = T,
-            alternative = "greater") %>% print()
-  
-  
-```
+<!--   ggplot(data = gattered_matrix,  -->
+<!--          aes(x=age, y=RBP, fill = mean_tpm)) + -->
+<!--     geom_tile() +  -->
+<!--     scale_fill_gradient(low = "green", high = "red") + -->
+<!--     ggtitle("Mean RBP level of expression across samples\nfrom each age cluster.\nTPM values have been covariate corrected.")+ -->
+<!--     ylab("RBP") + -->
+<!--     xlab("age cluster") + -->
+<!--     theme(axis.text.y = element_blank()) %>%  -->
+<!--     return() -->
+<!--   #intersect(tpm_20_39$X, tpm_60_79$X) -->
 
 
-# RBP Linear Models  {.tabset .tabset-fade .tabset-pills}
 
-Each RBP studied had a distribution of TPM values obtained from all samples belonging to the current GTEx tissue (one TPM value assigned to each sample). Each sample has assigned a set of covariates.
+<!-- ``` -->
 
-We run a **linear model per RBP** to predict its uncorrected TPM value across the samples. We used the sample covariates (RIN, four batch variables (type of nucleic acid isolation batch, nucleic acid isolation batch ID, genotype or expression batch ID, date of genotype or expression batch), centre, age, gender and cause of death) as predictors.
+<!-- ## Stats -->
 
-**Once we had run the 272 linear modes, one per RBP studied, we filtered them to obtain only the significant (pval < 0.05) beta values corresponding to the categorical variable age.**
+<!-- ```{r RBP_stats, warning = FALSE, message = F, echo = FALSE} -->
 
-The table below therefore **ONLY contains the RBPs that obtained a significant beta value** assigned to the "age" feature in the prediction of their uncorrected TPM value in the linear models. 
+<!-- spread_matrix <- gattered_matrix %>% -->
+<!--   dplyr::select(RBP, age, mean_tpm) %>% -->
+<!--   spread(key = age, value = mean_tpm) -->
 
-0 values correspond to non-significant beta values.
+<!-- ref_tidy <- ref %>%  -->
+<!--   as_tibble() %>%  -->
+<!--   distinct(gene_id, .keep_all = T) %>% -->
+<!--   filter(gene_id %in% spread_matrix$RBP) %>% -->
+<!--   dplyr::select(gene_id, gene_name) %>%  -->
+<!--   as.data.table() -->
 
-```{r RBP_lm, echo = FALSE}
+<!-- spread_matrix <- merge(x = spread_matrix, -->
+<!--                             y = ref_tidy, -->
+<!--                             by.x = "RBP", -->
+<!--                             by.y = "gene_id") -->
 
-tpm_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                 "/results/pipeline3/rbp/tpm_lm.csv")) %>%
-  filter(pval < 0.05) %>% 
-  dplyr::select(-pval)
 
-tpm_lm %>%
-  spread(key = covariate, value = "Estimate") %>%
-  replace(is.na(.),0) %>%
-  as_tibble() %>%
-  DT::datatable()
 
-```
+<!-- print(paste0("Total number of RBPs studied: ", spread_matrix %>% nrow())) -->
 
+<!-- print(paste0("RBPs whose TPM decrease in each age group: ", spread_matrix %>% filter(`20-39` >  `40-59`, `40-59` > `60-79`) %>% nrow())) -->
+<!-- print(paste0("RBPs whose TPM decrease from '20-39' compared to the other two age groups: ", spread_matrix %>% filter(`20-39` > `40-59`, `20-39` > `60-79`) %>% nrow())) -->
 
-## TPM decreasing with age
+<!-- print(paste0("RBPs whose TPM increase in each age group: ", spread_matrix %>% filter(`20-39` <  `40-59`, `40-59` < `60-79`) %>% nrow())) -->
 
-To ease the interpretation of the table above, we filtered it to obtain only the RBPs that showed a decreasing uncorrected TPM value with age. In other words, we obtained the RBPs that obtained a negative estimate value for age in the linear models:
+<!-- print(paste0("RBPs whose TPM increase from '20-39' compared to the other two age groups: ", spread_matrix %>% filter(`20-39` < `40-59`, `20-39` < `60-79`) %>% nrow())) -->
 
-```{r rbp_lm_decreasing, echo = FALSE}
+<!-- # spread_matrix %>% filter(`20-39` <=  `40-59`) -->
+<!-- # spread_matrix %>% filter(`20-39` <= `40-59`) -->
+<!-- # spread_matrix %>% filter(`20-39` >= `40-59`, `40-59` >= `60-79`) -->
+<!-- ``` -->
 
-RBP_decrease <- tpm_lm %>%
-    filter(Estimate < 0) %>%
-    arrange(desc(abs(Estimate))) %>%
-  distinct(hgnc_symbol) %>%
-  pull
+<!-- ## RBP Go Enrichment -->
 
-RBP_decrease %>% sort %>% print()
+<!-- I obtained the gene enrichment of the 272 RBPs whose TPM values explicitly decreased with age from "20-39" to "40-59". -->
 
-```
+<!-- The approach followed consisted of: -->
 
-Then, in order to try to match results with the previous analysis in which we used the covariate-corrected TPM value to analyse changes between age groups, we **obtained the overlap of RBPs from the previous analysis and the dataset of RBPs whose covariate-corrected TPM decreased from the '20-39' to the other two age groups.** Below are the overlapping RBPs between both analyses:
+<!-- * Obtain all RBPs whose covariate-corrected TPM values explicitly decreased with age from "20-39" to "40-59". -->
+<!-- * Obtain their gene name. -->
+<!-- * Perform their Go & KEGG Enrichment. -->
+<!-- * No custom background used. When using the dataset of 272 RBPs as bg, the query did not return any significant results.  -->
 
-```{r rbp_lm_decreasing_overlapped, echo = FALSE}
+<!-- ```{r RBP_go_enrichment, warning = FALSE, message = F, echo = FALSE} -->
 
-intersect(x = RBP_decrease,
-          y = spread_matrix %>% filter(`20-39` > `40-59`, `20-39` > `60-79`) %>% distinct(gene_name) %>% pull()) %>% sort
+<!-- ##################################### -->
+<!-- ## NEVER MISSPLICED - GENE ENRICHMENT -->
+<!-- ##################################### -->
 
-```
 
-The GO Enrichment below of these decreasing-expression-with-age RBPs (using as background the dataset of all 250 RBPs) did not return significant terms.
+<!-- spread_matrix_tidy <- spread_matrix %>% -->
+<!--   filter(`20-39` > `40-59`, -->
+<!--          `20-39` > `60-79`) %>%  -->
+<!--   as.data.table() -->
 
 
-## TPM increasing with age
 
-Similarly, from the dataset of RBPs obtaining a significant age result in the linear models, the following ones presented increasing (i.e. positive estimate result) in the prediction of their uncorrected TPM values with age:
+<!-- gene_enrichment <- gprofiler2::gost(query = spread_matrix_tidy$gene_name, -->
+<!--                                     #custom_bg = spread_matrix$gene_name, -->
+<!--                                     organism = "hsapiens", -->
+<!--                                     ordered_query = F, -->
+<!--                                     correction_method = "bonferroni", -->
+<!--                                     significant = T) -->
 
-```{r rbp_lm_increasing, echo = FALSE}
+<!-- GO_enrichment <- gene_enrichment$result %>%  -->
+<!--   filter(str_detect(source, pattern = "GO")) %>% -->
+<!--   mutate(go_type = str_sub(source, start = 4, end = 5)) -->
 
-RBP_increase <- tpm_lm %>%
-    filter(Estimate > 0) %>%
-    arrange(desc(abs(Estimate))) %>%
-  distinct(hgnc_symbol) %>%
-  pull
+<!-- GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type, -->
+<!--                                                              go_id = GO_enrichment$term_id, -->
+<!--                                                              go_term = GO_enrichment$term_name), -->
+<!--                                      orgdb = "org.Hs.eg.db", -->
+<!--                                      #threshold = 0.7, -->
+<!--                                      scores = NULL, -->
+<!--                                      measure = "Wang" -->
+<!-- ) -->
 
-RBP_increase %>% sort() %>% print()
+<!-- df_result <- merge(x = gene_enrichment$result %>%  -->
+<!--                      filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")), -->
+<!--                    y = GO_enrich_reduc, -->
+<!--                    by.x = "term_id", -->
+<!--                    by.y = "go_id", -->
+<!--                    all.x = T) -->
 
-```
+<!-- rbind(df_result %>% -->
+<!--         as_tibble() %>% -->
+<!--         dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>% -->
+<!--         group_by(parent_term, source) %>% -->
+<!--         mutate(p_value = p_value %>% max) %>% -->
+<!--         ungroup() %>% -->
+<!--         distinct(parent_term, .keep_all = T) %>% -->
+<!--         drop_na(),  -->
+<!--       df_result %>% -->
+<!--         as_tibble() %>% -->
+<!--         dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>% -->
+<!--         filter(source == "KEGG") %>% -->
+<!--         group_by(parent_term, source) %>% -->
+<!--         mutate(p_value = p_value %>% max) %>% -->
+<!--         ungroup() %>% -->
+<!--         distinct(parent_term, .keep_all = T))%>% -->
+<!--   arrange(p_value) %>% -->
+<!--   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>% -->
+<!--   #filter(source == "KEGG") %>% -->
+<!--   DT::datatable() -->
 
+<!-- ``` -->
 
-From them, the following RBPs overlapped between the two analyses (RBPs obtaining a positive significant beta value in the linear models with the RBPs whose covariate-corrected TPM increased with age, from the '20-39' to the other two age groups):
+<!-- ## U2AF1 -->
 
+<!-- Focusing now in a core spliceosomal RBP responsible for targeting the 3'ss signal, I ran a Wilcoxon test to test whether the set of TPM values across samples from 20-39 presented a skewed distribution towards bigger values than in 40-59 and 60-79 samples. -->
 
-```{r rbp_lm_increasing_overlapped, echo = FALSE}
+<!-- ```{r U2AF1_tpm, warning=FALSE} -->
 
-intersect(x = RBP_increase,
-          y = spread_matrix %>%  filter(`20-39` < `40-59`, `20-39` < `60-79`) %>% distinct(gene_name) %>% pull()) %>% sort()
+<!-- U2AF1_20_39 <- tpm_20_39 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM) -->
+<!-- U2AF1_40_59 <- tpm_40_59 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM) -->
+<!-- U2AF1_60_79 <- tpm_60_79 %>% filter(RBP == "ENSG00000160201") %>% pull(TPM) -->
 
-```
+<!-- wilcox.test(x = U2AF1_20_39,  -->
+<!--             y = U2AF1_40_59,  -->
+<!--             correct = T, -->
+<!--             alternative = "greater") %>% print() -->
 
+<!-- wilcox.test(x = U2AF1_20_39,  -->
+<!--             y = U2AF1_60_79,  -->
+<!--             correct = T, -->
+<!--             alternative = "greater") %>% print() -->
 
-Their GO Enrichment below (no background used as when the dataset of all RBPs was used as a bg, no significant results were returned):
 
-```{r rbp_lm_increasing_go, echo = FALSE}
+<!-- wilcox.test(x = U2AF1_40_59,  -->
+<!--             y = U2AF1_60_79, -->
+<!--             correct = T, -->
+<!--             alternative = "greater") %>% print() -->
 
-if (RBP_increase %>% length() > 0) {
-  ## Get RBPs that increase expression with age
-  gene_enrichment <- gprofiler2::gost(query = RBP_increase %>% unique(),
-                                      #custom_bg = RBP_bg,
-                                      organism = "hsapiens",
-                                      ordered_query = T,
-                                      correction_method = "bonferroni",
-                                      significant = T)
-  
-  GO_enrichment <- gene_enrichment$result %>% 
-    filter(str_detect(source, pattern = "GO")) %>%
-    mutate(go_type = str_sub(source, start = 4, end = 5))
-  
-  GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
-                                                               go_id = GO_enrichment$term_id,
-                                                               go_term = GO_enrichment$term_name),
-                                       orgdb = "org.Hs.eg.db",
-                                       #threshold = 0.7,
-                                       scores = NULL,
-                                       measure = "Wang")
-  
-  df_result <- merge(x = gene_enrichment$result %>% 
-                       filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
-                     y = GO_enrich_reduc,
-                     by.x = "term_id",
-                     by.y = "go_id",
-                     all.x = T)
-  
-  rbind(df_result %>%
-          as_tibble() %>%
-          dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
-          group_by(parent_term, source) %>%
-          mutate(p_value = p_value %>% max) %>%
-          ungroup() %>%
-          distinct(parent_term, .keep_all = T) %>%
-          drop_na(), 
-        df_result %>%
-          as_tibble() %>%
-          dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>%
-          filter(source == "KEGG") %>%
-          group_by(parent_term, source) %>%
-          mutate(p_value = p_value %>% max) %>%
-          ungroup() %>%
-          distinct(parent_term, .keep_all = T))%>%
-    arrange(p_value) %>%
-    mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-    DT::datatable()
-} else {
-  print("There are no RBPs showing increasing levels of expression with age.")
-}
-  
-```
+
+<!-- ``` -->
+
+<!-- ## U2AF2 -->
+
+<!-- ```{r U2AF2_tpm, warning=FALSE} -->
+
+<!-- U2AF2_20_39 <- tpm_20_39 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM) -->
+<!-- U2AF2_40_59 <- tpm_40_59 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM) -->
+<!-- U2AF2_60_79 <- tpm_60_79 %>% filter(RBP == "ENSG00000063244") %>% pull(TPM) -->
+
+<!-- wilcox.test(x = U2AF2_20_39,  -->
+<!--             y = U2AF2_40_59,  -->
+<!--             correct = T, -->
+<!--             alternative = "greater") %>% print() -->
+
+<!-- wilcox.test(x = U2AF2_20_39,  -->
+<!--             y = U2AF2_60_79,  -->
+<!--             correct = T, -->
+<!--             alternative = "greater") %>% print() -->
+
+
+<!-- wilcox.test(x = U2AF2_40_59,  -->
+<!--             y = U2AF2_60_79, -->
+<!--             correct = T, -->
+<!--             alternative = "greater") %>% print() -->
+
+
+<!-- ``` -->
+
+
+<!-- # RBP Linear Models  {.tabset .tabset-fade .tabset-pills} -->
+
+<!-- Each RBP studied had a distribution of TPM values obtained from all samples belonging to the current GTEx tissue (one TPM value assigned to each sample). Each sample has assigned a set of covariates. -->
+
+<!-- We run a **linear model per RBP** to predict its uncorrected TPM value across the samples. We used the sample covariates (RIN, four batch variables (type of nucleic acid isolation batch, nucleic acid isolation batch ID, genotype or expression batch ID, date of genotype or expression batch), centre, age, gender and cause of death) as predictors. -->
+
+<!-- **Once we had run the 272 linear modes, one per RBP studied, we filtered them to obtain only the significant (pval < 0.05) beta values corresponding to the categorical variable age.** -->
+
+<!-- The table below therefore **ONLY contains the RBPs that obtained a significant beta value** assigned to the "age" feature in the prediction of their uncorrected TPM value in the linear models.  -->
+
+<!-- 0 values correspond to non-significant beta values. -->
+
+<!-- ```{r RBP_lm, echo = FALSE} -->
+
+<!-- tpm_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, -->
+<!--                                  "/results/pipeline3/rbp/tpm_lm.csv")) %>% -->
+<!--   filter(pval < 0.05) %>%  -->
+<!--   dplyr::select(-pval) -->
+
+<!-- tpm_lm %>% -->
+<!--   spread(key = covariate, value = "Estimate") %>% -->
+<!--   replace(is.na(.),0) %>% -->
+<!--   as_tibble() %>% -->
+<!--   DT::datatable() -->
+
+<!-- ``` -->
+
+
+<!-- ## TPM decreasing with age -->
+
+<!-- To ease the interpretation of the table above, we filtered it to obtain only the RBPs that showed a decreasing uncorrected TPM value with age. In other words, we obtained the RBPs that obtained a negative estimate value for age in the linear models: -->
+
+<!-- ```{r rbp_lm_decreasing, echo = FALSE} -->
+
+<!-- RBP_decrease <- tpm_lm %>% -->
+<!--     filter(Estimate < 0) %>% -->
+<!--     arrange(desc(abs(Estimate))) %>% -->
+<!--   distinct(hgnc_symbol) %>% -->
+<!--   pull -->
+
+<!-- RBP_decrease %>% sort %>% print() -->
+
+<!-- ``` -->
+
+<!-- Then, in order to try to match results with the previous analysis in which we used the covariate-corrected TPM value to analyse changes between age groups, we **obtained the overlap of RBPs from the previous analysis and the dataset of RBPs whose covariate-corrected TPM decreased from the '20-39' to the other two age groups.** Below are the overlapping RBPs between both analyses: -->
+
+<!-- ```{r rbp_lm_decreasing_overlapped, echo = FALSE} -->
+
+<!-- intersect(x = RBP_decrease, -->
+<!--           y = spread_matrix %>% filter(`20-39` > `40-59`, `20-39` > `60-79`) %>% distinct(gene_name) %>% pull()) %>% sort -->
+
+<!-- ``` -->
+
+<!-- The GO Enrichment below of these decreasing-expression-with-age RBPs (using as background the dataset of all 250 RBPs) did not return significant terms. -->
+
+
+<!-- ## TPM increasing with age -->
+
+<!-- Similarly, from the dataset of RBPs obtaining a significant age result in the linear models, the following ones presented increasing (i.e. positive estimate result) in the prediction of their uncorrected TPM values with age: -->
+
+<!-- ```{r rbp_lm_increasing, echo = FALSE} -->
+
+<!-- RBP_increase <- tpm_lm %>% -->
+<!--     filter(Estimate > 0) %>% -->
+<!--     arrange(desc(abs(Estimate))) %>% -->
+<!--   distinct(hgnc_symbol) %>% -->
+<!--   pull -->
+
+<!-- RBP_increase %>% sort() %>% print() -->
+
+<!-- ``` -->
+
+
+<!-- From them, the following RBPs overlapped between the two analyses (RBPs obtaining a positive significant beta value in the linear models with the RBPs whose covariate-corrected TPM increased with age, from the '20-39' to the other two age groups): -->
+
+
+<!-- ```{r rbp_lm_increasing_overlapped, echo = FALSE} -->
+
+<!-- intersect(x = RBP_increase, -->
+<!--           y = spread_matrix %>%  filter(`20-39` < `40-59`, `20-39` < `60-79`) %>% distinct(gene_name) %>% pull()) %>% sort() -->
+
+<!-- ``` -->
+
+
+<!-- Their GO Enrichment below (no background used as when the dataset of all RBPs was used as a bg, no significant results were returned): -->
+
+<!-- ```{r rbp_lm_increasing_go, echo = FALSE} -->
+
+<!-- if (RBP_increase %>% length() > 0) { -->
+<!--   ## Get RBPs that increase expression with age -->
+<!--   gene_enrichment <- gprofiler2::gost(query = RBP_increase %>% unique(), -->
+<!--                                       #custom_bg = RBP_bg, -->
+<!--                                       organism = "hsapiens", -->
+<!--                                       ordered_query = T, -->
+<!--                                       correction_method = "bonferroni", -->
+<!--                                       significant = T) -->
+
+<!--   GO_enrichment <- gene_enrichment$result %>%  -->
+<!--     filter(str_detect(source, pattern = "GO")) %>% -->
+<!--     mutate(go_type = str_sub(source, start = 4, end = 5)) -->
+
+<!--   GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type, -->
+<!--                                                                go_id = GO_enrichment$term_id, -->
+<!--                                                                go_term = GO_enrichment$term_name), -->
+<!--                                        orgdb = "org.Hs.eg.db", -->
+<!--                                        #threshold = 0.7, -->
+<!--                                        scores = NULL, -->
+<!--                                        measure = "Wang") -->
+
+<!--   df_result <- merge(x = gene_enrichment$result %>%  -->
+<!--                        filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")), -->
+<!--                      y = GO_enrich_reduc, -->
+<!--                      by.x = "term_id", -->
+<!--                      by.y = "go_id", -->
+<!--                      all.x = T) -->
+
+<!--   rbind(df_result %>% -->
+<!--           as_tibble() %>% -->
+<!--           dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>% -->
+<!--           group_by(parent_term, source) %>% -->
+<!--           mutate(p_value = p_value %>% max) %>% -->
+<!--           ungroup() %>% -->
+<!--           distinct(parent_term, .keep_all = T) %>% -->
+<!--           drop_na(),  -->
+<!--         df_result %>% -->
+<!--           as_tibble() %>% -->
+<!--           dplyr::select(parent_term = term_name, p_value, query_size, intersection_size, source) %>% -->
+<!--           filter(source == "KEGG") %>% -->
+<!--           group_by(parent_term, source) %>% -->
+<!--           mutate(p_value = p_value %>% max) %>% -->
+<!--           ungroup() %>% -->
+<!--           distinct(parent_term, .keep_all = T))%>% -->
+<!--     arrange(p_value) %>% -->
+<!--     mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>% -->
+<!--     DT::datatable() -->
+<!-- } else { -->
+<!--   print("There are no RBPs showing increasing levels of expression with age.") -->
+<!-- } -->
+
+<!-- ``` -->

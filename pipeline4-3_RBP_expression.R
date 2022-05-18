@@ -376,7 +376,7 @@ RBP_uncorrected_TPM_lm <- function(project_id) {
     as_tibble()
  
   
-  
+
   ## Load and tidy the sample metadata
   sample_metadata <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                                             project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
@@ -721,6 +721,32 @@ RBP_analysis_comparison <- function(project_id) {
   intersect(RBPs$hgnc_symbol %>% sort(),
             RBP_lm_corrected_decreasing$hgnc_symbol)
 }
+
+RBP_lm_analysis_tissue_comparison <- function() {
+  
+  projects_id <- c("BRAIN", "MUSCLE", "BLOOD")
+  
+  df_tissues <- map_df(projects_id, function(project_id) {
+    
+    # project_id <- projects_id[1]
+    
+    df_analysis_lm_uncorrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                                                         "/results/pipeline3/rbp/tpm_lm.csv")) %>%
+      mutate(tissue = project_id)
+    
+    return(df_analysis_lm_uncorrected)
+    
+  })
+  
+  df_tissues %>%
+    dplyr::select(Estimate, hgnc_symbol, tissue) %>%
+    spread(key = tissue, value = Estimate) %>%
+    dplyr::rename(RBP = hgnc_symbol) %>%
+    DT::datatable()
+  
+  
+}
+
 
 
 # ## Save only batch covariates

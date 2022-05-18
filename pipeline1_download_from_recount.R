@@ -222,68 +222,73 @@ separate_split_read_counts_cluster <- function(clusters_ID,
     # cluster <- clusters_ID[1]
     cluster_samples <- readRDS(file = paste0(folder_destiny, "/", cluster, "/", project_id, "_", cluster, "_samples.rds"))
     
-    print(paste0(Sys.time(), " - getting split_read_counts from ", cluster_samples %>% length(), 
-                 " '", cluster, "' samples..."))
+    if (cluster_samples %>% length() > 0) {
+      
+      print(paste0(Sys.time(), " - getting split_read_counts from ", cluster_samples %>% length(), 
+                   " '", cluster, "' samples..."))
+      
+      counts <- (rse %>% SummarizedExperiment::assays())[[1]]
+      counts <- counts[, cluster_samples %>% as.character(), drop = FALSE]
+      counts <- counts[rownames(counts) %in% all_split_reads, , drop = FALSE]
+     
+      counts <- counts[rowSums(counts) > 0, ]
+     
+      counts <- counts %>% as.matrix()
+      junID <- counts %>% rownames()
+      
+      counts <- counts %>%
+        as_tibble() %>%
+        dplyr::mutate("junID" = junID) %>%
+        dplyr::relocate(junID) %>%
+        filter(junID %in% all_split_reads)
+      
+      
+      print(paste0(Sys.time(), " - ", counts %>% nrow(), " split reads."))
+      # counts[rowSums(counts %>% select(-junID))>0,]
+      # 
+      # if (GTEx) {
+      # 
+      #   split_read_counts_cluster <- split_read_counts[,cluster_samples %>% as.character(), drop = FALSE]
+      #   gc()
+      #   
+      #   split_read_counts_cluster <- as.matrix(split_read_counts_cluster)
+      #   gc()
+      #   
+      #   split_read_counts_cluster <- split_read_counts_cluster %>%
+      #     as_tibble() %>% 
+      #     mutate("junID" = rse %>% rownames()) %>%
+      #     relocate("junID")
+      #   gc()
+      #   
+      #  
+      #   #split_read_counts_cluster[split_read_counts_cluster == 0] <- NA
+      #   
+      # } else {
+      #   #split_read_counts %>% head()
+      #   split_read_counts_cluster <- split_read_counts %>%
+      #     select(junID, cluster_samples %>% as.character())
+      #   
+      # }
+      # 
+      # split_read_counts_cluster <- split_read_counts_cluster[rowSums(split_read_counts_cluster[, c(2:ncol(split_read_counts_cluster))])>0,]
+      gc()
+      
+      folder_save <- paste0(folder_destiny, "/", cluster)
+      dir.create(file.path(folder_save), recursive = T, showWarnings = T)
+      
+      print(paste0(Sys.time(), " - ", cluster, " saving split reads..."))
+      
+      saveRDS(object = counts,
+              file = paste0(folder_save, "/", project_id, "_", cluster, "_split_read_counts.rds"))
+      
+      
+      ## FREE UP SOME MEMORY
+      rm(cluster_samples)
+      rm(folder_save)
+      rm(counts)
+      
+    }
     
-    counts <- (rse %>% SummarizedExperiment::assays())[[1]]
-    counts <- counts[, cluster_samples %>% as.character(), drop = FALSE]
-    counts <- counts[rownames(counts) %in% all_split_reads, , drop = FALSE]
-   
-    counts <- counts[rowSums(counts) > 0, ]
-   
-    counts <- counts %>% as.matrix()
-    junID <- counts %>% rownames()
-    
-    counts <- counts %>%
-      as_tibble() %>%
-      dplyr::mutate("junID" = junID) %>%
-      dplyr::relocate(junID) %>%
-      filter(junID %in% all_split_reads)
-    
-    
-    print(paste0(Sys.time(), " - ", counts %>% nrow(), " split reads."))
-    # counts[rowSums(counts %>% select(-junID))>0,]
-    # 
-    # if (GTEx) {
-    # 
-    #   split_read_counts_cluster <- split_read_counts[,cluster_samples %>% as.character(), drop = FALSE]
-    #   gc()
-    #   
-    #   split_read_counts_cluster <- as.matrix(split_read_counts_cluster)
-    #   gc()
-    #   
-    #   split_read_counts_cluster <- split_read_counts_cluster %>%
-    #     as_tibble() %>% 
-    #     mutate("junID" = rse %>% rownames()) %>%
-    #     relocate("junID")
-    #   gc()
-    #   
-    #  
-    #   #split_read_counts_cluster[split_read_counts_cluster == 0] <- NA
-    #   
-    # } else {
-    #   #split_read_counts %>% head()
-    #   split_read_counts_cluster <- split_read_counts %>%
-    #     select(junID, cluster_samples %>% as.character())
-    #   
-    # }
-    # 
-    # split_read_counts_cluster <- split_read_counts_cluster[rowSums(split_read_counts_cluster[, c(2:ncol(split_read_counts_cluster))])>0,]
-    gc()
-    
-    folder_save <- paste0(folder_destiny, "/", cluster)
-    dir.create(file.path(folder_save), recursive = T, showWarnings = T)
-    
-    print(paste0(Sys.time(), " - ", cluster, " saving split reads..."))
-    
-    saveRDS(object = counts,
-            file = paste0(folder_save, "/", project_id, "_", cluster, "_split_read_counts.rds"))
-    
-    
-    ## FREE UP SOME MEMORY
-    rm(cluster_samples)
-    rm(folder_save)
-    rm(counts)
     gc()
     
   }
@@ -461,7 +466,15 @@ generate_max_ent_score <- function(junc_tidy,
 }
 
 
-generate_median_tpm <- function() {
+
+
+
+############################################
+## EXTRA FUNCTIONS NEEDED TO GENERATE 
+## DEPENDENCIES
+############################################
+
+generate_recount2_median_tpm <- function() {
   
   source("/home/sruiz/secondary_projects/asap-gba-gbap1/R/file_paths.R")
   
@@ -570,11 +583,78 @@ generate_median_tpm <- function() {
   
 }
 
+generate_recount3_median_tpm <- function() {
+  
+  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  
+  for (project_id in all_projects[-c(1:6)]) {
+    
+    # project_id <- all_projects[7]
+    
+    rse <- recount3::create_rse_manual(
+      project = project_id,
+      project_home = "data_sources/gtex",
+      organism = "human",
+      annotation = "gencode_v29",
+      type = "gene")
+    
+    SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
+    
+    SummarizedExperiment::assays(rse)$TPM <- recount::getTPM(rse)
+    
+    recount_tpm <- SummarizedExperiment::assays(rse)$TPM %>%
+      as_tibble(rownames = "gene") %>% 
+      mutate(gene = gene %>% str_remove("\\..*"))
+    
+    rm(rse)
+    gc()
+    
+    ## 1. For each tissue within the current project, filter the RSE by its samples
+    ## 2. Calculate median TPM value of each gene across samples of the current tissue
+    
+    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
+    clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds"))
+    
+    for (cluster in clusters_ID) {
+      
+      # cluster <- clusters_ID[6]
+      
+      cluster_samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_samples.rds"))
+      
+      if (length(cluster_samples) > 0) {
+        
+        n_cols <- length(cluster_samples) # length(names(recount_tpm))-1
+        
+        recount_tpm_local <- recount_tpm %>%
+          dplyr::select(c("gene", all_of(cluster_samples))) %>%
+          dplyr::mutate(TPM_median = rowMedians(x = as.matrix(.[2:n_cols]))) %>%
+          dplyr::mutate(TPM_mean = rowMeans2(x = as.matrix(.[2:n_cols]))) %>%
+          dplyr::select(gene, TPM_median, TPM_mean)
+        
+        # recount_tpm_local$TPM_median %>% unique()
+        
+        saveRDS(object = recount_tpm_local,
+                file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_tpm.rds"))
+        
+        
+        rm(recount_tpm_local)
+        rm(cluster_samples)
+        gc()
+      
+      }
+      
+    }
+    
+    print(paste0(Sys.time(), " - ", project_id, " finished!"))
+    
+    rm(folder_root)
+    rm(clusters_ID)
+    rm(recount_tpm)
+    gc()
 
-############################################
-## EXTRA FUNCTIONS NEEDED TO GENERATE 
-## DEPENDENCIES
-############################################
+  }
+
+}
 
 tidy_gtex_tpm <- function() {
   

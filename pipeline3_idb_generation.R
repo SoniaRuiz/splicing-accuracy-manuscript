@@ -13,14 +13,9 @@ get_distances <- function(cluster,
                           all_split_reads_details,
                           folder_name) {
   
-  
-  
-  
-  
   ## DECLARE SOME VARIABLES
   
   num_sample <- 1
-  
   
   ## Per each sample from the current cluster, we obtain all junctions, counts and ratios
   for (sample in samples) { 
@@ -28,386 +23,383 @@ get_distances <- function(cluster,
     # sample <- samples[1]
     # sample <- samples[2]
     # sample <- "54285"
-    
-    if (!file.exists(paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")) &&
-        length(which((colnames(split_read_counts) == sample) == TRUE)) == 1) { 
-      # Every sampleID is unique, so the result should be equal to 1
-      
-      print(cluster)
-      print(paste0(Sys.time(), " - sample '", num_sample, "'"))
-      
-      # indx <- which(recount.info$sample == sample)
-      # sample_mapped_read_count <- recount.info[indx,]$mapped_read_count
-      ############################################################
-      ## OBTAINING ALL JUNCTIONS AND COUNTS FOR THE CURRENT SAMPLE
-      ############################################################
-      
-      
-      split_read_counts_sample <- split_read_counts %>%
-        as_tibble() %>%
-        dplyr::select(junID, all_of(sample %>% as.character())) %>%
-        drop_na() 
-      
-      split_read_counts_sample <- split_read_counts_sample[(split_read_counts_sample[,2] >0),]
-        
-        
-      split_read_counts %>% nrow()
-      split_read_counts_sample %>% nrow()
-      split_read_counts_sample %>% head()
-      
-      split_reads_details_97_sample <- merge(all_split_reads_details, 
-                                             split_read_counts_sample, 
-                                             by = "junID", 
-                                             sort = TRUE)  %>%
-        dplyr::rename(counts = all_of(sample %>% as.character()))
-      
-      split_reads_details_97_sample %>% head()
-      
-      ## Do some QC
-      index <- runif(n = 1, 1, split_reads_details_97_sample %>% nrow()) %>% as.integer()
-      data <- split_reads_details_97_sample[index, c(1, split_reads_details_97_sample %>% ncol())]
-      data_col <- split_read_counts_sample %>%
-        filter(junID == data$junID)
-      if (data_col[, colnames(data_col) == sample] != data$counts) {
-        print("Error: QC failed!")
-        break;
-      }
-      
-      ###################################################
-      ##########    ANNOTATED JUNC   ####################
-      ###################################################
-      all_annotated <- split_reads_details_97_sample %>%
-        dplyr::filter(type == "annotated") %>% 
-        GenomicRanges::GRanges()
-      
-      all_annotated_forward <- all_annotated[all_annotated@strand == "+"]
-      all_annotated_reverse <- all_annotated[all_annotated@strand == "-"]
-      
-      
-      
-      ###################################################
-      ##########    NOVEL DONOR      ####################
-      ###################################################
-      all_donor <- split_reads_details_97_sample %>%
-        dplyr::filter(type == "novel_donor") %>% 
-        GRanges()
-      
-      all_donor_forward <- all_donor[all_donor@strand == "+"]
-      all_donor_reverse <- all_donor[all_donor@strand == "-"]
-      
-      
-      
-      ###################################################
-      ##########    NOVEL ACCEPTOR      #################
-      ###################################################
-      all_acceptor <- split_reads_details_97_sample%>%
-        dplyr::filter(type == "novel_acceptor") %>% 
-        GRanges()
-      
-      all_acceptor_forward <- all_acceptor[all_acceptor@strand == "+"]
-      all_acceptor_reverse <- all_acceptor[all_acceptor@strand == "-"]
-      
-      
-      
-      ####################################################
-      ########  NOVEL-DONOR & FORWARD STRAND  ############
-      ####################################################
-      
-      overlaps <- GenomicRanges::findOverlaps(query = all_donor_forward,
-                                              subject = all_annotated_forward,
-                                              ignore.strand = FALSE,
-                                              type = "end")
-      
-      novel_junctions <- all_donor_forward[queryHits(overlaps),]
-      ref_junctions <- all_annotated_forward[subjectHits(overlaps),]
-      
-      
-      distance <- start(ref_junctions) - start(novel_junctions)
-      
-      # distance <- ifelse(distance < 0, distance + 1, distance - 1)
-      if (distance %>% length() > 0) {
-      
-        df_nd_f <- data.frame(sample = sample,
-                              type = "novel_donor", 
-                              distance = distance,
-                              novel_junID = novel_junctions$junID,
-                              novel_counts = novel_junctions$counts,
-                              #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
-                              novel_seq = novel_junctions %>% seqnames() %>% as.character(),
-                              novel_start = novel_junctions %>% start() %>% as.character(),
-                              novel_end = novel_junctions %>% end() %>% as.character(),
-                              novel_strand = novel_junctions %>% strand() %>% as.character(),
-                              novel_width = novel_junctions %>% width() %>% as.character(),
-                              novel_ss5score = novel_junctions$ss5score,
-                              novel_ss3score = novel_junctions$ss3score,
-                              ref_junID = ref_junctions$junID,
-                              ref_counts = ref_junctions$counts,
-                              #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
-                              ref_seq = ref_junctions %>% seqnames(),
-                              ref_start = ref_junctions %>% start(),
-                              ref_strand = ref_junctions %>% strand(),
-                              ref_end = ref_junctions %>% end(),
-                              ref_width = ref_junctions %>% width(),
-                              ref_ss5score = ref_junctions$ss5score,
-                              ref_ss3score = ref_junctions$ss3score,
-                              stringsAsFactors = FALSE)
-        
-        ## In case the novel junction has been attached to many ref junctions, the ref junction chosen will be 
-        ## the one with the highest number of counts. In case many ref junctions present the same number of counts,
-        ## the closest one will be chosen.
-        
-        df_nd_f <- df_nd_f %>% 
-          group_by(novel_junID) %>%
-          filter(ref_counts == max(ref_counts)) %>%
-          filter(abs(distance) == min(abs(distance))) %>%
-          ungroup() 
-      
-      } else {
-        df_nd_f <- NULL
-        
-      }
-      
-      # novel <- GenomicRanges::GRanges(seqnames = df_nd_f[1,]$novel_seq,
-      #                                 ranges = IRanges(start = df_nd_f[1,]$novel_start %>% as.integer(),
-      #                                                  end = df_nd_f[1,]$novel_start %>% as.integer()),
-      #                                 strand = df_nd_f[1,]$novel_strand)
-      # ref <-  GenomicRanges::GRanges(seqnames = df_nd_f[1,]$ref_seq,
-      #                                ranges = IRanges(start = df_nd_f[1,]$ref_start %>% as.integer(),
-      #                                                 end = df_nd_f[1,]$ref_start %>% as.integer()),
-      #                                strand = df_nd_f[1,]$ref_strand)
-      # GenomicRanges::distance(x = novel, y = ref)
-      
-      # df_nd_f %>%
-      #   select(novel_strand, novel_start, novel_end, ref_strand, ref_start, ref_end, distance)
-      
-      ####################################################
-      ########  NOVEL-DONOR & REVERSE STRAND  ############
-      ####################################################
-      
-      overlaps <- GenomicRanges::findOverlaps(query = all_donor_reverse,
-                                              subject = all_annotated_reverse,
-                                              ignore.strand = FALSE,
-                                              type = "start")
-      
-      
-      
-      novel_junctions <- all_donor_reverse[queryHits(overlaps),]
-      ref_junctions <- all_annotated_reverse[subjectHits(overlaps),]
-      
-      
-      distance <- end(novel_junctions) - end(ref_junctions)
-      # distance <- ifelse(distance < 0, distance + 1, distance - 1)
-      
-      if (distance %>% length() > 0) {
-        df_nd_r <- data.frame(sample = sample,
-                              type = "novel_donor", 
-                              distance = distance,
-                              novel_junID = novel_junctions$junID,
-                              novel_counts = novel_junctions$counts,
-                              #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
-                              novel_seq = novel_junctions %>% seqnames(),
-                              novel_start = novel_junctions %>% start(),
-                              novel_end = novel_junctions %>% end(),
-                              novel_strand = novel_junctions %>% strand(),
-                              novel_width = novel_junctions %>% width(),
-                              novel_ss5score = novel_junctions$ss5score,
-                              novel_ss3score = novel_junctions$ss3score,
-                              ref_junID = ref_junctions$junID,
-                              ref_counts = ref_junctions$counts,
-                              #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
-                              ref_seq = ref_junctions %>% seqnames(),
-                              ref_start = ref_junctions %>% start(),
-                              ref_end = ref_junctions %>% end(),
-                              ref_strand = ref_junctions %>% strand(),
-                              ref_width = ref_junctions %>% width(),
-                              ref_ss5score = ref_junctions$ss5score,
-                              ref_ss3score = ref_junctions$ss3score,
-                              stringsAsFactors = FALSE)
-        
-        
-        
-        df_nd_r <- df_nd_r %>% 
-          group_by(novel_junID) %>%
-          filter(ref_counts == max(ref_counts)) %>%
-          filter(abs(distance) == min(abs(distance))) %>%
-          ungroup() 
-      } else {
-        df_nd_r <- NULL
-      }
-      
-      
-      
-      ####################################################
-      ########  NOVEL-ACCEPTOR & FORWARD STRAND  #########
-      ####################################################
-      
-      
-      overlaps <- GenomicRanges::findOverlaps(query = all_acceptor_forward,
-                                              subject = all_annotated_forward,
-                                              ignore.strand = FALSE,
-                                              type = "start")
-      
-      
-      novel_junctions <- all_acceptor_forward[queryHits(overlaps),]
-      ref_junctions <- all_annotated_forward[subjectHits(overlaps),]
-      
-      
-      distance = end(novel_junctions) - end(ref_junctions)
-      # distance = ifelse(distance < 0, distance + 1, distance - 1)
-      
-      if (distance %>% length() > 0) {
-        df_na_f <- data.frame(sample = sample,
-                              type = "novel_acceptor", 
-                              distance = distance,
-                              novel_junID = novel_junctions$junID,
-                              novel_counts = novel_junctions$counts,
-                              #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
-                              novel_seq = novel_junctions %>% seqnames(),
-                              novel_start = novel_junctions %>% start(),
-                              novel_end = novel_junctions %>% end(),
-                              novel_strand = novel_junctions %>% strand(),
-                              novel_width = novel_junctions %>% width(),
-                              novel_ss5score = novel_junctions$ss5score,
-                              novel_ss3score = novel_junctions$ss3score,
-                              ref_junID = ref_junctions$junID,
-                              ref_counts = ref_junctions$counts,
-                              #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
-                              ref_seq = ref_junctions %>% seqnames(),
-                              ref_start = ref_junctions %>% start(),
-                              ref_end = ref_junctions %>% end(),
-                              ref_strand = ref_junctions %>% strand(),
-                              ref_width = ref_junctions %>% width(),
-                              ref_ss5score = ref_junctions$ss5score,
-                              ref_ss3score = ref_junctions$ss3score,
-                              stringsAsFactors = FALSE)
-        
-        
-        df_na_f <- df_na_f %>% 
-          group_by(novel_junID) %>%
-          filter(ref_counts == max(ref_counts)) %>%
-          filter(abs(distance) == min(abs(distance))) %>%
-          ungroup() 
-        
-      } else {
-        df_na_f <- NULL
-      }
-      
-      
-      
-      
-      ####################################################
-      ########  NOVEL-ACCEPTOR & REVERSE STRAND  #########
-      ####################################################
-      
-      overlaps <- GenomicRanges::findOverlaps(query = all_acceptor_reverse,
-                                              subject = all_annotated_reverse,
-                                              ignore.strand = FALSE,
-                                              type = "end")
-      
-      
-      novel_junctions <- all_acceptor_reverse[queryHits(overlaps),]
-      ref_junctions <- all_annotated_reverse[subjectHits(overlaps),]
-      
-      
-      distance = start(ref_junctions) - start(novel_junctions)
-      # distance = ifelse(distance < 0, distance + 1, distance - 1)
-      
-      if (distance %>% length() > 0) {
-        df_na_r <- data.frame(sample = sample,
-                              type = "novel_acceptor", 
-                              distance = distance,
-                              novel_junID = novel_junctions$junID,
-                              novel_counts = novel_junctions$counts,
-                              #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
-                              novel_seq = novel_junctions %>% seqnames(),
-                              novel_start = novel_junctions %>% start(),
-                              novel_end = novel_junctions %>% end(),
-                              novel_strand = novel_junctions %>% strand(),
-                              novel_width = novel_junctions %>% width(),
-                              novel_ss5score = novel_junctions$ss5score,
-                              novel_ss3score = novel_junctions$ss3score,
-                              ref_junID = ref_junctions$junID,
-                              ref_counts = ref_junctions$counts,
-                              #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
-                              ref_seq = ref_junctions %>% seqnames(),
-                              ref_start = ref_junctions %>% start(),
-                              ref_end = ref_junctions %>% end(),
-                              ref_strand = ref_junctions %>% strand(),
-                              ref_width = ref_junctions %>% width(),
-                              ref_ss5score = ref_junctions$ss5score,
-                              ref_ss3score = ref_junctions$ss3score,
-                              stringsAsFactors = FALSE)
-        
-        
-        df_na_r <- df_na_r %>% 
-          group_by(novel_junID) %>%
-          filter(ref_counts == max(ref_counts)) %>%
-          filter(abs(distance) == min(abs(distance))) %>%
-          ungroup() 
-      } else {
-        df_na_r <- NULL
-      }
-      
-      #################################
-      ########  SAVE RESULTS  #########
-      #################################
-      
-      distances <- rbind(df_nd_f, 
-                         df_nd_r,
-                         df_na_f,
-                         df_na_r)
-      
-      
 
-      distances <- distances %>% 
-        select(-novel_width, -ref_width, -sample)
+    if (!file.exists(paste0(folder_name, "/", cluster, "_", sample, "_distances.rds"))) {
       
+      if (length(which((colnames(split_read_counts) == sample) == TRUE)) == 1) { 
+        
+        # Every sampleID is unique, so the result should be equal to 1
+        
+        print(cluster)
+        print(paste0(Sys.time(), " - sample '", num_sample, "'"))
+        
+        # indx <- which(recount.info$sample == sample)
+        # sample_mapped_read_count <- recount.info[indx,]$mapped_read_count
+        ############################################################
+        ## OBTAINING ALL JUNCTIONS AND COUNTS FOR THE CURRENT SAMPLE
+        ############################################################
+        
+        
+        split_read_counts_sample <- split_read_counts %>%
+          as_tibble() %>%
+          dplyr::select(junID, all_of(sample %>% as.character())) %>%
+          drop_na() 
+        
+        split_read_counts_sample <- split_read_counts_sample[(split_read_counts_sample[,2] >0),]
+          
+          
+        split_read_counts %>% nrow()
+        split_read_counts_sample %>% nrow()
+        split_read_counts_sample %>% head()
+        
+        split_reads_details_97_sample <- merge(all_split_reads_details, 
+                                               split_read_counts_sample, 
+                                               by = "junID", 
+                                               sort = TRUE)  %>%
+          dplyr::rename(counts = all_of(sample %>% as.character()))
+        
+        split_reads_details_97_sample %>% head()
+        
+        ## Do some QC
+        index <- runif(n = 1, 1, split_reads_details_97_sample %>% nrow()) %>% as.integer()
+        data <- split_reads_details_97_sample[index, c(1, split_reads_details_97_sample %>% ncol())]
+        data_col <- split_read_counts_sample %>%
+          filter(junID == data$junID)
+        if (data_col[, colnames(data_col) == sample] != data$counts) {
+          print("Error: QC failed!")
+          break;
+        }
+        
+        ###################################################
+        ##########    ANNOTATED JUNC   ####################
+        ###################################################
+        all_annotated <- split_reads_details_97_sample %>%
+          dplyr::filter(type == "annotated") %>% 
+          GenomicRanges::GRanges()
+        
+        all_annotated_forward <- all_annotated[all_annotated@strand == "+"]
+        all_annotated_reverse <- all_annotated[all_annotated@strand == "-"]
+        
+        
+        
+        ###################################################
+        ##########    NOVEL DONOR      ####################
+        ###################################################
+        all_donor <- split_reads_details_97_sample %>%
+          dplyr::filter(type == "novel_donor") %>% 
+          GRanges()
+        
+        all_donor_forward <- all_donor[all_donor@strand == "+"]
+        all_donor_reverse <- all_donor[all_donor@strand == "-"]
+        
+        
+        
+        ###################################################
+        ##########    NOVEL ACCEPTOR      #################
+        ###################################################
+        all_acceptor <- split_reads_details_97_sample%>%
+          dplyr::filter(type == "novel_acceptor") %>% 
+          GRanges()
+        
+        all_acceptor_forward <- all_acceptor[all_acceptor@strand == "+"]
+        all_acceptor_reverse <- all_acceptor[all_acceptor@strand == "-"]
+        
+        
+        
+        ####################################################
+        ########  NOVEL-DONOR & FORWARD STRAND  ############
+        ####################################################
+        
+        overlaps <- GenomicRanges::findOverlaps(query = all_donor_forward,
+                                                subject = all_annotated_forward,
+                                                ignore.strand = FALSE,
+                                                type = "end")
+        
+        novel_junctions <- all_donor_forward[queryHits(overlaps),]
+        ref_junctions <- all_annotated_forward[subjectHits(overlaps),]
+        
+        
+        distance <- start(ref_junctions) - start(novel_junctions)
+        
+        # distance <- ifelse(distance < 0, distance + 1, distance - 1)
+        if (distance %>% length() > 0) {
+        
+          df_nd_f <- data.frame(sample = sample,
+                                type = "novel_donor", 
+                                distance = distance,
+                                novel_junID = novel_junctions$junID,
+                                novel_counts = novel_junctions$counts,
+                                #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
+                                novel_seq = novel_junctions %>% seqnames() %>% as.character(),
+                                novel_start = novel_junctions %>% start() %>% as.character(),
+                                novel_end = novel_junctions %>% end() %>% as.character(),
+                                novel_strand = novel_junctions %>% strand() %>% as.character(),
+                                novel_width = novel_junctions %>% width() %>% as.character(),
+                                novel_ss5score = novel_junctions$ss5score,
+                                novel_ss3score = novel_junctions$ss3score,
+                                ref_junID = ref_junctions$junID,
+                                ref_counts = ref_junctions$counts,
+                                #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
+                                ref_seq = ref_junctions %>% seqnames(),
+                                ref_start = ref_junctions %>% start(),
+                                ref_strand = ref_junctions %>% strand(),
+                                ref_end = ref_junctions %>% end(),
+                                ref_width = ref_junctions %>% width(),
+                                ref_ss5score = ref_junctions$ss5score,
+                                ref_ss3score = ref_junctions$ss3score,
+                                stringsAsFactors = FALSE)
+          
+          ## In case the novel junction has been attached to many ref junctions, the ref junction chosen will be 
+          ## the one with the highest number of counts. In case many ref junctions present the same number of counts,
+          ## the closest one will be chosen.
+          
+          df_nd_f <- df_nd_f %>% 
+            group_by(novel_junID) %>%
+            filter(ref_counts == max(ref_counts)) %>%
+            filter(abs(distance) == min(abs(distance))) %>%
+            ungroup() 
+        
+        } else {
+          df_nd_f <- NULL
+          
+        }
+        
+        # novel <- GenomicRanges::GRanges(seqnames = df_nd_f[1,]$novel_seq,
+        #                                 ranges = IRanges(start = df_nd_f[1,]$novel_start %>% as.integer(),
+        #                                                  end = df_nd_f[1,]$novel_start %>% as.integer()),
+        #                                 strand = df_nd_f[1,]$novel_strand)
+        # ref <-  GenomicRanges::GRanges(seqnames = df_nd_f[1,]$ref_seq,
+        #                                ranges = IRanges(start = df_nd_f[1,]$ref_start %>% as.integer(),
+        #                                                 end = df_nd_f[1,]$ref_start %>% as.integer()),
+        #                                strand = df_nd_f[1,]$ref_strand)
+        # GenomicRanges::distance(x = novel, y = ref)
+        
+        # df_nd_f %>%
+        #   select(novel_strand, novel_start, novel_end, ref_strand, ref_start, ref_end, distance)
+        
+        ####################################################
+        ########  NOVEL-DONOR & REVERSE STRAND  ############
+        ####################################################
+        
+        overlaps <- GenomicRanges::findOverlaps(query = all_donor_reverse,
+                                                subject = all_annotated_reverse,
+                                                ignore.strand = FALSE,
+                                                type = "start")
+        
+        
+        
+        novel_junctions <- all_donor_reverse[queryHits(overlaps),]
+        ref_junctions <- all_annotated_reverse[subjectHits(overlaps),]
+        
+        
+        distance <- end(novel_junctions) - end(ref_junctions)
+        # distance <- ifelse(distance < 0, distance + 1, distance - 1)
+        
+        if (distance %>% length() > 0) {
+          df_nd_r <- data.frame(sample = sample,
+                                type = "novel_donor", 
+                                distance = distance,
+                                novel_junID = novel_junctions$junID,
+                                novel_counts = novel_junctions$counts,
+                                #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
+                                novel_seq = novel_junctions %>% seqnames(),
+                                novel_start = novel_junctions %>% start(),
+                                novel_end = novel_junctions %>% end(),
+                                novel_strand = novel_junctions %>% strand(),
+                                novel_width = novel_junctions %>% width(),
+                                novel_ss5score = novel_junctions$ss5score,
+                                novel_ss3score = novel_junctions$ss3score,
+                                ref_junID = ref_junctions$junID,
+                                ref_counts = ref_junctions$counts,
+                                #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
+                                ref_seq = ref_junctions %>% seqnames(),
+                                ref_start = ref_junctions %>% start(),
+                                ref_end = ref_junctions %>% end(),
+                                ref_strand = ref_junctions %>% strand(),
+                                ref_width = ref_junctions %>% width(),
+                                ref_ss5score = ref_junctions$ss5score,
+                                ref_ss3score = ref_junctions$ss3score,
+                                stringsAsFactors = FALSE)
+          
+          
+          
+          df_nd_r <- df_nd_r %>% 
+            group_by(novel_junID) %>%
+            filter(ref_counts == max(ref_counts)) %>%
+            filter(abs(distance) == min(abs(distance))) %>%
+            ungroup() 
+        } else {
+          df_nd_r <- NULL
+        }
+        
+        
+        
+        ####################################################
+        ########  NOVEL-ACCEPTOR & FORWARD STRAND  #########
+        ####################################################
+        
+        
+        overlaps <- GenomicRanges::findOverlaps(query = all_acceptor_forward,
+                                                subject = all_annotated_forward,
+                                                ignore.strand = FALSE,
+                                                type = "start")
+        
+        
+        novel_junctions <- all_acceptor_forward[queryHits(overlaps),]
+        ref_junctions <- all_annotated_forward[subjectHits(overlaps),]
+        
+        
+        distance = end(novel_junctions) - end(ref_junctions)
+        # distance = ifelse(distance < 0, distance + 1, distance - 1)
+        
+        if (distance %>% length() > 0) {
+          df_na_f <- data.frame(sample = sample,
+                                type = "novel_acceptor", 
+                                distance = distance,
+                                novel_junID = novel_junctions$junID,
+                                novel_counts = novel_junctions$counts,
+                                #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
+                                novel_seq = novel_junctions %>% seqnames(),
+                                novel_start = novel_junctions %>% start(),
+                                novel_end = novel_junctions %>% end(),
+                                novel_strand = novel_junctions %>% strand(),
+                                novel_width = novel_junctions %>% width(),
+                                novel_ss5score = novel_junctions$ss5score,
+                                novel_ss3score = novel_junctions$ss3score,
+                                ref_junID = ref_junctions$junID,
+                                ref_counts = ref_junctions$counts,
+                                #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
+                                ref_seq = ref_junctions %>% seqnames(),
+                                ref_start = ref_junctions %>% start(),
+                                ref_end = ref_junctions %>% end(),
+                                ref_strand = ref_junctions %>% strand(),
+                                ref_width = ref_junctions %>% width(),
+                                ref_ss5score = ref_junctions$ss5score,
+                                ref_ss3score = ref_junctions$ss3score,
+                                stringsAsFactors = FALSE)
+          
+          
+          df_na_f <- df_na_f %>% 
+            group_by(novel_junID) %>%
+            filter(ref_counts == max(ref_counts)) %>%
+            filter(abs(distance) == min(abs(distance))) %>%
+            ungroup() 
+          
+        } else {
+          df_na_f <- NULL
+        }
+        
+        
+        
+        
+        ####################################################
+        ########  NOVEL-ACCEPTOR & REVERSE STRAND  #########
+        ####################################################
+        
+        overlaps <- GenomicRanges::findOverlaps(query = all_acceptor_reverse,
+                                                subject = all_annotated_reverse,
+                                                ignore.strand = FALSE,
+                                                type = "end")
+        
+        
+        novel_junctions <- all_acceptor_reverse[queryHits(overlaps),]
+        ref_junctions <- all_annotated_reverse[subjectHits(overlaps),]
+        
+        
+        distance = start(ref_junctions) - start(novel_junctions)
+        # distance = ifelse(distance < 0, distance + 1, distance - 1)
+        
+        if (distance %>% length() > 0) {
+          df_na_r <- data.frame(sample = sample,
+                                type = "novel_acceptor", 
+                                distance = distance,
+                                novel_junID = novel_junctions$junID,
+                                novel_counts = novel_junctions$counts,
+                                #novel_counts_norm = novel_junctions$counts / sample_mapped_read_count,
+                                novel_seq = novel_junctions %>% seqnames(),
+                                novel_start = novel_junctions %>% start(),
+                                novel_end = novel_junctions %>% end(),
+                                novel_strand = novel_junctions %>% strand(),
+                                novel_width = novel_junctions %>% width(),
+                                novel_ss5score = novel_junctions$ss5score,
+                                novel_ss3score = novel_junctions$ss3score,
+                                ref_junID = ref_junctions$junID,
+                                ref_counts = ref_junctions$counts,
+                                #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
+                                ref_seq = ref_junctions %>% seqnames(),
+                                ref_start = ref_junctions %>% start(),
+                                ref_end = ref_junctions %>% end(),
+                                ref_strand = ref_junctions %>% strand(),
+                                ref_width = ref_junctions %>% width(),
+                                ref_ss5score = ref_junctions$ss5score,
+                                ref_ss3score = ref_junctions$ss3score,
+                                stringsAsFactors = FALSE)
+          
+          
+          df_na_r <- df_na_r %>% 
+            group_by(novel_junID) %>%
+            filter(ref_counts == max(ref_counts)) %>%
+            filter(abs(distance) == min(abs(distance))) %>%
+            ungroup() 
+        } else {
+          df_na_r <- NULL
+        }
+        
+        #################################
+        ########  SAVE RESULTS  #########
+        #################################
+        
+        distances <- rbind(df_nd_f, 
+                           df_nd_r,
+                           df_na_f,
+                           df_na_r)
+        
+        
+  
+        distances <- distances %>% 
+          select(-novel_width, -ref_width, -sample)
+        
+        
+        saveRDS(object = distances,
+                file = paste0(folder_name, "/", cluster, "_", sample, "_distances.rds"))
+        
+        
+        
+        
+        num_sample <- num_sample + 1
+        
+        ## FREE-UP SOME MEMORY
+        rm(split_reads_details_97_sample)
+        rm(split_read_counts_sample)
+        
+        
+        rm(all_annotated)
+        rm(all_annotated_forward)
+        rm(all_annotated_reverse)
+        rm(all_donor)
+        rm(all_donor_forward)
+        rm(all_donor_reverse)
+        rm(all_acceptor)
+        rm(all_acceptor_forward)
+        rm(all_acceptor_reverse)
+        rm(overlaps)
+        rm(distances)
+        rm(df_nd_f)
+        rm(df_nd_r)
+        rm(df_na_f)
+        rm(df_na_r)
+        rm(novel_junctions)
+        rm(ref_junctions)
+        gc()
       
-      saveRDS(object = distances,
-              file = paste0(folder_name, "/", cluster, "_", sample, "_distances.rds"))
-      
-      
-      
-      
-      num_sample <- num_sample + 1
-      
-      
-    } else {
-
-      if (file.exists(paste0(folder_name, "/", cluster, "_", sample, "_distances.rds"))) {
-        print(paste0("Sample '", sample, "' exists!"))
-      }
-      if ( length(which((colnames(split_read_counts) == sample) == TRUE)) == 0) {
+      } else {
         print(paste0("Error: sample '", sample, "' not found in the split-reads file!"))
         break;
       }
       
-      
+    } else {
+      print(paste0("Sample '", sample, "' exists!"))
     }
-    
-    ## FREE-UP SOME MEMORY
-    rm(split_reads_details_97_sample)
-    rm(split_read_counts_sample)
-    
-    
-    rm(all_annotated)
-    rm(all_annotated_forward)
-    rm(all_annotated_reverse)
-    rm(all_donor)
-    rm(all_donor_forward)
-    rm(all_donor_reverse)
-    rm(all_acceptor)
-    rm(all_acceptor_forward)
-    rm(all_acceptor_reverse)
-    rm(overlaps)
-    rm(distances)
-    rm(df_nd_f)
-    rm(df_nd_r)
-    rm(df_na_f)
-    rm(df_na_r)
-    rm(novel_junctions)
-    rm(ref_junctions)
-    gc()
   }
 }
 
@@ -437,9 +429,11 @@ extract_distances <- function(cluster,
       return(df)
     } else {
       print(paste0("sample: ", sample, " doesn't exist!"))
+      break;
     }
     
   })
+  
   print("Samples loaded!")
   
   # if (df_all %>% nrow() == 0) {
@@ -2654,7 +2648,6 @@ get_stats_modulo <- function(cluster,
 ## CDTS - CONSERVATION ----------------------------
 
 add_cdts_cons_scores <- function(cluster,
-                                 CNC_CDTS_CONS_gr,
                                  folder_name) {
   
   
@@ -2677,7 +2670,7 @@ add_cdts_cons_scores <- function(cluster,
   
   ## https://www.nature.com/articles/nature09000
   ## Scores from the 5'ss ---------------------------------------------------------
-  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr,
+  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
                                           subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
                                                                            ranges = IRanges(start = db_introns %>% start() - 10,
                                                                                             end = db_introns %>% start() + 35),
@@ -2698,7 +2691,7 @@ add_cdts_cons_scores <- function(cluster,
   
   
   ## Scores from the 3'ss ---------------------------------------------------------
-  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr,
+  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
                                           subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
                                                                            ranges = IRanges(start = db_introns %>% end() - 35,
                                                                                             end = db_introns %>% end() + 10),
@@ -2728,11 +2721,13 @@ add_cdts_cons_scores <- function(cluster,
   
   print(paste0(Sys.time(), " - CDTS and Conservation scores added! IDB updated!"))
   
+  
+  rm(overlaps_tidy)
   rm(db_introns)
   rm(file_name)
   rm(overlaps)
   
-  gc()
+  #gc()
 }
 
 
@@ -2849,9 +2844,9 @@ add_exon_length <- function(cluster,
 ## GENE TPM AND GENE LENGTH -----------------------
 
 add_gene_tpm_length <- function(cluster,
+                                tpm_file,
                                 folder_name,
-                                GTEx = T,
-                                tpm_folder = NULL) {
+                                GTEx = T) {
   
   print(cluster)
   
@@ -2878,15 +2873,15 @@ add_gene_tpm_length <- function(cluster,
     
     # library(GSRI)
     
-    tpm <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/tpm_tidy.rds")
+    tpm <- readRDS(file = tpm_file)
 
     tpm %>% head()
     tpm %>% nrow()
     
     tpm <- tpm  %>% 
-      dplyr::select(gene_id, all_of(cluster)) %>%
-      #distinct(gene_id, .keep_all = T) %>%
-      dplyr::rename(tpm_median = all_of(cluster))
+      dplyr::select(gene_id = gene, 
+                    tpm_median = TPM_median,
+                    tpm_mean = TPM_mean)
     
     tpm %>% head()
     tpm %>% nrow()
@@ -2910,7 +2905,8 @@ add_gene_tpm_length <- function(cluster,
                      y = tpm %>% data.table::as.data.table(),
                      by = "gene_id",
                      all.x = T) %>% 
-    dplyr::rename(tpm = tpm_median)
+    dplyr::rename(tpm_mean_rct3 = tpm_mean)%>% 
+    dplyr::rename(tpm_median_rct3 = tpm_median)
   
   
   df_merged %>% head()

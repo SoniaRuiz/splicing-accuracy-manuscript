@@ -43,4 +43,5 @@ markdowns/*.html
 markdowns/*.tsv
 markdowns/*.csv
 markdowns/*.xlsx
+markdowns/*.png
 .Renviron
