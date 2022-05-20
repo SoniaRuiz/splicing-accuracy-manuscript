@@ -656,23 +656,72 @@ generate_recount3_median_tpm <- function() {
 
 }
 
-tidy_gtex_tpm <- function() {
+prepare_gtex_samples <- function() {
   
-  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")) {
-    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")) {
+    
+    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+    
+    all_projects_used <- NULL
+    all_clusters_used <- NULL
+    all_samples_used <- NULL
+    
+    for (project in all_projects) {
+      
+      clusters_used <- NULL
+      
+      clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                        project, "/raw_data/all_clusters_used.rds"))
+      saveRDS(object = clusters,
+              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                            project, "/raw_data/all_clusters.rds"))
+      
+      for (cluster in clusters) {
+        
+        if (!(cluster %in% c("Brain - Cortex", "Brain - Cerebellum"))) {
+          
+          ## Load samples
+          samples <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project, "/results/base_data/", cluster, "/", project, "_", cluster, "_samples.rds"))
+          if (samples %>% length() >= 70) {
+            clusters_used <- c(clusters_used, cluster)
+            all_projects_used <- c(all_projects_used, project) %>% unique()
+            all_clusters_used <- c(all_clusters_used, cluster) %>% unique()
+            all_samples_used <- c(all_samples_used, samples) %>% unique()
+          }
+          
+        }
+      }
+      
+      clusters_used <- clusters_used %>% unique()
+      saveRDS(object = clusters_used,
+              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                            project, "/raw_data/all_clusters_used.rds"))
+    }
+    
+    all_projects_used %>% length()
+    all_clusters_used %>% length()
+    all_samples_used %>% length()
+    
+    saveRDS(object = all_projects_used %>% unique(),
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+    
   } else {
     all_projects <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
                        "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", "HEART", "KIDNEY", "LIVER", "LUNG",
                        "MUSCLE","NERVE", "OVARY", "PANCREAS", "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
                        "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", "THYROID", "UTERUS", "VAGINA") %>% sort()
     saveRDS(object = all_projects,
-            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
   }
   
   if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")) {
-    all_clusters_used <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+    all_clusters <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+    
   } else {
+    
     all_clusters_used <- NULL
+    
     for (project in all_projects) {
       clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                         project, "/raw_data/all_clusters_used.rds"))
@@ -683,6 +732,11 @@ tidy_gtex_tpm <- function() {
     saveRDS(object = all_clusters_used,
             file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
   }
+}
+
+tidy_gtex_tpm <- function() {
+  
+  
   
   
 

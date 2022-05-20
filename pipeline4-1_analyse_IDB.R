@@ -2,6 +2,135 @@
 ## RUNNING ANALYSES USING THE INTRON DATABASE ######
 ####################################################
 
+get_contamination_rates <- function(all_tissues = F) {
+  
+  # cluster <- gtex_tissues[17]
+  # all_split_reads_details_81 <- readRDS(file = paste0(folder_root, "base_data/", 
+  #                                                     cluster, "/", cluster, "_annotated_SR_details_length_v81.rds"))
+  # all_split_reads_details_90 <- readRDS(file = paste0(folder_root, "base_data/", 
+  #                                                      cluster, "/", cluster, "_annotated_SR_details_length_v90.rds"))
+  
+  if (all_tissues) {
+    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  } else {
+    all_projects <- "BRAIN"
+  }
+  
+  df_contamination <- map_df(all_projects, function(project_id) {
+    
+    # project_id <- all_projects[1]
+    
+    #print(paste0(project_id))
+    
+    all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/raw_data/all_clusters_used.rds"))
+    
+    
+    if (all_tissues) {
+      versions <- c("97")
+      dates <- c("26-May-2019")
+    } else {
+      all_clusters <- all_clusters[5]
+      versions <- c("76", "81", "90", "97")
+      dates <- c("18-Jul-2014", "07-Jul-2015", "28-Jul-2017", "26-May-2019")
+    }
+    
+    map_df(all_clusters, function(cluster) {
+      
+      # cluster <- all_clusters[1]
+      #print(cluster)
+      
+      folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                            project_id, "/results/pipeline3/missplicing-ratio/", cluster)
+      
+      map_df(versions, function(version) {
+        
+        # version <- versions[1]
+        #print(version)
+        
+        
+        db_introns_old <- readRDS(file = paste0(folder_name, "/v", version, "/", cluster, "_db_introns.rds"))
+        db_novel_old <- readRDS(file = paste0(folder_name, "/v", version, "/", cluster, "_db_novel.rds"))
+        
+        
+        db_introns_new <- readRDS(file = paste0(folder_name, "/v106/", cluster, "_db_introns.rds"))
+        db_novel_new <- readRDS(file = paste0(folder_name, "/v106/", cluster, "_db_novel.rds"))
+        
+        
+        in_annotation <- db_introns_new %>%
+          filter(ref_junID %in% db_novel_old$novel_junID) %>% 
+          distinct(ref_junID, .keep_all = T)
+        in_annotation %>% nrow()
+        
+        
+        
+        out_annotation <- db_novel_new %>%
+          filter(novel_junID %in% db_introns_old$ref_junID) %>% 
+          distinct(novel_junID, .keep_all = T) 
+        out_annotation %>% nrow()
+        
+        label <- NULL
+        
+        if (!all_tissues) {
+          if (version == "76") {
+            label <- paste0("Ensembl_v", version, " (", dates[1], ")")
+          } else if (version == "81") {
+            label <- paste0("Ensembl_v", version, " (", dates[2], ")")
+          } else if (version == "90") {
+            label <- paste0("Ensembl_v", version, " (", dates[3], ")")
+          } else {
+            label <- paste0("Ensembl_v", version, " (", dates[4], ")")
+          } 
+        } else {
+          label <- paste0("Ensembl_v", version, " (", dates, ")")
+        }
+        
+        
+        return(data.frame(tissue = cluster,
+                          contamination_rates = label,
+                          in_annotation = (in_annotation %>% nrow() * 100) / db_novel_old %>% nrow(),
+                          out_annotation = (out_annotation %>% nrow() * 100) / db_introns_old %>% nrow()))
+        
+      })
+    })
+  })
+      
+      
+      
+  if (all_tissues) {
+    saveRDS(object = df_contamination,
+            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/contamination_rates.rds"))
+  } 
+  
+  ## GETTING CONTAMINATION RATES - % OF INDIVIDUALS
+  ggplot(data = df_contamination) +
+    #geom_bar(data = novel_104, mapping = aes(x = novel_p_individuals, y = ..count..), stat = "count", color = "black") +
+    geom_bar(aes(x = contamination_rates, y = in_annotation), stat = "identity") + 
+    xlab(" ") +
+    ylab("contamination rates (%)") +
+    ggtitle(paste0("Contamination rates - ", df_contamination$tissue %>% unique, "\nEnsembl v105")) +
+    #scale_x_binned() +
+    #scale_x_continuous(breaks = c(10,20,30,40,50,60,70,80,90,100))+
+    #scale_color_manual(values = c("red","black"),
+    #                   breaks = c("red","black"),
+    #                   labels = c(paste0(new_annotation_104 %>% distinct(ref_junID) %>% nrow(), " fully annotated"),
+    #                              paste0(novel_104 %>% distinct(novel_junID) %>% nrow(), " novel"))) +
+    theme_light() +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top",
+          axis.text.x = element_text(angle = 50, 
+                                     vjust = 1,
+                                     hjust = 1)) +
+    guides(color = guide_legend(title = "Junction type: ", ncol = 2, nrow = 1)) %>%
+    return()
+  
+  
+}
+
 ## DISTANCES ----------------------------------------
 
 summarise_distances_tissues <- function(project_id = "BRAIN",
@@ -158,11 +287,10 @@ summarise_MSR_tissues <- function(project_id = "BRAIN",
 
 ## LINEAR MODELS ------------------------------------
 
-summarise_lm_tissues <- function(project_id = "BRAIN",
-                                 gtf_version = 105,
-                                 all_tissues = F) {
+summarise_lm_tissues <- function(gtf_version = 105,
+                                 brain = F) {
   
-  if (all_tissues) {
+  if (!brain) {
     all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
   } else {
     all_projects <- project_id
@@ -194,8 +322,7 @@ summarise_lm_tissues <- function(project_id = "BRAIN",
                       intron_5ss_score = ref_ss5score,
                       intron_3ss_score = ref_ss3score,
                       gene_length = gene_width,
-                      gene_tpm = tpm,
-                      gene_tpm_rct = tpm_median_rct3,
+                      gene_tpm = tpm_median_rct3,
                       gene_num_transcripts = n_transcripts,
                       protein_coding = protein_coding,
                       CDTS_5ss = CDTS_5ss_mean,
@@ -209,7 +336,6 @@ summarise_lm_tissues <- function(project_id = "BRAIN",
                     intron_5ss_score *
                     intron_3ss_score +
                     gene_tpm +
-                    gene_tpm_rct +
                     gene_length +
                     # u2_intron +
                     # clinvar +
@@ -230,7 +356,6 @@ summarise_lm_tissues <- function(project_id = "BRAIN",
                               intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
                               intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
                               gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
-                              gene_tpm_rct = model$coefficients["gene_tpm_rct"] %>% unname(),
                               gene_length = model$coefficients["gene_length"] %>% unname(),
                               #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
                               protein_coding = model$coefficients["protein_coding"] %>% unname(),
@@ -248,7 +373,6 @@ summarise_lm_tissues <- function(project_id = "BRAIN",
                     intron_5ss_score *
                     intron_3ss_score +
                     gene_tpm +
-                    gene_tpm_rct +
                     gene_length +
                     # u2_intron +
                     # clinvar +
@@ -266,7 +390,6 @@ summarise_lm_tissues <- function(project_id = "BRAIN",
                                  intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
                                  intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
                                  gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
-                                 gene_tpm_rct = model$coefficients["gene_tpm_rct"] %>% unname(),
                                  gene_length = model$coefficients["gene_length"] %>% unname(),
                                  #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
                                  protein_coding = model$coefficients["protein_coding"] %>% unname(),
@@ -282,7 +405,7 @@ summarise_lm_tissues <- function(project_id = "BRAIN",
   })
  
   
-  saveRDS(object = all_data,
+  saveRDS(object = all_data, 
           file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/summary_lm.rds"))
 }
 
@@ -326,7 +449,7 @@ get_common_introns <- function (gtf_version = 105,
   common_introns %>% head()
   common_introns %>% nrow()
   
-  all_data <- map_df(all_projects, function(project_id) {
+  all_common_introns_data <- map_df(all_projects, function(project_id) {
     
     all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                            project_id, "/raw_data/all_clusters_used.rds"))
@@ -356,7 +479,7 @@ get_common_introns <- function (gtf_version = 105,
     file_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/common_introns.rds")
   }
   
-  saveRDS(object = df_all, file = file_name)
+  saveRDS(object = all_common_introns_data, file = file_name)
   
 }
 
@@ -380,11 +503,11 @@ get_estimate_variance <- function(gtf_version = 105,
   
   ## LOOP PER PROJECT
   
-  df_estimates <- map_df(all_projects, function(project_id) {
+  df_estimates <- map_df(all_projects[-6], function(project_id) {
     
     all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                            project_id, "/raw_data/all_clusters_used.rds"))
-    map_df(clusters_ID, function(cluster) {
+    map_df(all_clusters, function(cluster) {
     
       # tissue <- clusters[1]
       print(cluster)
@@ -502,24 +625,14 @@ get_estimate_variance <- function(gtf_version = 105,
   ## SAVE RESULTS
   #############################
     
-  saveRDS(object = df_estimates,
-          file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/variance_estimate.rds"))
+  if (brain) {
+    file_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                        project_id, "/results/pipeline3/variance_estimate")
+  } else{
+    file_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/variance_estimate")
+  }
   
-  library(xlsx)
-  
-  ## Save the .xlsx object
-  xlsx::write.xlsx(MSR_Donor, 
-                   file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                                 "/results/pipeline3/variance_estimate.xlsx"), 
-                   sheetName = "MSR_Donor")
-  
-  xlsx::write.xlsx(MSR_Acceptor, 
-                   file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                                 "/results/pipeline3/variance_estimate.xlsx"),   
-                   sheetName = "MSR_Acceptor",
-                   append = T)
-
-
+  saveRDS(object = df_estimates, file = paste0(file_name, ".rds"))
   
 }
 
@@ -2296,109 +2409,7 @@ comparing_reference_transcriptome_versions <- function(cluster = "Brain-FrontalC
 }
 
 
-get_contamination_rates <- function(cluster = "Brain-FrontalCortex_BA9",
-                                    folder_root = "/home/sruiz/PROJECTS/splicing-project/results/") {
-  
-  # cluster <- gtex_tissues[17]
-  # all_split_reads_details_81 <- readRDS(file = paste0(folder_root, "base_data/", 
-  #                                                     cluster, "/", cluster, "_annotated_SR_details_length_v81.rds"))
-  # all_split_reads_details_90 <- readRDS(file = paste0(folder_root, "base_data/", 
-  #                                                      cluster, "/", cluster, "_annotated_SR_details_length_v90.rds"))
-  
-  versions <- c("76", "81", "90", "97")
-  dates <- c("18-Jul-2014", "07-Jul-2015", "28-Jul-2017", "26-May-2019")
-  
-  
-  df_contamination <- map_df(versions, function(version) {
-    
-    
-    print(version)
-    
-    db_introns_old <- readRDS(file = paste0(folder_root, "pipeline3/missplicing-ratio/", 
-                                            cluster, "/v", version, "/", cluster, "_db_introns.rds"))
-    db_novel_old <- readRDS(file = paste0(folder_root, "pipeline3/missplicing-ratio/", 
-                                          cluster, "/v", version, "/", cluster, "_db_novel.rds"))
-    
-    
-    db_introns_new <- readRDS(file = paste0(folder_root, "pipeline3/missplicing-ratio/", 
-                                            cluster, "/v104/", cluster, "_db_introns.rds"))
-    db_novel_new <- readRDS(file = paste0(folder_root, "pipeline3/missplicing-ratio/", 
-                                          cluster, "/v104/", cluster, "_db_novel.rds"))
-    
-    in_annotation <- db_introns_new %>%
-      filter(ref_junID %in% db_novel_old$novel_junID) %>% 
-      distinct(ref_junID, .keep_all = T)
-    in_annotation %>% nrow()
-    
-    
-    
-    out_annotation <- db_novel_new %>%
-      filter(novel_junID %in% db_introns_old$ref_junID) %>% 
-      distinct(novel_junID, .keep_all = T) 
-    out_annotation %>% nrow()
-    
-    label <- NULL
-    
-    if (version == "76") {
-      label <- paste0("Ensembl_v", version, " (", dates[1], ")")
-    } else if (version == "81") {
-      label <- paste0("Ensembl_v", version, " (", dates[2], ")")
-    } else if (version == "90") {
-      label <- paste0("Ensembl_v", version, " (", dates[3], ")")
-    } else {
-      label <- paste0("Ensembl_v", version, " (", dates[4], ")")
-    } 
-    
-    
-    return(data.frame(tissue = cluster,
-                      contamination_rates = label,
-                      in_annotation = (in_annotation %>% nrow() * 100) / db_novel_old %>% nrow(),
-                      out_annotation = (out_annotation %>% nrow() * 100) / db_introns_old %>% nrow()))
-    
-  })
-  
-  
-  
-  ## GETTING CONTAMINATION RATES - % OF INDIVIDUALS
-  ggplot(data = df_contamination) +
-    #geom_bar(data = novel_104, mapping = aes(x = novel_p_individuals, y = ..count..), stat = "count", color = "black") +
-    geom_bar(aes(x = contamination_rates, y = in_annotation), stat = "identity") + 
-    xlab(" ") +
-    ylab("contamination rates (%)") +
-    ggtitle(paste0("Contamination rates across different Ensembl versions compared\nwith Ensembl v104 - ", cluster)) +
-    #scale_x_binned() +
-    #scale_x_continuous(breaks = c(10,20,30,40,50,60,70,80,90,100))+
-    #scale_color_manual(values = c("red","black"),
-    #                   breaks = c("red","black"),
-    #                   labels = c(paste0(new_annotation_104 %>% distinct(ref_junID) %>% nrow(), " fully annotated"),
-    #                              paste0(novel_104 %>% distinct(novel_junID) %>% nrow(), " novel"))) +
-    theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top",
-          axis.text.x = element_text(angle = 50, 
-                                     vjust = 1,
-                                     hjust = 1)) +
-    guides(color = guide_legend(title = "Junction type: ", ncol = 2, nrow = 1))
-  
-  
-  
-  file_name <- paste0(folder_root, "pipeline3/missplicing-ratio/", cluster, "/images/", cluster, "_contaminationrates.png")
-  ggplot2::ggsave(file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  
-  ## GETTING CONTAMINATION RATES - NORMALISED COUNTS
-  
-  
-  
-  
-  
-  
-}
+
 
 
 
@@ -3484,9 +3495,10 @@ plot_modulo_tissues <- function(type) {
     guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) %>% return()
 }
 
+
 plot_estimate_variance <- function(project_id = "BRAIN",
                                    gtf_version = 105,
-                                   brain_tissues = T,
+                                   brain_tissues = F,
                                    save_results = F) {
   
   if (brain_tissues) {
@@ -3494,8 +3506,8 @@ plot_estimate_variance <- function(project_id = "BRAIN",
                                          "/results/pipeline3/variance_estimate.rds"))
     graph_title <- "Distribution of the estimate values across 11 brain tissues"
   } else {
-    df_estimate <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/results/paper/variance_estimate_all_tissues.rds"))
-    graph_title <- "Distribution of the estimate values across 40 GTEx tissues"
+    df_estimate <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/variance_estimate.rds"))
+    graph_title <- "Distribution of the estimate values across 54 GTEx tissues"
   }
   
   
@@ -3546,11 +3558,11 @@ plot_estimate_variance <- function(project_id = "BRAIN",
                          levels = c("MSR_Donor", "MSR_Acceptor")))
   
   
-  MSR_tidy <- MSR_tidy %>%
-    filter(!(tissue %in% c("CDTS_5ss",
-                           "CDTS_3ss",
-                           "mean_phastCons20way_5ss",
-                           "mean_phastCons20way_3ss")))
+  # MSR_tidy <- MSR_tidy %>%
+  #   filter(!(tissue %in% c("CDTS_5ss",
+  #                          "CDTS_3ss",
+  #                          "mean_phastCons20way_5ss",
+  #                          "mean_phastCons20way_3ss")))
   
   plot <- ggplot(MSR_tidy, aes(tissue, feature)) + 
     geom_boxplot() +

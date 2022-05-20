@@ -1,15 +1,15 @@
 ---
 title: "IDB - GTExv8 All Tissues - Characterising splicing noise"
 author: "Sonia García-Ruiz"
-date: "17/05/2022"
+date: "19/05/2022"
 output: 
   html_document:
     code_folding: hide
     toc: true
-    toc_depth: 2
-    toc_float:
-      collapsed: false
-      smooth_scroll: false
+    #toc_depth: 2
+    #toc_float:
+    #  collapsed: false
+    #  smooth_scroll: false
     #number_sections: true
     theme: flatly
     highlight: tango
@@ -31,14 +31,8 @@ library(matrixStats)
 library(xlsx)
 #library(kableExtra)
 
-project_id <- "BLOOD"
+
 gtf_version <- 105
-
-folder_path <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                      project_id, "/results/pipeline3/")
-
-project_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                       project_id, "/raw_data/all_clusters_used.rds"))
 
 get_mode <- function(vector) {
   uniqv <- unique(vector)
@@ -50,52 +44,13 @@ source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-1_analyse_IDB.R
 
 ```
 
-## Blood as example
+# All GTEx v8 tissues 
 
-This section contains the major analyses performed so far using the junction data stored on the IDB.
+Each analysis provides with a summary table containing the results obtained per each GTEx v8 tissue.
 
-Blood was chosen as the reference tissue. In addition, each analysis provides with a summary table containing the results obtained for each GTEx v8 tissue.
+## Summary  {.tabset .tabset-fade .tabset-pills}
 
-### Distances {.tabset .tabset-fade .tabset-pills}
-
-We first measured the distances lying between the unannotated splice site of each novel junction, named novel splice site (novelSS), and the annotated splice site of their attached reference intron, named reference splice site (refSS). 
-
-The graph below represents the distances (in bp) lying between the novelSS of each novel donor (in green) and novel acceptor junction (in purple) and the refSS of their reference introns.
-
-Distances are displayed separately by the biotype of the isoform of each reference intron. The negative distances correspond to novel events located within introns, whereas the positive distances correspond to novel junctions whose novel splice site is located within exons. The zero distance at the x-axis represents the precise location of the exon-intron junction reference intron. To facilitate the data interpretation, distances have been zoomed up to 30 bp.
-
-Results from this analysis show that:
-
-* Novel junctions are located in close proximity to known splice sites. 
-* Whereas mis-splicing appeared to be symmetrical around known donor sites (mode = 4bp), there was an asymmetric distribution at known acceptor sites (mode = 21 bp upstream / 4bp downstream the 3'ss).
-* Novel junctions are asymetrically distributed at known acceptor splice sites irrespective of their transcript biotype, which could be due to the AG-exclusion zone (AGEZ). **This finding could represent the first indicator that mis-splicing occurs as a consequence of other factors rather than being solely due to SNPs occurring within the genomic sequence itself.** 
-* Finally, peaks of distances occurring every 3 bp from the 4th bp position within exons are only occurring when the biotype of the isoform is protein coding, which suggests a potential codon usage bias.
-
-These patterns are observed across all tissues in a consistent manner (see table).
-
-```{r distances, echo = FALSE, results = "asis"}
-
-
- # dont't forget the newline
-
-for (cluster in project_clusters[1]) { # tissue <- gtex_tissues[11]
-  
-  cat('\n') 
-  cat("####", cluster, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                        project_id, "/results/pipeline3/missplicing-ratio/", cluster, "/v", 
-                        gtf_version, "/")
-  
-  plot_distances_PC(cluster = cluster, folder_name = folder_name) %>% print()
-  
-  cat('\n')
-  
-}
-
-```
-
-#### Summary Distances
+### Distances
 
 ```{r distances_all, echo = FALSE}
 
@@ -112,214 +67,7 @@ all_data %>%
 ```
 
 
-
-
-### Modulo {.tabset .tabset-fade .tabset-pills}
-
-Due to the triplet structure of codons, any change in the reading frame could result in a completely different translation from the original DNA/RNA sequence. The alteration of the reading frame can be detected when the total number of base pairs that form the DNA/RNA coding sequence is not divisible by three.  
-
-To know the number of novel junctions that could be producing a shift in the reading frame, I obtained the remainder of the division of the distances by 3, (i.e. modulo 3 of the distances). When the remainder of the division by 3 was zero, the length of the sequence corresponding to the novel junction was multiple of three bp and, therefore, it did not likely produce a change in the reading frame. 
-
-Moreover, to assess whether frameshift events were more prevalent within non-protein coding transcripts, I only analysed the subset of novel junctions belonging to MANE Select transcripts. Figure X displays the modulo 3 calculated over the distances lying between each novel junction and their reference intron. Modulo 3 figures have been separately displayed by the type of novel event and by the location in which the novel event occurred (i.e. within an intron or within an exon). 
-
-Results showed that novel events occurring within exons are more frequently located at a distance divisible by 3 than within introns in PC transcripts. This higher frequency occuring within exons suggests a prevalence to maintain frame after their removal from the isoform, potentially due to a codon usage within the exons. **This result is consistent with the peaks of distances observed only within exons and occurring every 3bp at positions that were multiple of three.**
-
-
-```{r modulo, echo = FALSE, results = "asis"}
-
-for (cluster in project_clusters[1]) {
-  
-  cat('\n') 
-  cat("####", cluster, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                        project_id, "/results/pipeline3/missplicing-ratio/", cluster, "/v", gtf_version, "/")
-
-  plot_distances_modulo(cluster = cluster,
-                        folder_name = folder_name) %>% print()
-  
-  cat('\n')
-  
-}
-
-
-```
-
-
-
-<!-- #### Summary Modulo - Exon -->
-
-<!-- ~66% of the novel junctions were located at a distance not divisible by 3 (*d mod 3*), generating a frameshift event after their removal from the isoform.  -->
-
-<!-- However, there is evidence for non-random splice site selection to maintain frame when the novel event corresponds to a novel acceptor junction and it is spliced within exons. **This result is consistent with the peaks of distances observed only within exons and occurring every 3bp at positions that were multiple of three.** -->
-
-
-
-<!-- ```{r modulo_exon_all, echo = FALSE, eval=FALSE} -->
-
-<!-- plot_modulo_tissues(type = "exon") %>% print() -->
-
-<!-- ``` -->
-
-
-<!-- #### Summary Modulo - Intron -->
-
-<!-- ~66% of the novel junctions were located at a distance not divisible by 3 (*d mod 3*), generating a frameshift event after their removal from the isoform.  -->
-
-<!-- However, there is evidence for non-random splice site selection to maintain frame when the novel event corresponds to a novel acceptor junction and it is spliced within introns. -->
-
-
-
-<!-- ```{r modulo_intron_all, echo = FALSE, eval=FALSE} -->
-
-<!-- plot_modulo_tissues(type = "intron") %>% print() -->
-
-<!-- ``` -->
-
-
-### MaxEntScan score {.tabset .tabset-fade .tabset-pills}
-
-
-Next, we focused on the analysis of the sequence properties of novel junctions. We used MaxEntScan (MES) to score the 3' and 5' splicing sequences implied by each novel junction against the consensus representative sequences in humans.
-
-To find any differences between the sequences from novel junctions and those from their reference introns, we calculated the delta values of the MaxEntScan scores between each pair of novel and reference junction.
-
-Results from this analysis first suggested that novel junctions are characterised by flanking sequences that the spliceosome would be expected to recognise.
-
-Second, it also showed that almost 80% of the novel junctions presented weaker splicing signals than their reference introns irrespective of their transcript biotype.
-
-**This result reinforced the idea that mis-splicing does not solely occur as a result of SNPs located within the essential secuences for correct splicing, but it might happen due to the inadecuate level of expression of the molecules responsible for recognising these signals.**
-
-
-```{r maxentscanscore, echo = FALSE, results = "asis"}
-
-
-for (tissue in project_clusters[1]) {
-  
-  cat('\n') 
-  cat("####", tissue, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                        "/results/pipeline3/missplicing-ratio/", tissue, "/v", gtf_version, "/")
-
-  plot_delta_maxentscanscore(cluster = tissue,
-                             folder_name = folder_name) %>% print()
-  
-  cat('\n')
-}
-
-
-```
-
-
-### Conservation {.tabset .tabset-fade .tabset-pills}
-
-Then, we observed that some introns were never mis-spliced regardless the tissue and sample studied, whereas other introns were mis-spliced at their donor, acceptor and, not simultaneously, both splice sites in multiple samples of both the same and diverse tissues.
-
-To assess whether mis-splicing could be due to a different level of interspecies conservation of the near-splicing sequences, we used the mean_phas_cons20 scores from ''.
-
-Two proximal intronic sequences were analysed per each reference intron. The first section was located from 5bp upstream the 5'ss to 35bp downstream it. The second proximal intronic sequence was located from 35bp upstream the 3'ss to 5bp downstream the intron-exon splice site.
-
-These window sizes were chosen:
-
-* to avoid any potential overlapping between both near-splicing sequences, as the analysis of the intron length (figure X) showed that the majority of introns presented a length of 90 bp (mode = 90bp).
-* the inclusion and exclusion of any given exon from a pre-mRNA molecule is influenced by exon enhancers/silencers than can be located as close as X bp from the exon-intron junction (see papers).
-
-The graph below shows the conservation scores overlapping the 5' and 3' proximal intronic sequences of each reference intron from the FCTX introns stored on the IDB. Reference introns have been classified by the type of mis-splicing events attached to them: introns that can be mis-spliced only at the donor splice site, only at the acceptor splice site, at both splice sites (not simultaneously) or never mis-spliced at all in any of the samples studied from FCTX tissue. Each reference intron can only be classified in one of the beforementioned categories.
-
-
-Results from this analysis show no significant differences in the level of interspecies conservation of the proximal intronic sequences analysed in the four type of introns study across FCTX samples.
-
-**These results are consistent with the idea that mis-splicing is not due to the characteristics of the genomic sequence itself, but to an nonoptimal level of expression of the RBPs responsible for recognisting the essential splicing signals for correct splicing.**
-
-
-```{r conservation, echo = FALSE, results = "asis"}
-
-
-for (tissue in project_clusters[1]) {
-  
-  cat('\n') 
-  cat("####", tissue, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                        project_id, "/results/pipeline3/missplicing-ratio/", 
-                        tissue, "/v", gtf_version, "/")
-
-  plot_cons_scores_tissue_PC(cluster = tissue,
-                             folder_name = folder_name) %>% print()
-  
-  cat('\n')
-}
-
-
-```
-
-
-### CDTS {.tabset .tabset-fade .tabset-pills}
-
-We also used the Context-Dependent Tolerance Score (CDTS) (reference), which measures human-specific genomic constrain, to score the proximal 5'ss and 3'ss intronic sequences of each reference intron stored within the IDB and corresponding to FCTX samples. 
-
-Results from this analysis show no significant differences between the observed and expected genomic variations in humans within the 5' and 3' proximal intronic sequences in introns that are constantly mis-spliced across samples versus introns that are never mis-spliced.
-
-**These results are consistent with the hypothesis that mis-splicing might not be solely due to the characteristics of the genomic sequence itself, but to an nonoptimal level of expression of the RBPs responsible for recognisting the canonical splicing signals essential for correct splicing.**
-
-
-```{r CDTS, echo = FALSE, results = "asis"}
-
-
-for (tissue in project_clusters[1]) {
-  
-  cat('\n') 
-  cat("####", tissue, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                        project_id, "/results/pipeline3/missplicing-ratio/", 
-                        tissue, "/v", gtf_version, "/")
-
-  plot_CDTS_scores_tissue(cluster = tissue,
-                          folder_name = folder_name) %>% print()
-  
-  cat('\n')
-}
-
-
-```
-
-
-
-### Mis-splicing ratio {.tabset .tabset-fade .tabset-pills}
-
-Then, to determine the rate whereby any given intron from the IDB was being mis-spliced across samples of each GTEx tissue, we defined the "Mis-Splicing Ratio (MSR)" measure. Two MSR figures were generated per intron across samples of each tissue to measure the frequency of mis-splicing at the donor splice site (MSR_D) and at the acceptor splice sites (MSR_A), respectively.
-
-The graph below displays the MSR_D (in green) and MSR_A (in purple) values of each intron stored within the IDB from FCTX samples. Results have been separately represented from introns that either only belong to protein coding transcripts or to non-protein coding transcripts.
-
-This analysis suggests that mis-splicing is not a frequent event due to the big peak at the zero MSR value. However, the long tails corresponding to both density curves shows that mis-splicing, albeit infrequent, occurs at variable rates across different introns.
-
-Finally, we tested whether mis-splicing was occurring more commonly at acceptor than at the donor splice sites in introns from both PC and NPC transcripts, which was indeed the case (Mann-Whitney-Wilcoxon Test - p-value < 2.2e-16).
-
-
-```{r missplicingratio, echo = FALSE, results = "asis"}
-
-for (tissue in project_clusters[1]) {
-  
-  cat('\n') 
-  cat("####", tissue, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                        project_id, "/results/pipeline3/missplicing-ratio/", 
-                        tissue, "/v105/")
-
-  plot_missplicing_ratio(cluster = tissue,
-                         folder_name = folder_name) %>% print()
-  
-  cat('\n')
-}
-
-
-```
-
-
-#### Summary MSR
+### MSR
 
 ```{r MSR_all, echo = FALSE}
 
@@ -338,47 +86,7 @@ all_data %>%
 
 
 
-### Linear Models {.tabset .tabset-fade .tabset-pills}
-
-We next built two linear regression models to predict the rate of mis-splicing at both donor and at acceptor splice sites of each intron from the IDB.
-
-To be able to statistically assess which genomic features could be impacting on the generation of splicing noise, we included diverse predictors encompassing diverse genomic levels. We used (1) features at the gene level such as the median TPM level of expression across samples of the gene and its length; (2) features at the transcript level, such as the number of transcripts of the gene and the transcript biotype; and (3) features at the intron level like the MaxEntScan scores of the 5’ss and 3’ss, the mean conservation and CTDS scores of the proximal intronic secuences and the intron length. 
-
-The graph below displays the results derived from both linear regression models used to predict mis-splicing at the donor (in green) and at the acceptor (in purple) splice sites in introns from only protein coding transcripts (on the left) and from non-protein coding transcripts (on the right). All predictors overlapping the vertical dashed line were non-statistically significant.
-
-Results derived from each linear regression model showed that mis-splicing is influenced by features, not only at the intron level, but also at the gene and the transcript level:
-
-* Mis-splicing at the donor and acceptor splice sites tends to decrease as the length and the level of expression of the gene also increases. Similarly, the higher is the number of transcripts per gene, the less likely is to mis-splice any of their introns (references).
-* The rate whereby introns mis-splice also decreases when the biotype of the alternatively spliced isoform corresponds to protein-coding.
-* The longer is the intron, the more likely is to mis-splice it. This could be due to an increased probability of any longer intron to contain a higher number of cryptic splice sites of the canonical splicing signals within its sequence. Moreover, the strength of the donor and acceptor splicing signals, the level of conservation and constraint of the proximal intronic sequences also influences the frequency of mis-splicing.
-
-However, results from this analysis also show that the effect size produced by each predictor is different, being predominant the one generated by the mean conservation scores of the proximal intronic sequences as well as the strength of the splicing singals (MES).
-
-
-
-```{r lm, echo = FALSE, results = "asis"}
-
-
-for (tissue in project_clusters[1]) {
-  
-  cat('\n') 
-  cat("####", tissue, "\n")
-  
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                        "/results/pipeline3/missplicing-ratio/", 
-                        tissue, "/v105/")
-
-  plot_lm_single_tissue(cluster = tissue,
-                        folder_name = folder_name) %>% print()
-  
-  cat('\n')
-}
-
-
-```
-
-
-#### Summary Linear Models
+### Linear Models
 
 ```{r lm_all, echo = FALSE}
 
@@ -410,10 +118,7 @@ all_data %>%
 
 ```
 
-## Across Brain Tissues
-
-
-### Distribution of the estimate values in the prediction of mis-splicing across tissues
+## Distribution of the beta values
 
 To study any tissue differences in the effect that every each genic feature could be presenting during the generation of mis-splicing at both splice sites, we run two independent linear regression models per tissue to predict mis-splicing at donor and at acceptor splice sites, respectively. To reduce any biases in regards to the introns we used during each analysis, we only included in the linear models the introns that were common to all tissues (i.e. presented at least one read in at least one of the samples of each tissue).
 
@@ -428,27 +133,27 @@ Results showed that only the strength of the splicing signals and the conservati
 
 ```{r variance_common,  echo = FALSE}
 
-plot_estimate_variance(brain_tissues = T) %>% print()
+plot_estimate_variance(brain_tissues = F) %>% print()
 
 ```
 
 
 
 
-### Gene Enrichment {.tabset .tabset-fade .tabset-pills}
+## Gene Enrichment - Unique genes {.tabset .tabset-fade .tabset-pills}
 
-We then obtained the gene enrichment from the subset of genes corresponding to each intron category.
+GO Enrichment analyses of the genes from COMMON reference introns across all GTEx v8 tissues.
 
-Results from this analysis showed that all four unique subsets of genes did not present any relevant enrichment, **reinforcing the hypothesis that mis-splicing is not a product of a faulty genomic sequence. Instead, it might be due to an inadequate level of expression of the RBPs responsible for recognising the canonical splicing signals that are required for correct splicing.**
 
-#### Stats
+### Stats 
 
-Each category of unique reference introns belong to a unique set of genes. In this sense, any overlapping gene across different intronic categories were discarded.
+Per each category of introns (i.e. both, donor, acceptor and never) we obtained the genes that were unique to each category.
 
-```{r unique_genes, echo=F}
+This means that any overlapping gene across different intron categories was discarded and not included in the following GO enrichment analyses.
 
-  all_introns_tidy <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                            project_id, "/results/pipeline3/common_introns.rds"))
+```{r genes, echo=F}
+
+  all_introns_tidy <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/common_introns.rds"))
 
 
   all_genes <- all_introns_tidy  %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
@@ -474,7 +179,7 @@ Each category of unique reference introns belong to a unique set of genes. In th
   
   
   ## UNIQUE GENES
-  both_genes_unique <- setdiff(both_genes, c(never_genes, donor_genes, acceptor_genes) %>% unique())
+  both_genes_unique <- setdiff(both_genes, c(never_genes, donor_genes, acceptor_genes) %>% unique()) 
   donor_genes_unique <- setdiff(donor_genes, c(never_genes, both_genes, acceptor_genes) %>% unique())
   acceptor_genes_unique <- setdiff(acceptor_genes, c(never_genes, donor_genes, both_genes) %>% unique())
   never_genes_unique <- setdiff(never_genes, c(both_genes, donor_genes, acceptor_genes) %>% unique())
@@ -492,8 +197,8 @@ Each category of unique reference introns belong to a unique set of genes. In th
                           N_unique_genes = never_genes_unique %>% length()))
   
   all_genes_unique <- c(both_genes_unique,
-                        donor_genes_unique,
-                        acceptor_genes_unique,
+                        #donor_genes_unique,
+                        #acceptor_genes_unique,
                         never_genes_unique)
 
   
@@ -505,11 +210,13 @@ Each category of unique reference introns belong to a unique set of genes. In th
 
 ```
 
-#### 'Both' mis-spliced introns
+### 'Both' mis-spliced introns
 
 GO Enrichment analysis (gprofiler2) performed only over the unique subset of genes from introns that were mis-spliced at 'both' splice sites.
 
-This analysis was performed using a custom background of genes formed by the full set of genes corresponding to all common introns across tissues included in this analysis. The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
 
 ```{r GO_both, message=FALSE, echo=FALSE}
 
@@ -523,52 +230,53 @@ This analysis was performed using a custom background of genes formed by the ful
   gene_enrichment_both <- gprofiler2::gost(query = both_genes_unique,
                                            custom_bg = all_genes %>% unique(),
                                            organism = "hsapiens",
-                                           ordered_query = F,
+                                           ordered_query = T,
                                            correction_method = "bonferroni")
 
   if (!is.null(gene_enrichment_both$result)) {
     
-    # GO_enrichment <- gene_enrichment_both$result %>% 
-    #   filter(str_detect(source, pattern = "GO")) %>%
-    #   mutate(go_type = str_sub(source, start = 4, end = 5))
-    # 
-    # GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
-    #                                                              go_id = GO_enrichment$term_id,
-    #                                                              go_term = GO_enrichment$term_name),
-    #                                      threshold = 0.7)
-    # 
-    # df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
-    #                    y = GO_enrich_reduc,
-    #                    by.x = "term_id",
-    #                    by.y = "go_id",
-    #                    all.x = T)
-    # 
-    # ## JOIN with KEGG results and add pvalues
-    # 
-    # rbind(df_result %>%
-    #         as_tibble() %>%
-    #         dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
-    #         group_by(parent_term, source) %>%
-    #         mutate(p_value = p_value %>% max) %>%
-    #         ungroup() %>%
-    #         distinct(parent_term, .keep_all = T),
-    #       df_result %>% 
-    #         filter(source == "KEGG")%>%
-    #         dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
-    #         dplyr::rename(parent_term = term_name)) %>%
-    #   arrange(p_value) %>%
-    #   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
-    #   #filter(source == "KEGG") %>%
-    #   DT::datatable()
+    if (nrow(gene_enrichment_both$result) > 20) {
+      
+    GO_enrichment <- gene_enrichment_both$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_both$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
 
-    gene_enrichment_both$result %>% 
-      select(p_value, term_name, source) %>%
-      dplyr::mutate(p_value = p_value %>% as.double()) %>%
-      #dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
       arrange(p_value) %>%
-      dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
       DT::datatable() %>% 
       return()
+    
+    } else {
+      gene_enrichment_both$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+        DT::datatable() %>% 
+        return()
+    }
   } else {
     
     DT::datatable(data = data.frame(result = "No results to show")) %>% 
@@ -579,11 +287,13 @@ This analysis was performed using a custom background of genes formed by the ful
 
 ```
 
-#### 'Donor' mis-spliced introns
+### 'Donor' mis-spliced introns
 
-GO Enrichment analysis (gprofiler2) performed only over the unique genes from introns that can be mis-spliced at 'donor' splice sites across all brain tissues.
+GO Enrichment analysis (gprofiler2) performed only over the unique subset of genes from introns that were mis-spliced ONLY at 'donor' splice sites.
 
-This analysis has been performed using a custom background of genes formed by all genes from the dataset of all common unique introns found across all brain regions. The inputed genes were not ordered and the p-values have been Bonferroni corrected.
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
 
 ```{r GO_donor, message=FALSE, echo=F}
 
@@ -603,14 +313,47 @@ This analysis has been performed using a custom background of genes formed by al
 
   if (!is.null(gene_enrichment_donor$result)) {
     
-    gene_enrichment_donor$result %>% 
-      select(p_value, term_name,source) %>%
-      dplyr::mutate(p_value = p_value %>% as.double()) %>%
-      #dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+    if (nrow(gene_enrichment_donor$result) > 20) {
+      
+    GO_enrichment <- gene_enrichment_donor$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_acceptor$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
+
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
       arrange(p_value) %>%
-      dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
       DT::datatable() %>% 
       return()
+    } else {
+      gene_enrichment_donor$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+      DT::datatable() %>% 
+      return()
+    }
     
   } else {
     DT::datatable(data = data.frame(result = "No results to show")) %>% 
@@ -621,11 +364,13 @@ This analysis has been performed using a custom background of genes formed by al
 
 ```
 
-#### 'Acceptor' mis-spliced introns
+### 'Acceptor' mis-spliced introns
 
-GO Enrichment analysis (gprofiler2) performed only over the unique genes from introns that can be mis-spliced at 'acceptor' splice sites across all brain tissues.
+GO Enrichment analysis (gprofiler2) performed only over the unique subset of genes from introns that were mis-spliced ONLY at 'acceptor' splice sites.
 
-This analysis has been performed using a custom background of genes formed by all genes from the dataset of all common unique introns found across all brain regions. The inputed genes were not ordered and the p-values have been Bonferroni corrected.
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
 
 ```{r GO_acceptor, message=FALSE, echo=F}
 
@@ -643,15 +388,46 @@ This analysis has been performed using a custom background of genes formed by al
                                                correction_method = "bonferroni")
   if (!is.null(gene_enrichment_acceptor$result)) {
     
-    gene_enrichment_acceptor$result %>% 
-      select(p_value, term_name, source) %>%
-      dplyr::mutate(p_value = p_value %>% as.double()) %>%
-      #dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+    if(nrow(gene_enrichment_acceptor$result) > 20) {
+    GO_enrichment <- gene_enrichment_acceptor$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_acceptor$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
+
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
       arrange(p_value) %>%
-      dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
       DT::datatable() %>% 
       return()
-    
+    } else {
+      gene_enrichment_acceptor$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+      DT::datatable() %>% 
+      return()
+    }
   }  else {
     
     DT::datatable(data = data.frame(result = "No results to show")) %>% 
@@ -662,11 +438,13 @@ This analysis has been performed using a custom background of genes formed by al
 
 ```
 
-#### Never mis-spliced introns
+### Never mis-spliced introns
 
-GO Enrichment analysis (gprofiler2) performed only over the unique genes from introns that are never mis-spliced across brain tissues.
+GO Enrichment analysis (gprofiler2) performed only over the unique subset of genes from introns that were NEVER mis-spliced.
 
-This analysis has been performed using a custom background of genes formed by all genes from the dataset of all common unique introns found across all brain regions. The inputed genes were not ordered and the p-values have been Bonferroni corrected.
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
 
 ```{r GO_never, message=FALSE, echo=F}
 
@@ -684,15 +462,46 @@ This analysis has been performed using a custom background of genes formed by al
   
   if (!is.null(gene_enrichment_never$result)) {
     
-    gene_enrichment_never$result %>% 
-      select(p_value, term_name) %>%
-      dplyr::mutate(p_value = p_value %>% as.double()) %>%
-      #dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
+    if(nrow(gene_enrichment_acceptor$result) > 20) {
+    GO_enrichment <- gene_enrichment_never$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_never$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
+
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
       arrange(p_value) %>%
-      dplyr::mutate_if(is.numeric, funs(as.character(signif(., 3)))) %>%
-      DT::datatable() %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
+      DT::datatable() %>% 
       return()
-    
+    } else {
+      gene_enrichment_never$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+      DT::datatable() %>% 
+      return()
+    }
   }  else {
     
    DT::datatable(data.frame(result = "No results to show")) %>%
@@ -702,5 +511,365 @@ This analysis has been performed using a custom background of genes formed by al
   
 ```
 
+
+
+## Gene Enrichment - NON Unique genes {.tabset .tabset-fade .tabset-pills} 
+
+### Stats
+
+Due to the small number of genes that were unique to each intron category, we repeated the previous analysis but without removing the overlapping genes.
+
+
+```{r genes_nonunique, echo=F}
+
+  all_introns_tidy <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/common_introns.rds"))
+
+
+  all_genes <- all_introns_tidy  %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  
+  both_misspliced_junc <- all_introns_tidy %>%
+    filter(ref_type == "both")
+  both_genes <- both_misspliced_junc %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  
+  
+  donor_misspliced_junc <- all_introns_tidy %>%
+    filter(ref_type == "donor")
+  donor_genes <- donor_misspliced_junc %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  
+  
+  acceptor_misspliced_junc <- all_introns_tidy %>%
+    filter(ref_type == "acceptor")
+  acceptor_genes <- acceptor_misspliced_junc %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  
+  
+  never_misspliced_junctions <- all_introns_tidy %>%
+    filter(ref_type == "never")
+  never_genes <- never_misspliced_junctions %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  
+  
+  ## UNIQUE GENES
+  #both_genes_unique <- setdiff(both_genes, c(never_genes, donor_genes, acceptor_genes) %>% unique()) 
+  #donor_genes_unique <- setdiff(donor_genes, c(never_genes, both_genes, acceptor_genes) %>% unique())
+  #acceptor_genes_unique <- setdiff(acceptor_genes, c(never_genes, donor_genes, both_genes) %>% unique())
+  #never_genes_unique <- setdiff(never_genes, c(both_genes, donor_genes, acceptor_genes) %>% unique())
+  
+   df <- data.frame("Intron Type" = "both",
+                    N_unique_genes = both_genes %>% length())
+   df <- rbind(df,
+               data.frame("Intron Type" = "donor",
+                          N_unique_genes = donor_genes %>% length()))
+   df <- rbind(df,
+               data.frame("Intron Type" = "acceptor",
+                          N_unique_genes = acceptor_genes %>% length()))
+   df <- rbind(df,
+               data.frame("Intron Type" = "never",
+                          N_unique_genes = never_genes %>% length()))
+
+  
+  df %>% 
+    DT::datatable() %>% 
+    return()
+  
+  
+
+```
+
+### 'Both' mis-spliced introns
+
+GO Enrichment analysis (gprofiler2) performed over genes from introns that were mis-spliced at 'both' splice sites.
+
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
+
+```{r GO_both_nonunique, message=FALSE, echo=FALSE}
+
+ 
+  #######################################
+  ## GO ENRICHMENT
+  #######################################
+  
+  
+  ## 'Both' type genes
+  gene_enrichment_both <- gprofiler2::gost(query = both_genes,
+                                           custom_bg = all_genes %>% unique(),
+                                           organism = "hsapiens",
+                                           ordered_query = F,
+                                           correction_method = "bonferroni")
+
+  if (!is.null(gene_enrichment_both$result)) {
+    
+    GO_enrichment <- gene_enrichment_both$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_both$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
+
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
+      arrange(p_value) %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
+      DT::datatable() %>% 
+      return()
+    
+  } else {
+    
+    DT::datatable(data = data.frame(result = "No results to show")) %>% 
+      return()
+  }
+  
+  
+
+```
+
+### 'Donor' mis-spliced introns
+
+GO Enrichment analysis (gprofiler2) performed over genes from introns that were mis-spliced at 'donor' splice sites.
+
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
+
+```{r GO_donor_nonunique, message=FALSE, echo=F}
+
+ 
+  #######################################
+  ## GO ENRICHMENT
+  #######################################
+  
+  
+  ## 'Donor' type genes
+  gene_enrichment_donor <- gprofiler2::gost(query = donor_genes,
+                                            custom_bg = all_genes %>% unique(),
+                                            organism = "hsapiens",
+                                            ordered_query = F,
+                                            significant = T,
+                                            correction_method = "bonferroni")
+
+  if (!is.null(gene_enrichment_donor$result)) {
+    
+    if(nrow(gene_enrichment_donor$result) > 20) {
+      
+    GO_enrichment <- gene_enrichment_donor$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_donor$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
+
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
+      arrange(p_value) %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
+      DT::datatable() %>% 
+      return()
+    } else {
+      gene_enrichment_donor$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+      DT::datatable() %>% 
+      return()
+    }
+    
+  } else {
+    DT::datatable(data = data.frame(result = "No results to show")) %>% 
+      return()
+  }
+  
+  
+
+```
+
+### 'Acceptor' mis-spliced introns
+
+GO Enrichment analysis (gprofiler2) performed over genes from introns that were mis-spliced at 'accetor' splice sites.
+
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
+
+```{r GO_acceptor_nonunique, message=FALSE, echo=F}
+
+ 
+  #######################################
+  ## GO ENRICHMENT
+  #######################################
+  
+  
+  ## 'Acceptor' type genes
+  gene_enrichment_acceptor <- gprofiler2::gost(query = acceptor_genes,
+                                               custom_bg = all_genes %>% unique(),
+                                               organism = "hsapiens",
+                                               ordered_query = F,
+                                               correction_method = "bonferroni")
+  if (!is.null(gene_enrichment_acceptor$result)) {
+    
+    if(nrow(gene_enrichment_acceptor$result) > 20) {
+      
+    GO_enrichment <- gene_enrichment_acceptor$result %>% 
+     filter(str_detect(source, pattern = "GO")) %>%
+     mutate(go_type = str_sub(source, start = 4, end = 5))
+     
+    GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                 go_id = GO_enrichment$term_id,
+                                                                 go_term = GO_enrichment$term_name),
+                                         threshold = 0.7)
+     
+    df_result <- merge(x = gene_enrichment_acceptor$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                       y = GO_enrich_reduc,
+                       by.x = "term_id",
+                       by.y = "go_id",
+                       all.x = T)
+
+    ## JOIN with KEGG results and add pvalues
+
+    rbind(df_result %>%
+            as_tibble() %>%
+            dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+            group_by(parent_term, source) %>%
+            mutate(p_value = p_value %>% max) %>%
+            ungroup() %>%
+            distinct(parent_term, .keep_all = T),
+          df_result %>%
+            filter(source == "KEGG")%>%
+            dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+            dplyr::rename(parent_term = term_name)) %>%
+      arrange(p_value) %>%
+      mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+      #filter(source == "KEGG") %>%
+      DT::datatable() %>% 
+      return()
+    } else {
+      gene_enrichment_acceptor$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+      DT::datatable() %>% 
+      return()
+    }
+  }  else {
+    
+    DT::datatable(data = data.frame(result = "No results to show")) %>% 
+      return()
+  }
+  
+  
+
+```
+
+### Never mis-spliced introns
+
+GO Enrichment analysis (gprofiler2) performed over genes from introns that were NEVER mis-spliced.
+
+The background of genes used was formed by the ALL 16,003 genes from ALL common introns across GTEx v8 tissues.
+
+The inputed dataset of genes were not ordered and the p-values returned by the GO Enrichment analysis were corrected using the Bonferroni method.
+
+```{r GO_never_nonunique, message=FALSE, echo=F}
+
+  
+  #######################################
+  ## GO ENRICHMENT
+  #######################################
+
+  ## 'Never' type genes
+  gene_enrichment_never <- gprofiler2::gost(query = never_genes,
+                                            custom_bg = all_genes %>% unique(),
+                                            organism = "hsapiens",
+                                            ordered_query = F,
+                                            correction_method = "bonferroni")
+  
+  if (!is.null(gene_enrichment_never$result)) {
+    
+    if(nrow(gene_enrichment_never$result) > 20) {
+      
+      GO_enrichment <- gene_enrichment_never$result %>% 
+       filter(str_detect(source, pattern = "GO")) %>%
+       mutate(go_type = str_sub(source, start = 4, end = 5))
+       
+      GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                                   go_id = GO_enrichment$term_id,
+                                                                   go_term = GO_enrichment$term_name),
+                                           threshold = 0.7)
+       
+      df_result <- merge(x = gene_enrichment_never$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                         y = GO_enrich_reduc,
+                         by.x = "term_id",
+                         by.y = "go_id",
+                         all.x = T)
+  
+      ## JOIN with KEGG results and add pvalues
+  
+      rbind(df_result %>%
+              as_tibble() %>%
+              dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+              group_by(parent_term, source) %>%
+              mutate(p_value = p_value %>% max) %>%
+              ungroup() %>%
+              distinct(parent_term, .keep_all = T),
+            df_result %>%
+              filter(source == "KEGG")%>%
+              dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+              dplyr::rename(parent_term = term_name)) %>%
+        arrange(p_value) %>%
+        mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+        #filter(source == "KEGG") %>%
+        DT::datatable() %>% 
+        return()
+      
+    } else {
+      
+      gene_enrichment_never$result%>%
+        dplyr::select(term_name, p_value, query_size, intersection_size, source) %>%
+      DT::datatable() %>% 
+      return()
+      
+    }
+  }  else {
+    
+   DT::datatable(data.frame(result = "No results to show")) %>%
+      return()
+  }
+  
+  
+```
 
 

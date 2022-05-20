@@ -59,8 +59,6 @@ get_mode <- function(data) {
 
 
 
-
-
 get_base_data_annotated <- function(cluster,
                                     samples,
                                     all_split_reads,
@@ -113,50 +111,43 @@ get_base_data_annotated <- function(cluster,
   ################################################################
   ########### ANNOTATE SPLIT READS AND SAVE THE RESULT ###########
   ################################################################
-  
-  
-  # folder_save <- paste0(folder_save_path, "/", cluster)
-  # dir.create(file.path(folder_save), recursive = T, showWarnings = T)
-  
-  
+
   ## Filter by the current cluster's junctions and convert into GRanges format
   all_split_reads_cluster <- all_split_reads %>% 
     as_tibble() %>%
     dplyr::filter(junID %in% split_read_counts$junID) %>% 
     GenomicRanges::GRanges()
   
+  
   print(paste0(Sys.time(), " --> ", cluster, ". Split reads in recount2: ", length(all_split_reads_cluster)))
   
-  # ranges(all_split_reads_cluster) <- IRanges(start = start(all_split_reads_cluster) + 1, 
-  #                                            end = end(all_split_reads_cluster) + 1)
+
   
   ## Annnotate the split reads using dasper
   all_split_reads_details <- annotate_dasper(all_split_reads = all_split_reads_cluster, 
                                              edb = edb,
                                              blacklist_path = blacklist_path)
-  all_split_reads_details %>% 
-    dplyr::count(type)
-  
-  # saveRDS(object = all_split_reads_details, file = paste0(folder_save_path, "/", cluster, "_annotated_SR_details_",gtf_version, ".rds"))
   
   
+  all_split_reads_details <- all_split_reads_details %>% as_tibble()
+  
+  saveRDS(object = all_split_reads_details %>% dplyr::select(junID, type, width), 
+          file = paste0(folder_save_path, "/", cluster, "_annotated_SR_details_",
+                        gtf_version, ".rds"))
+  
+  
+  print(paste0(nrow(all_split_reads_details), " junctions NOT overlapping ambiguous genes!"))
   
   ## Apply the reads length filter
   all_split_reads_details <- apply_split_reads_length_filter(all_split_reads_details)
   
-  # all_split_reads_details %>%
-  #   dplyr::count(type)
-  # all_split_reads_details %>%
-  #   dplyr::count(type_recount)
-    
-  
+  ## Only keep annotated, novel donor and novel acceptor
   all_split_reads_details <- all_split_reads_details %>%
     as_tibble() %>%
     dplyr::filter(type %in% c("annotated", "novel_donor", "novel_acceptor")) %>%
     dplyr::select(seqnames, start, end, width, strand,
                   junID, ss5score, ss3score, type,
-                  gene_name_junction, gene_id_junction, tx_id_junction) %>%
-    dplyr::as_tibble()
+                  gene_name_junction, gene_id_junction, tx_id_junction)
   
   saveRDS(object = all_split_reads_details, 
           file = paste0(folder_save_path, "/", cluster, "_annotated_SR_details_length_", 
@@ -213,15 +204,7 @@ annotate_dasper <- function(all_split_reads,
   
   
   print(paste0(all_split_reads_details_104_w_symbol$type %>% unique(), " junction categories."))
-  all_split_reads_details_104_w_symbol
-  
-  ## Removing ambiguous genes
-  all_split_reads_details_104_w_symbol <- all_split_reads_details_104_w_symbol %>%
-    as.data.frame() %>%
-    dplyr::filter(type %in% c("novel_acceptor", "novel_donor", "annotated"))
-  
-  print(paste0(nrow(all_split_reads_details_104_w_symbol), " junctions NOT overlapping ambiguous genes!"))
-  
+ 
   ## Return tidy data
   return(all_split_reads_details_104_w_symbol)
 }
@@ -468,117 +451,87 @@ get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ense
 #' @export
 #'
 #' @examples
-get_split_reads_length <- function() {
+get_split_reads_length <- function(gtf_version = 105) {
   
-  gtex_tissues <- sort(readRDS(file = "/home/sruiz/PROJECTS/splicing-project/results/base_data/all_tissues_used.rda"))
+  projects_id <- sort(readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds"))
+
   
-  all_ann_junc_lengths <- NULL
-  all_donor_junc_lengths <- NULL
-  all_acceptor_junc_lengths <- NULL
-  all_combo_junc_lengths <- NULL
-  all_exonskip_junc_lengths <- NULL
-  all_none_junc_lengths <- NULL
+  df_all_lengths <- map_df(projects_id, function(project_id) {
+    
+    # project_id <- projects_id[3]
+    
+    clusters <- sort(readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                                           project_id, "/raw_data/all_clusters_used.rds")))
+    
+    map_df(clusters, function(cluster) { 
+      
+      # cluster <- clusters[1]
+      
+      print(cluster)
+      
+      ## LOAD ALL SPLIT READS ANNOTATED FOR THE CURRENT TISSUE
+      
+      all_split_reads_details <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
+                                                       "/results/base_data/", cluster, "/", cluster, "_annotated_SR_details_", gtf_version, ".rds"))
+      
+      all_split_reads_details <- all_split_reads_details %>% as_tibble() 
+      
+      
+      ## ANNOTATED 
+      annotated <- all_split_reads_details %>%
+        filter(type == "annotated") %>%
+        dplyr::select(junID, width)
+      
+    
+      ## NOVEL DONOR 
+      donor <- all_split_reads_details %>%
+        filter(type == "novel_donor") %>%
+        dplyr::select(junID, width)
+      
+      
+      ## NOVEL ACCEPTOR
+      acceptor <- all_split_reads_details %>%
+        filter(type == "novel_acceptor") %>%
+        dplyr::select(junID, width)
+      
+      
+      ## NOVEL COMBO
+      combo <- all_split_reads_details %>%
+        filter(type == "novel_combo") %>%
+        dplyr::select(junID, width)
+      
+
+      ## COMPLETELY UNANNOTATED
+      none <- all_split_reads_details %>%
+        filter(type == "unannotated") %>%
+        dplyr::select(junID, width)
+      
+      
+      rm(all_split_reads_details)
+      
+      ## JOIN ALL DATA
+      df <- data.frame(junID = none$junID,
+                       type = "completely unannotated",
+                       length = none$width)
+      df <- rbind(df,
+                  data.frame(junID = c(donor$junID, acceptor$junID, combo$junID),
+                             type = "partially annotated",
+                             length = c(donor$width, acceptor$width, combo$width)))
+      df <- rbind(df,
+                  data.frame(junID = annotated$junID,
+                             type = "annotated",
+                             length = annotated$width))
+      
+      return(df %>% mutate(cluster = cluster))
+    })
+    
+  })
   
-  all_data_per_tissue <- list()
+
+  saveRDS(object = df_all_lengths %>% distinct(junID, .keep_all = T),
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/junction_all_lengths.rds")
   
-  for (tissue in gtex_tissues) { # tissue = "Brain-FrontalCortex_BA9"
-    
-    print(tissue)
-    
-    ## LOAD ALL SPLIT READS ANNOTATED FOR THE CURRENT TISSUE
-    
-    all_split_reads_details_104 <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/results/base_data/", tissue, "/",
-                                                         tissue, "_annotated_SR_details_v104.rds"))
-    
-    all_split_reads_details_104$junc_cat %>% unique()
-    
-    
-    ## ANNOTATED 
-    annotated_v104 <- all_split_reads_details_104 %>%
-      as.data.frame() %>%
-      filter(junc_cat == "annotated") %>%
-      GenomicRanges::GRanges()
-    
-    all_ann_junc_lengths <- c(all_ann_junc_lengths, annotated_v104 %>% width())
-    
-    
-    ## NOVEL DONOR 
-    donor_v104 <- all_split_reads_details_104 %>%
-      as.data.frame() %>%
-      filter(junc_cat == "novel_donor") %>%
-      GenomicRanges::GRanges()
-    
-    all_donor_junc_lengths <- c(all_donor_junc_lengths, donor_v104 %>% width())
-    
-    
-    ## NOVEL ACCEPTOR
-    acceptor_v104 <- all_split_reads_details_104 %>%
-      as.data.frame() %>%
-      filter(junc_cat == "novel_acceptor") %>%
-      GenomicRanges::GRanges()
-    
-    all_acceptor_junc_lengths <- c(all_acceptor_junc_lengths, acceptor_v104 %>% width())
-    
-    
-    ## NOVEL COMBO
-    combo_v104 <- all_split_reads_details_104 %>%
-      as.data.frame() %>%
-      filter(junc_cat == "novel_combo") %>%
-      GenomicRanges::GRanges()
-    
-    all_combo_junc_lengths <- c(all_combo_junc_lengths, combo_v104 %>% width())
-    
-    
-    ## EXON SKIP
-    exonskip_v104 <- all_split_reads_details_104 %>%
-      as.data.frame() %>%
-      filter(junc_cat == "novel_exon_skip") %>%
-      GenomicRanges::GRanges()
-    
-    all_exonskip_junc_lengths <- c(all_exonskip_junc_lengths, exonskip_v104 %>% width())
-    
-    
-    ## COMPLETELY UNANNOTATED
-    none_v104 <- all_split_reads_details_104 %>%
-      as.data.frame() %>%
-      filter(junc_cat == "none") %>%
-      GenomicRanges::GRanges()
-    
-    all_none_junc_lengths <- c(all_none_junc_lengths, none_v104 %>% width())
-    
-    
-    ## JOIN ALL DATA
-    
-    all_data_per_tissue[[tissue]] <- list(annotated = annotated_v104 %>% width(), 
-                                          novel_donor = donor_v104 %>% width(),
-                                          novel_acceptor = acceptor_v104 %>% width(),
-                                          novel_combo = combo_v104 %>% width(),
-                                          exon_skip = exonskip_v104 %>% width(),
-                                          completely_unannotated = none_v104 %>% width())
-    
-    ########## FREE UP SOME MEMORY ########## 
-    
-    remove(all_split_reads_details_104)
-    remove(annotated_v104)
-    remove(donor_v104)
-    remove(acceptor_v104)
-    remove(combo_v104)
-    remove(exonskip_v104)
-    remove(none_v104)
-    
-  }
-  
-  saveRDS(object = all_data_per_tissue, 
-          file = "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/junction_all_lengths_per_tissue.rda")
-  print("File 1 saved!")
-  saveRDS(object = list(annotated = all_ann_junc_lengths,
-                        novel_donor = all_donor_junc_lengths,
-                        novel_acceptor = all_acceptor_junc_lengths,
-                        exon_skip = all_exonskip_junc_lengths,
-                        novel_combo = all_combo_junc_lengths,
-                        completely_unannotated = all_none_junc_lengths),
-          file = "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/junction_all_lengths_all_tissues.rda")
-  print("File 2 saved!")
+  print("File saved!")
   
 }
 
@@ -596,47 +549,28 @@ get_split_reads_length <- function() {
 #' @export
 #'
 #' @examples
-plot_junc_length <- function(plot_acum_all_tissues = F,
-                             plot_one_tissue = F,
-                             plot_category_all_tissues = F,
-                             tissue = "Brain-FrontalCortex_BA9") {
-  
-  if (plot_acum_all_tissues) {
+plot_junc_length <- function() {
+
     
     ## LOAD SOURCE DATA
-    junction_length_all_tissues <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/junction_all_lengths_all_tissues.rda")
+    df_all_lengths <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/junction_all_lengths.rds")
     
-    ## PLOTTING ALL CATEGORIES UP TO 100 NUCLEOTIDES
-    
-    df <- data.frame(type = "completely unannotated",
-                     length = junction_length_all_tissues$completely_unannotated)
-    df <- rbind(df,
-                data.frame(type = "partially unannotated",
-                           length = c(junction_length_all_tissues$novel_donor,
-                                      junction_length_all_tissues$novel_acceptor,
-                                      junction_length_all_tissues$exon_skip,
-                                      junction_length_all_tissues$novel_combo)))
-    df <- rbind(df,
-                data.frame(type = "annotated",
-                           length = junction_length_all_tissues$annotated))
-    
-    
-    df %>% nrow()
+
     ## Get length stats
     
     ########################
     ## SHORTER THAN 25 bp ##
     ########################
     
-    min_pu <- df %>% 
-      dplyr::filter(type == "partially unannotated") %>%
+    min_pu <- df_all_lengths %>% 
+      dplyr::filter(type == "novel") %>%
       dplyr::pull(length) 
     lv <- length(which(min_pu < 25))
     lt <- length(min_pu)
     print(paste0("Total PUJs ", lt, ". Shorter 25bp: ", lv, " = ", (lv * 100) / lt, "%"))
     print(paste0("PUJs length mode: ", get_mode(min_pu)))
     
-    min_a <- df %>% 
+    min_a <- df_all_lengths %>% 
       filter(type == "annotated") %>%
       pull(length) 
     lv <- length(which(min_a < 25))
@@ -656,15 +590,15 @@ plot_junc_length <- function(plot_acum_all_tissues = F,
     ## SHORTER THAN 28 bp ##
     ########################
     
-    min_pu <- df %>% 
-      dplyr::filter(type == "partially unannotated") %>%
+    min_pu <- df_all_lengths %>% 
+      dplyr::filter(type == "novel") %>%
       dplyr::pull(length) 
     lv <- length(which(min_pu < 28))
     lt <- length(min_pu)
     print(paste0("Total PUJs ", lt, ". Shorter 28bp: ", lv, " = ", (lv * 100) / lt, "%"))
     print(paste0("PUJs length mode: ", get_mode(min_pu)))
     
-    min_a <- df %>% 
+    min_a <- df_all_lengths %>% 
       filter(type == "annotated") %>%
       pull(length) 
     lv <- length(which(min_a < 28))
@@ -672,7 +606,7 @@ plot_junc_length <- function(plot_acum_all_tissues = F,
     print(paste0("Total annotated: ", lt, ". Shorter 28bp: ", lv, " = ", (lv * 100) / lt, "%"))
     print(paste0("Annotated length mode: ", get_mode(min_a)))
     
-    min_cu <- df %>% 
+    min_cu <- df_all_lengths %>% 
       filter(type == "completely unannotated") %>%
       pull(length) 
     lv <- length(which(min_cu < 28))
@@ -681,18 +615,18 @@ plot_junc_length <- function(plot_acum_all_tissues = F,
     print(paste0("None length mode: ", get_mode(min_cu)))
     
     ## HISTOGRAM PLOT
-    ggplot(df) + 
+    ggplot(df_all_lengths %>% filter(length <= 200)) + 
       geom_histogram(aes(x = length, fill = type), bins = 40, 
-                     dplyr::mutate(df, z = FALSE), 
+                     dplyr::mutate(df_all_lengths, z = FALSE), 
                      alpha = 0.7, position = "identity") +
       geom_histogram(aes(x = length, fill = type), binwidth = 5, 
-                     dplyr::mutate(df, z = TRUE), 
+                     dplyr::mutate(df_all_lengths, z = TRUE), 
                      alpha = 0.7, position = "identity") +
-      facet_zoom(xlim = c(0, 200), 
-                 ylim = c(0, 710000), 
-                 zoom.data = z, horizontal = FALSE) + 
+      ggforce::facet_zoom(xlim = c(0, 200), 
+                          ylim = c(0, 710000), 
+                          zoom.data = z, horizontal = FALSE) + 
       ## ggtitle(paste0("Length of the annotated, partially unannotated and completely unannotated junctions.\nAll samples used - ", tissue)) +
-      xlab("Gap size (in bp)") +
+      xlab("Implied intron length (in bp)") +
       ylab("Number of unique split reads") +
       theme_light() +
       theme(axis.line = element_line(colour = "black"), 
@@ -701,8 +635,8 @@ plot_junc_length <- function(plot_acum_all_tissues = F,
       guides(fill = guide_legend(title = "Split Reads Category: ")) +
       scale_fill_manual(values = c("#661100", "#009E73", "#999999"), 
                         name = "Category",
-                        breaks = c("annotated", "partially unannotated", "completely unannotated"),
-                        labels = c("annotated", "partially unannotated", "completely unannotated")) +
+                        breaks = c("annotated", "novel", "completely unannotated"),
+                        labels = c("annotated", "novel", "completely unannotated")) +
       theme(legend.position = "top",
             legend.text = element_text(size = 11)) 
     
@@ -710,225 +644,7 @@ plot_junc_length <- function(plot_acum_all_tissues = F,
     file_name <- "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/images/split_reads_length_all_tissues_100.png"
     ggplot2::ggsave(filename = file_name,
                     width = 183, height = 183, units = "mm", dpi = 300)
-  }
-  
-  if (plot_one_tissue) {
-    
-    ## LOAD SOURCE DATA
-    junction_length_per_tissue <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/junction_all_lengths_per_tissue.rda")
-    tissue <- "Brain-FrontalCortex_BA9"
-    
-    ## PLOTTING ALL CATEGORIES UP TO 100 NUCLEOTIDES
-    df_tissue <- data.frame(type = "completely unannotated",
-                            length = junction_length_per_tissue[[tissue]]$completely_unannotated)
-    df_tissue <- rbind(df_tissue,
-                       data.frame(type = "partially unannotated",
-                                  length = c(junction_length_per_tissue[[tissue]]$novel_donor,
-                                             junction_length_per_tissue[[tissue]]$exon_skip,
-                                             junction_length_per_tissue[[tissue]]$novel_combo,
-                                             junction_length_per_tissue[[tissue]]$novel_acceptor)))
-    df_tissue <- rbind(df_tissue,
-                       data.frame(type = "annotated",
-                                  length = junction_length_per_tissue[[tissue]]$annotated))
-    
-    ## STATS
-    min_pu <- df_tissue %>% 
-      filter(type == "partially unannotated") %>%
-      pull(length)
-    lv <- length(which(min_pu < 25))
-    lt <- length(min_pu)
-    print(paste0("Total PUJs ", lt, ". Shorter 25bp: ", lv, " = ", (lv * 100) / lt, "%"))
-    print(paste0("PUJs length mode: ", get_mode(min_pu)))
-    
-    min_a <- df_tissue %>% 
-      filter(type == "annotated") %>%
-      pull(length)
-    lv <- length(which(min_a < 25))
-    lt <- length(min_a)
-    print(paste0("Total Annotated ", lt, ". Shorter 25bp: ", lv, " = ", (lv * 100) / lt, "%"))
-    print(paste0("Annotated length mode: ", get_mode(min_a)))
-    
-    min_none <- df_tissue %>% 
-      filter(type == "completely unannotated") %>%
-      pull(length)
-    lv <- length(which(min_none < 25))
-    lt <- length(min_none)
-    print(paste0("Total None ", lt, ". Shorter 25bp: ", lv, " = ", (lv * 100) / lt, "%"))
-    print(paste0("None length mode: ", get_mode(min_a)))
-    
-    
-    
-    ## HISTOGRAM PLOT
-    ggplot(df_tissue) + 
-      geom_histogram(aes(x = length, fill = type), bins = 40, 
-                     dplyr::mutate(df_tissue, z = FALSE), 
-                     alpha = 0.7, position = "identity") +
-      geom_histogram(aes(x = length, fill = type), binwidth = 5, 
-                     dplyr::mutate(df_tissue, z = TRUE), 
-                     alpha = 0.7, position = "identity") +
-      facet_zoom(xlim = c(0, 200), 
-                 ylim = c(0, 15000), 
-                 zoom.data = z, horizontal = FALSE) + 
-      ## ggtitle(paste0("Length of the annotated, partially unannotated and completely unannotated junctions.\nAll samples used - ", tissue)) +
-      xlab("Gap size (in bp)") +
-      ylab("Number of unique split reads") +
-      theme_light() +
-      theme(axis.line = element_line(colour = "black"), 
-            axis.text = element_text(colour = "black", size = "12"),
-            axis.title = element_text(colour = "black", size = "12")) +
-      guides(fill = guide_legend(title = "Split Reads Category: ")) +
-      scale_fill_manual(values = c("#661100", "#009E73", "#999999"), 
-                        name = "Category",
-                        breaks = c("annotated", "partially unannotated", "completely unannotated"),
-                        labels = c("annotated", "partially unannotated", "completely unannotated")) +
-      theme(legend.position = "top",
-            legend.text = element_text(size = 11)) 
-    
-    ## Save plot
-    folder_path <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline1/images//")
-    dir.create(file.path(folder_path), showWarnings = T)
-    ggsave(paste0(folder_path, "/split_reads_length_", tissue, "_100.png"),
-           width = 183, height = 183, units = "mm", dpi = 300)
-    
-    
-    ###########################################################################
-    ## PLOTTING ONLY ANNOTATED AND PARTIALLY UNANNOTATED UP TO 1000 NUCLEOTIDES
-    ###########################################################################
-    
-    df_tissue <- data.frame(type = "partially unannotated",
-                            length = c(junction_length_per_tissue[[tissue]]$novel_donor,
-                                       junction_length_per_tissue[[tissue]]$novel_acceptor,
-                                       junction_length_per_tissue[[tissue]]$novel_combo,
-                                       junction_length_per_tissue[[tissue]]$exon_skip))
-    df_tissue <- rbind(df_tissue,
-                       data.frame(type = "annotated",
-                                  length = junction_length_per_tissue[[tissue]]$annotated))
-    
-    ggplot(df_tissue) + 
-      geom_histogram(aes(x = length, fill = type), bins = 40, dplyr::mutate(df_tissue, z = FALSE), alpha = 0.7, position = "identity") +
-      geom_histogram(aes(x = length, fill = type), binwidth = 5, dplyr::mutate(df_tissue, z = TRUE), alpha = 0.7, position = "identity") +
-      geom_vline(aes(xintercept = 100), dplyr::mutate(df_tissue, z = TRUE), linetype = "dashed", colour = "red") +
-      geom_text(aes(x = 100, label = "100 bp", y = 1500), dplyr::mutate(df_tissue, z = TRUE), colour = "black", check_overlap = T) +
-      facet_zoom(xlim = c(0, 1000), ylim = c(0, 2500), zoom.data = z, horizontal = FALSE) +
-      ## ggtitle(paste0("Length of the annotated and partially unannotated split reads.\nAll samples used - ", tissue)) +
-      xlab("Gap size (in bp)") +
-      ylab("Number of unique split reads") +
-      theme_light() +
-      theme(axis.line = element_line(colour = "black"),
-            axis.text = element_text(colour = "black", size = "12"),
-            axis.title = element_text(colour = "black", size = "12")) +
-      guides(fill = guide_legend(title = "Category")) +
-      scale_fill_manual(values = c("#00cc66", "#ff5050"),
-                        name = "Category",
-                        breaks = c("annotated", "partially unannotated"),
-                        labels = c("annotated", "partially unannotated"))  +
-      theme(legend.position = "top",
-            legend.text = element_text(size = 11)) 
-    
-    ## Save plot
-    folder_path <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline1/junction_counts/", tissue)
-    dir.create(file.path(folder_path), showWarnings = FALSE)
-    ggplot2::ggsave(paste0(folder_path, "/split_reads_length_", tissue, "_1000.png"),
-                    width = 183, height = 183, units = "mm", dpi = 300)
-    
-  }
-  
-  if (plot_category_all_tissues) {
-    
-    ## PLOTTING RESULTS PER JUNCTION TYPE AND TISSUE
-    junction_length_per_tissue <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/junction_all_lengths_per_tissue.rda")
-    
-    ## DECLARE SOME VARIABLES
-    type <- "novel_combo"
-    df <- data.frame(tissue = character(), length = integer())
-    
-    ## GET THE DATA
-    for (tissue in names(junction_length_per_tissue)) {
-      
-      print(tissue)
-      
-      if (!str_detect(tolower(tissue), "brain-cortex|brain-cerebellum")) {
-        
-        if (str_detect(tissue, "Brain")) {
-          switch(type, 
-                 annotated = {
-                   # case 'annotated' junctions here...
-                   df <- rbind(df, data.frame(tissue = tissue,
-                                              length = junction_length_per_tissue[[tissue]]$annotated))
-                 },
-                 partially_unannotated = {
-                   # case 'partially_unannotated' junctions here...
-                   df <- rbind(df,
-                               data.frame(tissue = tissue,
-                                          length = c(junction_length_per_tissue[[tissue]]$novel_donor,
-                                                     junction_length_per_tissue[[tissue]]$novel_acceptor,
-                                                     junction_length_per_tissue[[tissue]]$exon_skip,
-                                                     junction_length_per_tissue[[tissue]]$novel_combo)))
-                 },
-                 novel_donor = {
-                   # case 'novel_donor' junctions here...
-                   df <- rbind(df,
-                               data.frame(tissue = tissue,
-                                          length = junction_length_per_tissue[[tissue]]$novel_donor))
-                 },
-                 novel_acceptor = {
-                   # case 'novel_acceptor' here...
-                   df <- rbind(df,
-                               data.frame(tissue = tissue,
-                                          length = junction_length_per_tissue[[tissue]]$novel_acceptor))   
-                 },
-                 novel_combo = {
-                   # case 'novel_combination' junctions here...
-                   df <- rbind(df,
-                               data.frame(tissue = tissue,
-                                          length = junction_length_per_tissue[[tissue]]$novel_combo))
-                 },
-                 exon_skip = {
-                   # case 'novel_combination' junctions here...
-                   df <- rbind(df,
-                               data.frame(tissue = tissue,
-                                          length = junction_length_per_tissue[[tissue]]$exon_skip))
-                 }, {
-                   # case 'completely unannotated' junctions here...
-                   df <- rbind(df,
-                               data.frame(tissue = tissue,
-                                          length = junction_length_per_tissue[[tissue]]$completely_unannotated))
-                 }
-          )
-        }
-      }
-    }
-    
-    graph_title <- paste0("Length of the ",
-                          stringr::str_replace(type, "_", " "), " junctions\nOnly brain tissues")
-    
-    ################################################
-    ## Plotting information only from brain tissues
-    ################################################
-    
-    ggplot(df, aes(x = length, group = tissue, color = tissue)) + 
-      geom_freqpoly(binwidth = 10, position = "identity") +
-      facet_zoom(xlim = c(0, 500), horizontal = FALSE) +
-      ggtitle(graph_title) +
-      xlab("Gap size (in bp)") +
-      ylab("Number of unique split reads") +
-      theme_light() +
-      theme(axis.line = element_line(colour = "black"), 
-            axis.text = element_text(colour = "black", size = "12"),
-            axis.title = element_text(colour = "black", size = "12"),
-            legend.text = element_text(size = "11"),
-            legend.title = element_text(size = "12")) +
-      guides(color = guide_legend(title = "Tissue", override.aes = list(size = 3))) +
-      theme(legend.position = "top",
-            legend.text = element_text(size = 11)) 
-    
-    
-    
-    folder_path <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline1/images/")
-    dir.create(file.path(folder_path), showWarnings = T)
-    file_name <- paste0(folder_path, "distribution_",stringr::str_remove(type, "_"), "_split_reads.png")
-    ggplot2::ggsave(file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  }
+
 }
 
 
