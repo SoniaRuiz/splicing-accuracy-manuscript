@@ -66,6 +66,7 @@ The table below contains all RBPs whose uncorrected TPM value was significantly 
 Each value shown per RBP and tissue corresponds to the effect that age had over the uncorrected TPM value of that RBP in that particular tissue (i.e. it is the *beta* value for age returned by the linear model).
 
 ```{r lm_comparison, echo=FALSE}
+
   projects_id <- c("BRAIN", "MUSCLE", "BLOOD")
   
   df_tissues <- map_df(projects_id, function(project_id) {
@@ -73,18 +74,47 @@ Each value shown per RBP and tissue corresponds to the effect that age had over 
     # project_id <- projects_id[1]
     
     df_analysis_lm_uncorrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                                         "/results/pipeline3/rbp/tpm_lm.csv")) %>%
-      mutate(tissue = project_id)
+                                                         "/results/pipeline3/rbp/tpm_lm_all.csv")) %>%
+      mutate(tissue = project_id) %>%
+      drop_na() %>%
+      distinct(name, .keep_all = T)
     
     return(df_analysis_lm_uncorrected)
     
   })
   
-  df_tissues %>%
-    dplyr::select(Estimate, hgnc_symbol, tissue) %>%
+  df_tissues %>% 
+    filter(pval <= 0.05) %>%
+    dplyr::select(Estimate, name, tissue) %>%
     spread(key = tissue, value = Estimate) %>%
-    dplyr::rename(RBP = hgnc_symbol) %>%
+    dplyr::rename(RBP = name) %>%
     DT::datatable()
+  
+
+```
+
+The density plot below contains the same information than the table above. 
+
+Results from this plot show that BRAIN and BLOOD tissues present a more negative distribution of Beta values than MUSCLE. This suggests that, in BRAIN and BLOOD tissues, age produces a higher effect in the reduction of the level of expression of spliceosomal RBPs compared to MUSCLE.
+
+```{r lm_comparison_densityplot, echo=FALSE}
+
+
+  ggplot(df_tissues) + 
+    geom_density(aes(x=Estimate, fill=tissue), alpha = 0.7) +
+    facet_grid(vars(type))+ 
+    ggtitle("Age effect in the predicction of the uncorrected TPM values of\n208 spliceosomal RBPs across samples of each body region") +
+    xlab("Age Effect (i.e. estimate)") +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL,
+                               ncol = 3, 
+                               nrow = 1))
   
 ```
 

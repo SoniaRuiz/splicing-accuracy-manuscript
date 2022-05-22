@@ -2,7 +2,7 @@
 ## RUNNING ANALYSES USING THE INTRON DATABASE ######
 ####################################################
 
-get_contamination_rates <- function(all_tissues = F) {
+get_contamination_rates <- function(all_tissues = T) {
   
   # cluster <- gtex_tissues[17]
   # all_split_reads_details_81 <- readRDS(file = paste0(folder_root, "base_data/", 
@@ -20,7 +20,7 @@ get_contamination_rates <- function(all_tissues = F) {
     
     # project_id <- all_projects[1]
     
-    #print(paste0(project_id))
+    print(paste0(Sys.time(), " - ", project_id))
     
     all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                            project_id, "/raw_data/all_clusters_used.rds"))
@@ -30,7 +30,7 @@ get_contamination_rates <- function(all_tissues = F) {
       versions <- c("97")
       dates <- c("26-May-2019")
     } else {
-      all_clusters <- all_clusters[5]
+      all_clusters <- all_clusters[6]
       versions <- c("76", "81", "90", "97")
       dates <- c("18-Jul-2014", "07-Jul-2015", "28-Jul-2017", "26-May-2019")
     }
@@ -38,7 +38,7 @@ get_contamination_rates <- function(all_tissues = F) {
     map_df(all_clusters, function(cluster) {
       
       # cluster <- all_clusters[1]
-      #print(cluster)
+      print(paste0(cluster))
       
       folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                             project_id, "/results/pipeline3/missplicing-ratio/", cluster)
@@ -46,15 +46,14 @@ get_contamination_rates <- function(all_tissues = F) {
       map_df(versions, function(version) {
         
         # version <- versions[1]
-        #print(version)
-        
+        print(paste0("v", version))
         
         db_introns_old <- readRDS(file = paste0(folder_name, "/v", version, "/", cluster, "_db_introns.rds"))
         db_novel_old <- readRDS(file = paste0(folder_name, "/v", version, "/", cluster, "_db_novel.rds"))
         
         
-        db_introns_new <- readRDS(file = paste0(folder_name, "/v106/", cluster, "_db_introns.rds"))
-        db_novel_new <- readRDS(file = paste0(folder_name, "/v106/", cluster, "_db_novel.rds"))
+        db_introns_new <- readRDS(file = paste0(folder_name, "/v105/", cluster, "_db_introns.rds"))
+        db_novel_new <- readRDS(file = paste0(folder_name, "/v105/", cluster, "_db_novel.rds"))
         
         
         in_annotation <- db_introns_new %>%

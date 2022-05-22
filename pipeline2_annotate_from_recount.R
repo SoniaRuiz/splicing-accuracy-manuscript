@@ -554,16 +554,16 @@ plot_junc_length <- function() {
     
     ## LOAD SOURCE DATA
     df_all_lengths <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/junction_all_lengths.rds")
-    
+    df_all_lengths %>% head()
 
-    ## Get length stats
     
     ########################
+    ## STATS              ##
+    ########################
+    
     ## SHORTER THAN 25 bp ##
-    ########################
-    
     min_pu <- df_all_lengths %>% 
-      dplyr::filter(type == "novel") %>%
+      dplyr::filter(type == "partially annotated") %>%
       dplyr::pull(length) 
     lv <- length(which(min_pu < 25))
     lt <- length(min_pu)
@@ -578,7 +578,7 @@ plot_junc_length <- function() {
     print(paste0("Total annotated: ", lt, ". Shorter 25bp: ", lv, " = ", (lv * 100) / lt, "%"))
     print(paste0("Annotated length mode: ", get_mode(min_a)))
     
-    min_cu <- df %>% 
+    min_cu <- df_all_lengths %>% 
       filter(type == "completely unannotated") %>%
       pull(length) 
     lv <- length(which(min_cu < 25))
@@ -591,7 +591,7 @@ plot_junc_length <- function() {
     ########################
     
     min_pu <- df_all_lengths %>% 
-      dplyr::filter(type == "novel") %>%
+      dplyr::filter(type == "partially annotated") %>%
       dplyr::pull(length) 
     lv <- length(which(min_pu < 28))
     lt <- length(min_pu)
@@ -615,16 +615,24 @@ plot_junc_length <- function() {
     print(paste0("None length mode: ", get_mode(min_cu)))
     
     ## HISTOGRAM PLOT
-    ggplot(df_all_lengths %>% filter(length <= 200)) + 
-      geom_histogram(aes(x = length, fill = type), bins = 40, 
-                     dplyr::mutate(df_all_lengths, z = FALSE), 
-                     alpha = 0.7, position = "identity") +
-      geom_histogram(aes(x = length, fill = type), binwidth = 5, 
-                     dplyr::mutate(df_all_lengths, z = TRUE), 
-                     alpha = 0.7, position = "identity") +
-      ggforce::facet_zoom(xlim = c(0, 200), 
-                          ylim = c(0, 710000), 
-                          zoom.data = z, horizontal = FALSE) + 
+    df_all_lengths_tidy <- df_all_lengths %>% 
+      filter(length <= 200) %>%
+      mutate(type = factor(type, levels = c("completely unannotated", "partially annotated", "annotated"))) 
+    saveRDS(object = df_all_lengths_tidy,
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/junction_tidy_lengths.rds")
+    
+    ggplot(data = df_all_lengths_tidy) + 
+      geom_histogram(aes(x = length, fill = type), 
+                     bins = 180,
+                     #dplyr::mutate(df_all_lengths, z = FALSE), 
+                     alpha = 0.7, 
+                     position = "identity") +
+      #geom_histogram(aes(x = length, fill = type), binwidth = 5, 
+      #               dplyr::mutate(df_all_lengths, z = TRUE), 
+      #               alpha = 0.7, position = "identity") +
+      ##ggforce::facet_zoom(xlim = c(0, 200), 
+      ##                    ylim = c(0, 710000), 
+      ##                    zoom.data = z, horizontal = FALSE) + 
       ## ggtitle(paste0("Length of the annotated, partially unannotated and completely unannotated junctions.\nAll samples used - ", tissue)) +
       xlab("Implied intron length (in bp)") +
       ylab("Number of unique split reads") +
@@ -632,18 +640,20 @@ plot_junc_length <- function() {
       theme(axis.line = element_line(colour = "black"), 
             axis.text = element_text(colour = "black", size = "12"),
             axis.title = element_text(colour = "black", size = "12")) +
-      guides(fill = guide_legend(title = "Split Reads Category: ")) +
+      guides(fill = guide_legend(title = "Split Reads Category: ",
+                                 ncol = 3,
+                                 nrow = 2)) +
       scale_fill_manual(values = c("#661100", "#009E73", "#999999"), 
                         name = "Category",
-                        breaks = c("annotated", "novel", "completely unannotated"),
-                        labels = c("annotated", "novel", "completely unannotated")) +
+                        breaks = c("annotated", "partially annotated", "completely unannotated"),
+                        labels = c("annotated", "partially unannotated", "completely unannotated")) +
       theme(legend.position = "top",
-            legend.text = element_text(size = 11)) 
+            legend.text = element_text(size = 11)) %>%
+      return()
     
     ## Save plot
-    file_name <- "/home/sruiz/PROJECTS/splicing-project/results/pipeline1/images/split_reads_length_all_tissues_100.png"
-    ggplot2::ggsave(filename = file_name,
-                    width = 183, height = 183, units = "mm", dpi = 300)
+    file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/images/junction_length.png"
+    ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
 
 }
 

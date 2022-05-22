@@ -362,155 +362,187 @@ RBP_corrected_TPM_analysis <- function(project_id) {
   
 }
 
-RBP_uncorrected_TPM_lm <- function(project_id) {
+RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN", "MUSCLE", "BLOOD")) {
   
-  
-  ## Load and tidy the uncorrected TPMs
-  ## TPMs here should be uncorrected as the covariates are going to be included in the linear models
-  tpm_uncorrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                            project_id, "/results/pipeline3/rbp/tpm.csv"))
-
-  
-  tpm_uncorrected <- tpm_uncorrected %>%
-    dplyr::rename(gene = "X") %>%
-    as_tibble()
- 
-  
-
-  ## Load and tidy the sample metadata
-  sample_metadata <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                            project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
-                              fileEncoding = "UTF-8") %>% as_tibble()
-  
- 
-  ## Check the samples are the same
-  identical(x = names(tpm_uncorrected)[-1],
-            y = names(sample_metadata)[-1])
-  
-  
-  
-  RBPs <- (tpm_uncorrected$gene)
-  
-  # tpm_uncorrected[rowSums(tpm_uncorrected[, c(2:ncol(tpm_uncorrected))]),]
-  
-  ## Obtain values and run lm
-  df_lm_output <- map_df(RBPs, function(RBP) {
+  for (project_id in projects_id) {
+    ## project_id <- "BRAIN"
     
-    # RBP <- RBPs[1]
+    ## Load and tidy the uncorrected TPMs
+    ## TPMs here should be uncorrected as the covariates are going to be included in the linear models
+    tpm_uncorrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                                              project_id, "/results/pipeline3/rbp/tpm.csv"))
+  
     
-    print(RBP)
+    tpm_uncorrected <- tpm_uncorrected %>%
+      dplyr::rename(gene = "X") %>%
+      as_tibble()
+   
     
-    tpm <- tpm_uncorrected %>%
-      filter(gene == RBP) %>%
-      mutate(gene = "tpm")
+  
+    ## Load and tidy the sample metadata
+    sample_metadata <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                                              project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
+                                fileEncoding = "UTF-8") %>% as_tibble()
     
-    if (rowSums(tpm[, c(2:ncol(tpm))]) != 0) {
+   
+    ## Check the samples are the same
+    identical(x = names(tpm_uncorrected)[-1],
+              y = names(sample_metadata)[-1])
     
-      df <- rbind(tpm %>% 
-                    dplyr::rename(covariates = "gene"),
-                  sample_metadata) %>%
-        gather(sample, value, -covariates)  %>%
-        spread(key = covariates, value) %>%
-        dplyr::mutate(gtex.age = gtex.age %>% as.double(),
-                      gtex.dthhrdy = gtex.dthhrdy %>% as.double(),
-                      gtex.sex = gtex.sex %>% as.double(),
-                      gtex.smcenter = gtex.smcenter %>% as.double(),
-                      gtex.smgebtch = gtex.smgebtch %>% as.double(),
-                      gtex.smgebtchd = gtex.smgebtchd %>% as.double(),
-                      gtex.smnabtch = gtex.smnabtch %>% as.double(),
-                      gtex.smnabtchd = gtex.smnabtchd %>% as.double(),
-                      gtex.smnabtcht = gtex.smnabtcht %>% as.double(),
-                      gtex.smrin = gtex.smrin %>% as.double(),
-                      tpm = tpm %>% as.double()) %>%
-        as_tibble()
+    
+    
+    RBPs <- (tpm_uncorrected$gene)
+    
+    # tpm_uncorrected[rowSums(tpm_uncorrected[, c(2:ncol(tpm_uncorrected))]),]
+    
+    ## Obtain values and run lm
+    df_lm_output <- map_df(RBPs, function(RBP) {
       
-      if (project_id == "MUSCLE") {
-        # print(df)
-        lm_output <- lm(tpm ~ 
-                          gtex.smrin + 
-                          gtex.smcenter +
-                          gtex.smgebtch +
-                          gtex.smgebtchd +
-                          gtex.smnabtch +
-                          gtex.smnabtchd +
-                          gtex.smnabtcht +
-                          gtex.dthhrdy +
-                          gtex.sex +
-                          #gtex.smtsd +
-                          gtex.age,
-                        data = df)
-      } else {
-        # print(df)
-        lm_output <- lm(tpm ~ 
-                          gtex.smrin + 
-                          gtex.smcenter +
-                          gtex.smgebtch +
-                          gtex.smgebtchd +
-                          gtex.smnabtch +
-                          gtex.smnabtchd +
-                          gtex.smnabtcht +
-                          gtex.dthhrdy +
-                          gtex.sex +
-                          gtex.smtsd +
-                          gtex.age,
-                        data = df)
+      # RBP <- RBPs[1]
+      
+      print(RBP)
+      
+      tpm <- tpm_uncorrected %>%
+        filter(gene == RBP) %>%
+        mutate(gene = "tpm")
+      
+      if (rowSums(tpm[, c(2:ncol(tpm))]) != 0) {
+      
+        df <- rbind(tpm %>% 
+                      dplyr::rename(covariates = "gene"),
+                    sample_metadata) %>%
+          gather(sample, value, -covariates)  %>%
+          spread(key = covariates, value) %>%
+          dplyr::mutate(gtex.age = gtex.age %>% as.double(),
+                        gtex.dthhrdy = gtex.dthhrdy %>% as.double(),
+                        gtex.sex = gtex.sex %>% as.double(),
+                        gtex.smcenter = gtex.smcenter %>% as.double(),
+                        gtex.smgebtch = gtex.smgebtch %>% as.double(),
+                        gtex.smgebtchd = gtex.smgebtchd %>% as.double(),
+                        gtex.smnabtch = gtex.smnabtch %>% as.double(),
+                        gtex.smnabtchd = gtex.smnabtchd %>% as.double(),
+                        gtex.smnabtcht = gtex.smnabtcht %>% as.double(),
+                        gtex.smrin = gtex.smrin %>% as.double(),
+                        tpm = tpm %>% as.double()) %>%
+          as_tibble()
+        
+        if (project_id == "MUSCLE") {
+          # print(df)
+          lm_output <- lm(tpm ~ 
+                            gtex.smrin + 
+                            gtex.smcenter +
+                            gtex.smgebtch +
+                            gtex.smgebtchd +
+                            gtex.smnabtch +
+                            gtex.smnabtchd +
+                            gtex.smnabtcht +
+                            gtex.dthhrdy +
+                            gtex.sex +
+                            #gtex.smtsd +
+                            gtex.age,
+                          data = df)
+        } else {
+          # print(df)
+          lm_output <- lm(tpm ~ 
+                            gtex.smrin + 
+                            gtex.smcenter +
+                            gtex.smgebtch +
+                            gtex.smgebtchd +
+                            gtex.smnabtch +
+                            gtex.smnabtchd +
+                            gtex.smnabtcht +
+                            gtex.dthhrdy +
+                            gtex.sex +
+                            gtex.smtsd +
+                            gtex.age,
+                          data = df)
+        }
+        
+        
+        lm_output <- lm_output %>% summary()
+        df_lm_output <- lm_output$coefficients %>% as_tibble(rownames = "covariate")
+        
+        # cor(df)
+        df_lm_output <- df_lm_output %>%
+          mutate(RBP_ID = RBP) %>%
+          dplyr::select(covariate, Estimate, pval = `Pr(>|t|)`, RBP_ID)
+        
+        return(df_lm_output)
       }
       
+    }) 
+    
+    
+    # any(df_lm_output$pval > 0.05)
+    
+    
+    ## Filter by age covariate and order
+    df_lm_output_age <- df_lm_output %>%
+      filter( #pval <= 0.05,
+              str_detect(string = covariate, pattern = "gtex.age")) %>%
+      arrange(Estimate)
+    
+    if (!exists("RBPs_tidy")) {
+
+      ensembl105 <- biomaRt::useEnsembl(biomart = 'genes', 
+                                        dataset = 'hsapiens_gene_ensembl',
+                                        version = 105)
       
-      lm_output <- lm_output %>% summary()
-      df_lm_output <- lm_output$coefficients %>% as_tibble(rownames = "covariate")
+      RBPs_tidy <- xlsx::read.xlsx(file = 'markdowns/41586_2020_2077_MOESM3_ESM.xlsx', sep = '\t', header = TRUE,
+                              sheetIndex = 1) %>%
+        as_tibble() %>%
+        mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
+        dplyr::select(name, ensembl_gene_id = id, type) %>%
+        distinct(name, .keep_all = T)
       
-      # cor(df)
-      df_lm_output <- df_lm_output %>%
-        mutate(RBP_ID = RBP) %>%
-        dplyr::select(covariate, Estimate, pval = `Pr(>|t|)`, RBP_ID)
+      RBPs <- read.table(file = 'markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
+        as_tibble() %>%
+        distinct(Target.gene.symbol)
+
+      RBPs <- biomaRt::getBM(
+        attributes = c('ensembl_gene_id', 'hgnc_symbol'),
+        filters = 'hgnc_symbol',
+        values = RBPs$Target.gene.symbol %>% unique,
+        mart = ensembl105
+      )
       
-      return(df_lm_output)
+      RBPs_tidy <- left_join(x = RBPs_tidy, 
+                             y = RBPs, 
+                             by = c("ensembl_gene_id" = "ensembl_gene_id"))
     }
     
-  }) 
+    ## Add gene SYMBOL info
+    df_lm_age_tidy <- left_join(x = df_lm_output_age, 
+                                y = RBPs_tidy %>% drop_na(), 
+                                by = c("RBP_ID" = "ensembl_gene_id")) %>%
+      group_by(RBP_ID) %>%
+      distinct(pval, .keep_all = T)
+    
+    
+    write_csv(x = df_lm_age_tidy,
+              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                            "/results/pipeline3/rbp/tpm_lm_all.csv"))
   
-  
-  # any(df_lm_output$pval > 0.05)
-  
-  
-  ## Filter by age covariate and order
-  df_lm_output_age <- df_lm_output %>%
-    filter( pval <= 0.05,
-            str_detect(string = covariate, pattern = "gtex.age")) %>%
-    arrange(Estimate)
-  
-  
-  ## Add gene SYMBOL info
-  df_lm_age_tidy <- left_join(x = df_lm_output_age, 
-                              y = RBPs_tidy, 
-                              by = c("RBP_ID" = "ensembl_gene_id")) %>%
-    group_by(RBP_ID) %>%
-    distinct(pval, .keep_all = T)
-  
-  
-  write_csv(x = df_lm_age_tidy,
-            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                          "/results/pipeline3/rbp/tpm_lm.csv"))
+  }
   
   ###############################################
   ## Get RBPs that decrease expression with age
   ###############################################
   
   
-  RBP_decrease <- df_lm_age_tidy %>%
-    filter(Estimate < 0) %>%
-    arrange(desc(abs(Estimate)))
-  
-  RBP_increase <- df_lm_age_tidy %>%
-    filter(Estimate > 0) %>%
-    arrange(desc(Estimate))
-  
-  intersect(RBP_decrease$hgnc_symbol,
-            RBP_increase$hgnc_symbol)
-  
-  RBP_decrease$hgnc_symbol %>% unique() %>% sort()
-  RBP_increase$hgnc_symbol %>% unique() %>% sort()
+  # RBP_decrease <- df_lm_age_tidy %>%
+  #   filter(Estimate < 0) %>%
+  #   arrange(desc(abs(Estimate)))
+  # 
+  # RBP_increase <- df_lm_age_tidy %>%
+  #   filter(Estimate > 0) %>%
+  #   arrange(desc(Estimate))
+  # 
+  # intersect(RBP_decrease$hgnc_symbol,
+  #           RBP_increase$hgnc_symbol)
+  # 
+  # RBP_decrease$hgnc_symbol %>% unique() %>% sort()
+  # RBP_increase$hgnc_symbol %>% unique() %>% sort()
   
 
 }
