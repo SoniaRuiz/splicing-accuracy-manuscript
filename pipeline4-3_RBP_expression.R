@@ -201,7 +201,7 @@ ensembl106 <- biomaRt::useEnsembl(biomart = 'genes',
 
 
 ## Load the RBPs and add the ensemblID
-RBPs <- read.table(file = 'markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
+RBPs <- read.table(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/experiment_report_2022_3_28_16h_50m.tsv', sep = '\t', header = TRUE) %>%
   as_tibble() %>%
   distinct(Target.gene.symbol)
 
@@ -488,7 +488,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN", "MUSCLE", "BLOOD")) 
                                         dataset = 'hsapiens_gene_ensembl',
                                         version = 105)
       
-      RBPs_tidy <- xlsx::read.xlsx(file = 'markdowns/41586_2020_2077_MOESM3_ESM.xlsx', sep = '\t', header = TRUE,
+      RBPs_tidy <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/41586_2020_2077_MOESM3_ESM.xlsx', sep = '\t', header = TRUE,
                               sheetIndex = 1) %>%
         as_tibble() %>%
         mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%

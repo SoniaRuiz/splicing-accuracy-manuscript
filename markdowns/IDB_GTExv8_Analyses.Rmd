@@ -66,6 +66,15 @@ all_data %>%
 
 ```
 
+### Modulo
+
+```{r modulo_all, echo = FALSE}
+
+get_modulo_tissues_v1() %>% print()
+#get_modulo_tissues_v2() %>% print()
+
+```
+
 
 ### MSR
 

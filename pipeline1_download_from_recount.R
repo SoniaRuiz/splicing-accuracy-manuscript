@@ -668,6 +668,7 @@ prepare_gtex_samples <- function() {
     
     for (project in all_projects) {
       
+      # project <- "BRAIN"
       clusters_used <- NULL
       
       clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
@@ -694,6 +695,7 @@ prepare_gtex_samples <- function() {
       }
       
       clusters_used <- clusters_used %>% unique()
+      print(paste0(Sys.time(), " - ", project, " finished!"))
       saveRDS(object = clusters_used,
               file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                             project, "/raw_data/all_clusters_used.rds"))

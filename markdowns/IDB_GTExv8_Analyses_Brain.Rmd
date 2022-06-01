@@ -145,11 +145,7 @@ for (tissue in gtex_tissues[5]) {
   cat('\n') 
   cat("####", tissue, "\n")
   
-  folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                        project_id, "/results/pipeline3/missplicing-ratio/", tissue, "/v", gtf_version, "/")
-
-  plot_distances_modulo(cluster = tissue,
-                        folder_name = folder_name) %>% print()
+  get_modulo() %>% print()
   
   cat('\n')
   
