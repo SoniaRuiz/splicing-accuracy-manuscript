@@ -1654,6 +1654,8 @@ get_missplicing_ratio_PC <- function()  {
   df %>% head()
   df %>% nrow()
   
+  
+  
   df_tidy <- df %>%
     filter(protein_coding %in% c(0,100)) %>%
     mutate(type_PC = ifelse(protein_coding == 100, "protein coding (PC)", "non PC")) 
@@ -1747,7 +1749,6 @@ get_missplicing_ratio_PC <- function()  {
   ggplot2::ggsave(filename = file_name, width = 183, height = 143, units = "mm", dpi = 300)
   
 }
-
 
 get_lm_single_tissue <- function() {
   
@@ -1887,7 +1888,6 @@ get_lm_single_tissue <- function() {
   
 }
 
-
 get_estimate_variance <- function() {
   
 
@@ -1987,6 +1987,8 @@ get_estimate_variance <- function() {
     plot %>% return()
   }
 }
+
+
 
 ####################################################
 ## RUNNING ANALYSES USING THE INTRON DATABASE ######
@@ -2423,8 +2425,8 @@ get_estimate_variance <- function(gtf_version = 105,
       #MSR_Donor_list[[tissue]] <- model
       
       
-      ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
-      model$coefficients[-ind_sign] <- 0
+      #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
+      #model$coefficients[-ind_sign] <- 0
       
       MSR_Donor <- data.frame(tissue = cluster,
                                     intron_length = model$coefficients["intron_length"] %>% unname(),
@@ -2460,8 +2462,8 @@ get_estimate_variance <- function(gtf_version = 105,
       #model %>% summary() %>% print()
       #MSR_Acceptor_list[[tissue]] <- model
       
-      ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
-      model$coefficients[-ind_sign] <- 0
+      #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
+      #model$coefficients[-ind_sign] <- 0
       
       MSR_Acceptor <- data.frame(tissue = cluster,
                                        intron_length = model$coefficients["intron_length"] %>% unname(),

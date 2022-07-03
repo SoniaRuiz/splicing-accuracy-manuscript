@@ -1,5 +1,5 @@
 ---
-title: "Age Stratification - MUSCLE"
+title: "Age Stratification - BRAIN"
 author: "Sonia Garcia-Ruiz"
 date: "27/03/2022"
 output: 
@@ -22,7 +22,7 @@ knitr::opts_chunk$set(echo = TRUE)
 library(tidyverse)
 library(rutils)
 
-project_id <- "MUSCLE"
+project_id <- "BRAIN"
 
 source(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R"))
 
@@ -270,7 +270,7 @@ There is a slight increase with age of highly-misspliced introns (peak at MSR_D 
 
 ```{r MSRD_Plot, warning=FALSE}
 
-age_stratification_plot_MSRD(df = df_age_groups_intron_tidy,
+age_stratification_plot_MSR(df = df_age_groups_intron_tidy,
                              age_levels = c("20-39","40-59","60-79" )) %>% 
   print()
 
@@ -402,7 +402,9 @@ The approach followed consisted of:
 * The custom background used was formed by all genes from all common introns across age super-groups.
 
 
-## MSR_D increasing with age
+## MSR_D 
+
+GO Enrichment of genes that contain introns whose mis-splicing at the donor increases with age.
 
 ```{r GO_MRSD, warning = FALSE, message = F, echo = FALSE}
 
@@ -411,7 +413,6 @@ The approach followed consisted of:
 #####################################
 
 df_MSRD <- df_age_groups_intron_tidy %>%
-                               filter(ref_junID %in% common_ref) %>%
   select(ref_junID,
          sample_type,
          MSR_D = ref_missplicing_ratio_tissue_ND,
@@ -485,12 +486,102 @@ rbind(df_result %>%
 ```
 
 
-## MSR_A increasing with age
+## MSR_D UNIQUE TO BRAIN
+
+GO Enrichment of genes UNIQUE to brain that contain introns whose mis-splicing at the donor increases with age.
+
+```{r GO_MRSD_uniquebrain, warning = FALSE, message = F, echo = FALSE}
+
+#####################################
+## NEVER MISSPLICED - GENE ENRICHMENT
+#####################################
+
+
+only_brain_ref <- setdiff(brain_df_age_groups_intron_tidy$ref_junID, 
+                          c(muscle_df_age_groups_intron_tidy$ref_junID,
+                            blood_df_age_groups_intron_tidy$ref_junID))
+
+df_MSRD <- df_age_groups_intron_tidy %>%
+  filter(ref_junID %in% only_brain_ref) %>%
+  select(ref_junID,
+         sample_type,
+         MSR_D = ref_missplicing_ratio_tissue_ND,
+         gene_name) %>%
+  mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+  spread(sample_type, MSR_D)
+
+
+genes_MSRD_increasing <- df_MSRD %>%
+  filter(`20-39` < `40-59`,
+         `40-59` < `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name) 
+
+
+genes_MSRD_dcreasing <- df_MSRD %>%
+  filter(`20-39` > `40-59`,
+         `40-59` > `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name)
+
+
+
+gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRD_increasing$gene_name, 
+                                                    genes_MSRD_dcreasing$gene_name),
+                                    custom_bg = bg_genes,
+                                    organism = "hsapiens",
+                                    ordered_query = F,
+                                    correction_method = "bonferroni",
+                                    significant = T)
+
+GO_enrichment <- gene_enrichment$result %>% filter(str_detect(source, pattern = "GO")) %>%
+  mutate(go_type = str_sub(source, start = 4, end = 5))
+
+GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                             go_id = GO_enrichment$term_id,
+                                                             go_term = GO_enrichment$term_name),
+                                     orgdb = "org.Hs.eg.db",
+                                     threshold = 0.7,
+                                     scores = NULL,
+                                     measure = "Wang"
+)
+
+df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                   y = GO_enrich_reduc,
+                   by.x = "term_id",
+                   by.y = "go_id",
+                   all.x = T)
+
+## JOIN with KEGG results and add pvalues
+
+rbind(df_result %>%
+        as_tibble() %>%
+        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+        group_by(parent_term, source) %>%
+        mutate(p_value = p_value %>% max) %>%
+        ungroup() %>%
+        distinct(parent_term, .keep_all = T),
+      df_result %>% 
+        filter(source == "KEGG")%>%
+        dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+        dplyr::rename(parent_term = term_name)) %>%
+  arrange(p_value) %>%
+  mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+  #filter(source == "KEGG") %>%
+  DT::datatable()
+
+
+
+
+```
+
+## MSR_A
+
+GO Enrichment of genes that contain introns whose mis-splicing at acceptor increase with age
 
 ```{r GO_MRSA, warning = FALSE, message = F, echo = FALSE}
 
 df_MSRA <- df_age_groups_intron_tidy  %>%
-                               filter(ref_junID %in% common_ref) %>%
   dplyr::select(ref_junID,
                 sample_type,
                 MSR_A = ref_missplicing_ratio_tissue_NA,
@@ -555,6 +646,93 @@ rbind(df_result %>%
   mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
   #filter(source == "KEGG") %>%
   DT::datatable()
+
+
+```
+
+## MSR_A UNIQUE TO BRAIN
+
+GO Enrichment of genes UNIQUE to brain that contain introns whose mis-splicing at the acceptor increases with age.
+
+```{r GO_MRSA_uniquebrain, warning = FALSE, message = F, echo = FALSE}
+
+#####################################
+## NEVER MISSPLICED - GENE ENRICHMENT
+#####################################
+
+
+only_brain_ref <- setdiff(brain_df_age_groups_intron_tidy$ref_junID,
+                          c(muscle_df_age_groups_intron_tidy$ref_junID,
+                            blood_df_age_groups_intron_tidy$ref_junID))
+
+df_MSRA <- df_age_groups_intron_tidy %>%
+  filter(ref_junID %in% only_brain_ref) %>%
+  dplyr::select(ref_junID,
+                sample_type,
+                MSR_A = ref_missplicing_ratio_tissue_NA,
+                gene_name) %>%
+  mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+  spread(sample_type, MSR_A)
+
+
+genes_MSRA_increasing <- df_MSRA %>%
+  filter(`20-39` < `40-59`,
+         `40-59` < `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name)
+
+genes_MSRA_dcreasing <- df_MSRA %>%
+  filter(`20-39` > `40-59`,
+         `40-59` > `60-79`) %>%
+  mutate_if(is.list, simplify_all) %>%    
+  unnest(gene_name)
+
+gene_enrichment <- gprofiler2::gost(query = setdiff(genes_MSRA_increasing$gene_name, 
+                                                    genes_MSRA_dcreasing$gene_name),
+                                    custom_bg = bg_genes,
+                                    organism = "hsapiens",
+                                    ordered_query = F,
+                                    correction_method = "bonferroni",
+                                    significant = T)
+
+
+GO_enrichment <- gene_enrichment$result %>% filter(str_detect(source, pattern = "GO")) %>%
+  mutate(go_type = str_sub(source, start = 4, end = 5))
+
+GO_enrich_reduc <- rutils::go_reduce(pathway_df = data.frame(go_type = GO_enrichment$go_type,
+                                                             go_id = GO_enrichment$term_id,
+                                                             go_term = GO_enrichment$term_name),
+                                     orgdb = "org.Hs.eg.db",
+                                     threshold = 0.7,
+                                     scores = NULL,
+                                     measure = "Wang"
+)
+
+df_result <- merge(x = gene_enrichment$result %>% filter(source %in% c("GO:BP", "GO:MF", "GO:CC", "KEGG")),
+                   y = GO_enrich_reduc,
+                   by.x = "term_id",
+                   by.y = "go_id",
+                   all.x = T)
+
+## JOIN with KEGG results and add pvalues
+
+rbind(df_result %>%
+        as_tibble() %>%
+        dplyr::select(parent_term, p_value, query_size, intersection_size, source) %>%
+        group_by(parent_term, source) %>%
+        mutate(p_value = p_value %>% max) %>%
+        ungroup() %>%
+        distinct(parent_term, .keep_all = T),
+      df_result %>% 
+        filter(source == "KEGG")%>%
+        dplyr::select(p_value, query_size, intersection_size, source, term_name) %>%
+        dplyr::rename(parent_term = term_name)) %>%
+  arrange(p_value) %>%
+  mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
+  #filter(source == "KEGG") %>%
+  DT::datatable()
+
+
 
 
 ```

@@ -1106,8 +1106,6 @@ extract_never_misspliced <- function(cluster,
   print(paste0(df_never %>% nrow(), " not mis-spliced junctions in ", cluster))
   df_never %>% head()
   
-  
-  
   print(paste0(Sys.time(), " - obtaining reads from never mis-spliced junctions."))
   
   
@@ -1299,8 +1297,8 @@ add_never_misspliced_to_df <- function(cluster,
                   by.y = "junID", 
                   sort = TRUE,
                   all.x = TRUE)
+  df_all %>% as_tibble()
   df_all %>% distinct(ref_junID) %>% nrow()
-  df_all
   
   
   ## None of the introns should be located within the MT chromosome
@@ -1316,7 +1314,12 @@ add_never_misspliced_to_df <- function(cluster,
     dplyr::rename(gene_id = gene_id_junction) %>%
     dplyr::rename(gene_name = gene_name_junction)
   
-  
+  df_all %>% 
+    filter(gene_name %in% c("RBM5","RBM6")) %>% 
+    select(gene_name,gene_id) %>%
+    unnest(gene_id) %>%
+    unnest(gene_name) %>%
+    mutate_if(is.list, simplify_all)
   ######################
   ## QC
   ###################### 

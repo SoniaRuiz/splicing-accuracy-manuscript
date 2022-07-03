@@ -47,4 +47,5 @@ markdowns/*.png
 .Renviron
 
 paper_figures
+data
 

@@ -367,7 +367,7 @@ idb_generation <- function(project_id,
 # print("'CNC_CDTS_CONS_gr' file loaded!")
 
 ## Loop through each project
-all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
 gtf_version <- 105
 
 for (project_id in all_projects) {

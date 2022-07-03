@@ -505,28 +505,29 @@ age_stratification_plot_distances <- function(df = NULL,
                    position = "identity"
     ) +
     facet_grid(vars(novel_type)) +
-    ggtitle(title) +
+    #ggtitle(title) +
     xlab("Distance to the reference intron (in bp)") +
     ylab("Number of unique novel junctions") +
     theme_light() +
     scale_x_continuous(limits = c((distance_limit * -1), distance_limit),
                        breaks = c((distance_limit * -1), (round(distance_limit / 2) * -1), 0, round(distance_limit / 2), distance_limit)) +
     
-    scale_fill_manual(values =  c("#440154FF","#FDE725FF","#21908CFF"),
-                      breaks = age_levels) +
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
     
     # scale_fill_manual(breaks = c("20-39", "40-59", "60-79"),
     #                   labels = c("20-39", "40-59", "60-79")) +
     guides(fill = guide_legend(title = NULL, 
                                ncol = 4, nrow = 1 )) +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "14"),
-          axis.title = element_text(colour = "black", size = "14"),
-          strip.text = element_text(colour = "black", size = "16"), 
-          legend.text = element_text(colour = "black", size = "14"),
-          plot.caption = element_text(colour = "black", size = "14"),
-          plot.title = element_text(colour = "black", size = "16"),
-          legend.title = element_text(colour = "black", size = "14"),
+          axis.text = element_text(colour = "black", size = "9"),
+          axis.title = element_text(colour = "black", size = "9"),
+          strip.text = element_text(colour = "black", size = "9"), 
+          legend.text = element_text(colour = "black", size = "9"),
+          plot.caption = element_text(colour = "black", size = "9"),
+          plot.title = element_text(colour = "black", size = "9"),
+          legend.title = element_text(colour = "black", size = "9"),
           legend.position = "top") %>% 
     return()
   
@@ -1023,7 +1024,7 @@ age_stratification_Wilcoxon <- function(age_groups,
 }
 
 
-age_stratification_plot_MSRD <- function(df = NULL,
+age_stratification_plot_MSR <- function(df = NULL,
                                          age_groups = NULL,
                                          age_levels = c("60-79", "40-59", "20-39"),
                                          common = T,
@@ -1134,7 +1135,7 @@ age_stratification_plot_MSRD <- function(df = NULL,
     pull
   
   
-  title <- paste0("MSR_Donor from common reference introns\n", n_ref_jun, " common ref introns.")
+  title <- paste0("MSR from common reference introns across age clusters.\n", n_ref_jun, " common ref introns.")
   
   
   
@@ -1142,19 +1143,30 @@ age_stratification_plot_MSRD <- function(df = NULL,
     # mutate(ref_type = factor(ref_type, levels = c("novel_donor", "novel_acceptor"))) %>%
     mutate(sample_type = factor(sample_type, levels = age_levels))
   
-  ggplot(data = df_age_groups_tidy) + 
-    geom_density(aes(x = ref_missplicing_ratio_tissue_ND, fill = sample_type), alpha = 0.8) +
-    ggtitle(title) +
-    xlab("MSR_Donor") +
-    facet_zoom(xlim = c(0,0.2)) +
+  
+  
+  
+  ggplot(data = df_age_groups_tidy %>% 
+           dplyr::select(MSR_D = ref_missplicing_ratio_tissue_ND, 
+                         MSR_A = ref_missplicing_ratio_tissue_NA, sample_type) %>%
+           gather(key = "MSR_type", value = "MSR", -sample_type) %>%
+           mutate(MSR_type = factor(MSR_type, levels = c("MSR_D", "MSR_A")))) + 
+    geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
+    #ggtitle(title) +
+    xlab("MSR") +
+    facet_grid(vars(MSR_type)) +
+    # facet_zoom(xlim = c(0,0.2)) +
     theme_light() +
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text.x =  element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "14"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
+          axis.text = element_text(colour = "black", size = "9"),
+          axis.title = element_text(colour = "black", size = "9"),
+          strip.text =  element_text(colour = "black", size = "9"),
+          plot.title = element_text(colour = "black", size = "9"),
+          legend.text = element_text(size = "9"),
+          legend.title = element_text(size = "9"),
           legend.position = "top") +
     guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) %>% return()
   
@@ -1321,6 +1333,7 @@ age_stratification_GO_enrichment <- function(genes,
     mutate(p_value = p_value %>% formatC(format = "e", digits = 2)) %>%
     select(p_value, term_size, query_size, intersection_size, source, term_name) %>% 
     return()
+  
 }
 
 
