@@ -226,7 +226,7 @@ separate_split_read_counts_cluster <- function(clusters_ID,
       
       print(paste0(Sys.time(), " - getting split_read_counts from ", cluster_samples %>% length(), 
                    " '", cluster, "' samples..."))
-      
+      SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
       counts <- (rse %>% SummarizedExperiment::assays())[[1]]
       counts <- counts[, cluster_samples %>% as.character(), drop = FALSE]
       counts <- counts[rownames(counts) %in% all_split_reads, , drop = FALSE]

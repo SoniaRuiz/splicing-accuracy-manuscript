@@ -372,7 +372,7 @@ gtf_version <- 105
 
 for (project_id in all_projects) {
 
-  # project_id <- all_projects[31]
+  # project_id <- all_projects[7]
   
   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
   

@@ -2845,20 +2845,26 @@ supplementary_age_stratification <- function() {
   ggplot2::ggsave(file_name, width = 183, height = 183, units = "mm", dpi = 300)
 }
 
-encori <- function(project_id = "BRAIN") {
+##################################
+## ENCORI STUFF
+##################################
+
+define_RBP_affected_by_age <- function(project_id = "BRAIN") {
   
-  #############################################################
-  ## Load the genes whose MSR values increase with age
-  #############################################################
-  
-  genes_increase_MSRD <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
-  genes_increase_MSRA <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
-  
-  genes_increase_MSR <- intersect(genes_increase_MSRD, genes_increase_MSRA) %>% unique() %>% sort()
-  
-  write.csv(x = genes_increase_MSR,
-            row.names = F,
-            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/genes_increase_MSR.csv")
+  # #############################################################
+  # ## Load the genes whose MSR values increase with age
+  # #############################################################
+  # 
+  # genes_increase_MSRD <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
+  # genes_increase_MSRA <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
+  # 
+  # genes_increase_MSR <- intersect(genes_increase_MSRD, genes_increase_MSRA) %>% unique() %>% sort()
+  # 
+  # write.csv(x = genes_increase_MSR,
+  #           row.names = F,
+  #           file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/genes_increase_MSR.csv")
+  # 
+  # genes_increase_MSR <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/genes_increase_MSR.csv")
   
   
   ####################################################################
@@ -2872,18 +2878,13 @@ encori <- function(project_id = "BRAIN") {
   
   ## PLOT DENSITIES (to decide the 'Estimate' values that means the RBP is affected by age)
   df_lm_age_tidy
-  plot(density(RBPs_lm_age %>%
-                 filter(type != "other") %>%
-                 pull(Estimate)))
-  lines(density(RBPs_lm_age %>%
-                  filter(type == "other") %>%
-                  pull(Estimate)), col = "red")
+
   
   ## RBPs affected by age
   RBPs_lm_age <- df_lm_age_tidy %>%
-    filter(Estimate < -0.05, 
+    filter(#Estimate > 0-05,
            type != "other",
-           pval < 0.05) %>%
+           pval <= 0.05) %>%
     as_tibble()
   
   write.csv(x = RBPs_lm_age$name %>% unique,
@@ -2892,58 +2893,71 @@ encori <- function(project_id = "BRAIN") {
   
   
   ## RBPs not affected by age
-  RBPs_lm_other <- df_lm_age_tidy %>%
-    filter(RBP_ID %in% setdiff(df_lm_age_tidy$RBP_ID, RBPs_lm_age$RBP_ID))
+  RBPs_lm_other <- df_lm_age_tidy %>% filter(RBP_ID %in% setdiff(df_lm_age_tidy$RBP_ID, RBPs_lm_age$RBP_ID))
   
   write.csv(x = RBPs_lm_other$name %>% unique,
             row.names = F,
             file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv")
   
   
+  wilcox.test(x = RBPs_lm_age$Estimate,
+              y = RBPs_lm_other$Estimate,
+              alternative = "less")
+  
   ####################################################################
   ## Load RBPs whose level of expression (i.e. TPM) decrease with age
   ####################################################################
   
-  df_analysis_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                                  "/results/pipeline3/rbp/tpm_age_spread.csv"), check.names = F) %>% as_tibble()
-  RBPs <- df_analysis_corrected %>%
-    filter(`20-39` > `40-59`,
-           `40-59` > `60-79`) 
-  
-  ## Add RBPs the gene symbol
-  ensembl106 <- biomaRt::useEnsembl(biomart = 'genes', 
-                                    dataset = 'hsapiens_gene_ensembl',
-                                    version = 106)
-  RBP_symbols <- biomaRt::getBM(
-    attributes = c('hgnc_symbol'), 
-    filters = 'ensembl_gene_id',
-    values = RBPs$RBP,
-    mart = ensembl106
-  ) %>% pull(hgnc_symbol)
-  
-  write.csv(x = RBP_symbols,
-            row.names = F,
-            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv")
+  # df_analysis_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+  #                                                 "/results/pipeline3/rbp/tpm_age_spread.csv"), check.names = F) %>% as_tibble()
+  # RBPs <- df_analysis_corrected %>%
+  #   filter(`20-39` > `40-59`,
+  #          `40-59` > `60-79`) 
+  # 
+  # ## Add RBPs the gene symbol
+  # ensembl105 <- biomaRt::useEnsembl(biomart = 'genes', 
+  #                                   dataset = 'hsapiens_gene_ensembl',
+  #                                   version = 105)
+  # RBP_symbols <- biomaRt::getBM(
+  #   attributes = c('hgnc_symbol'), 
+  #   filters = 'ensembl_gene_id',
+  #   values = RBPs$RBP,
+  #   mart = ensembl105
+  # ) %>% pull(hgnc_symbol)
+  # 
+  # write.csv(x = RBP_symbols,
+  #           row.names = F,
+  #           file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv")
   
   
   
   ####################################################################
   ## INTERSECT BOTH DATASETS OF RBPs
   ####################################################################
-  RBPs_splicing$hgnc_symbol %>% unique %>% length()
-  RBPs_other$hgnc_symbol %>% unique %>% length()
-  RBP_symbols %>% unique %>% length()
-  
-  intersect(RBPs_splicing$hgnc_symbol, RBP_symbols)
-  intersect(RBPs_other$hgnc_symbol, RBP_symbols)
+  # RBPs_splicing$hgnc_symbol %>% unique %>% length()
+  # RBPs_other$hgnc_symbol %>% unique %>% length()
+  # RBP_symbols %>% unique %>% length()
+  # 
+  # intersect(RBPs_splicing$hgnc_symbol, RBP_symbols)
+  # intersect(RBPs_other$hgnc_symbol, RBP_symbols)
   
   # curl 'https://starbase.sysu.edu.cn/api/RBPTarget/?assembly=hg19&geneType=mRNA&RBP=GEMIN5&clipExpNum=5&pancancerNum=0&target=APOE&cellType=all' > ENCORI_hg19_RBPTarget_GEMIN5_APOE.txt
   
+
 }
 
 analise_encori <- function(project_id = "BRAIN") {
   
   ## LOAD MSR
+  chain <- rtracklayer::import.chain(con = "data/hg19ToHg38.over.chain")
+  genes_MSRD_increasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds") %>%
+    mutate(start = start - 100,
+           end = end -100) %>%
+    GRanges()
+  genes_MSRA_increasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds") %>%
+    mutate(start = start - 100,
+           end = end -100) %>%
+    GRanges()
   
   df_RBP_result <- map_df(c("RBPs_affected_age", "RBPs_notaffected_age"), function(type) {
     
@@ -2962,7 +2976,7 @@ analise_encori <- function(project_id = "BRAIN") {
     ## Check iCLIP results
     map_df(RBPs$V1, function (RBP) {
       
-      # RBP <- RBPs$V1[1]
+      # RBP <- "SRSF9" RBPs$V1[1]
       file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/results/", 
                           type, "/ENCORI_hg19_", RBP, "_allgenes_copy.txt")
       
@@ -2974,7 +2988,7 @@ analise_encori <- function(project_id = "BRAIN") {
         
         if (RBP_result %>% nrow() > 1) {
           
-          print(RBP)
+          print(paste0(RBP, " - ", type))
         
           RBP_result_GR <- RBP_result %>% 
             dplyr::rename(start = narrowStart, end = narrowEnd) %>% 
@@ -2984,7 +2998,7 @@ analise_encori <- function(project_id = "BRAIN") {
           # liftover
           
           # http://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/
-          chain <- rtracklayer::import.chain(con = "data/hg19ToHg38.over.chain")
+          
   
           RBP_result_GRh38 <- rtracklayer::liftOver(x = RBP_result_GR, 
                                                     chain = chain) %>% 
@@ -2993,8 +3007,7 @@ analise_encori <- function(project_id = "BRAIN") {
           
           ## Overlaps - MSR_D
           
-          genes_MSRD_increasing <- genes_MSRD_increasing %>%
-            GRanges()
+          
           
           overlaps_MSRD <- GenomicRanges::findOverlaps(query = genes_MSRD_increasing,
                                                        subject = RBP_result_GRh38,
@@ -3011,9 +3024,7 @@ analise_encori <- function(project_id = "BRAIN") {
           
           
           ## Overlaps - MSR_A
-          
-          genes_MSRA_increasing <- genes_MSRA_increasing %>%
-            GRanges()
+        
           
           overlaps_MSRA <- GenomicRanges::findOverlaps(query = genes_MSRA_increasing,
                                                        subject = RBP_result_GRh38 ,
@@ -3060,10 +3071,35 @@ analise_encori <- function(project_id = "BRAIN") {
   
   write_csv(x = df_RBP_result,
             file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv", col_names = T)
+  
+
 }
  
 
 
+RBPs_iCLIP_differences <- function () {
+  
+  
+  df_RBP_result <- read.csv(file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv")
+  
+  wilcox.test(x = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_affected_age") %>%
+                pull(ovlps_MSRD_perc),
+              y = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_notaffected_age") %>%
+                pull(ovlps_MSRD_perc),
+              paired = F,
+              alternative = "greater")
+  
+  wilcox.test(x = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_affected_age") %>%
+                pull(ovlps_MSRA_perc),
+              y = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_notaffected_age") %>%
+                pull(ovlps_MSRA_perc),
+              paired = F,
+              alternative = "greater")
+}
 
 
 

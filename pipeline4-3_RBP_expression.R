@@ -464,12 +464,94 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
 
 RBPs_classify_affected_age <- function (project_id) {
   
-  df_lm_age_tidy <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                           "/results/pipeline3/rbp/tpm_lm_all_ensembl105.csv")) %>%
-    drop_na() %>% as_tibble()
+  iCLIP_MSR_results <- read.csv(file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv", header = T)
   
-  ## PLOT DENSITIES (to decide the 'Estimate' values that means the RBP is affected by age)
-  df_lm_age_tidy 
+  
+  RBPs_age_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                                        "/results/pipeline3/rbp/tpm_lm_all_ensembl105.csv")) %>%
+    drop_na() %>% 
+    as_tibble()
+  
+  df_tidy <- merge(x = iCLIP_MSR_results %>% dplyr::select( RBP_name,RBP_type),
+                   y = RBPs_age_lm,
+                   by.x = "RBP_name",
+                   by.y = "name",
+                   all.x = T) %>%
+    arrange(RBP_type,Estimate )
+  
+  
+  df_tidy %>%
+    filter(type == "splicing regulation") %>%
+    pull(Estimate) %>% summary
+  df_tidy %>%
+    filter(type != "splicing regulation") %>%
+    pull(Estimate) %>% summary
+  
+  
+  plot(density(df_tidy %>%
+                 filter(Estimate <= -0.31, pval <= 0.05) %>%
+                 pull(Estimate) ))
+  
+  
+  lines(density(df_tidy %>%
+                 filter(Estimate >= -0.15 | pval > 0.05) %>%
+                 pull(Estimate) ), col = "red")
+  
+  
+  ##############################
+  plot(density(df_tidy %>%
+                 pull(Estimate)))
+  df_tidy %>%
+    pull(Estimate) %>% 
+    summary
+  
+  RBP_age <- df_tidy %>%
+    filter(Estimate <= -0.75, 
+           pval <= 0.05, 
+           type == "splicing regulation") %>%
+    pull(hgnc_symbol) 
+  
+  RBP_notage <- df_tidy %>%
+    filter(Estimate > -0.15 |
+           pval > 0.05 | 
+           type == "other") %>%
+    pull(hgnc_symbol) 
+  intersect(RBP_age,RBP_notage)
+  df <- iCLIP_MSR_results %>%
+    rowwise() %>%
+    mutate(type_age = NA) %>%
+    mutate(type_age = ifelse(RBP_name %in% RBP_age, "age", NA),
+           type_age = ifelse(RBP_name %in% RBP_notage, "notage", type_age))
+  df %>% as.data.frame()
+  
+  #############################
+  
+  wilcox.test(x = df %>% 
+                filter(type_age == "age") %>%
+                pull(ovlps_MSRD_perc),
+              y = df %>% 
+                filter(type_age == "notage") %>%
+                pull(ovlps_MSRD_perc),
+              paired = F,
+              alternative = "greater")
+  
+  wilcox.test(x = df %>% 
+                filter(type_age == "age") %>%
+                pull(ovlps_MSRA_perc),
+              y = df %>% 
+                filter(type_age == "notage") %>%
+                pull(ovlps_MSRA_perc),
+              paired = F,
+              alternative = "greater")
+  
+  iCLIP_MSR_results <- read.csv(file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv", header = T)
+  
+  
+  
+  
+  
+  
+  ###########################
   
   plot(density(df_lm_age_tidy %>%
                  filter(type != "other") %>%
@@ -526,19 +608,18 @@ RBPs_classify_affected_age <- function (project_id) {
   
 }
 
-MSR_changing_with_age <- function() {
+MSR_changing_with_age <- function(project_id = "BRAIN") {
   
   
-  source(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R"))
+  source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R")
+  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                        "/results/pipeline3/missplicing-ratio/age/")
+  
   
   #ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
   
   age_samples_clusters_tidy <- age_stratification_init_data(project_id = project_id)
   age_supergroups <- age_samples_clusters_tidy$age_group %>% unique()
-  
-  
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                        "/results/pipeline3/missplicing-ratio/age/")
   
   ## Load the IDBs (the intron and the novel tables)
   df_age_groups_intron <- map_df(age_supergroups, function(age_group) {
@@ -565,7 +646,6 @@ MSR_changing_with_age <- function() {
   
   
   ## MSR_D -------------------------------------------------
-  
   df_MSRD <- df_age_groups_intron_tidy %>%
     dplyr::select(ref_junID,
                   seqnames,start,end,strand,
@@ -583,15 +663,14 @@ MSR_changing_with_age <- function() {
   #   pull() %>% unlist()
   
   genes_MSRD_increasing <- df_MSRD %>%
-    #rowwise() %>%
     filter(`20-39` < `40-59`,
-           `40-59` < `60-79`) #%>%
-    #filter(!(gene_name %in% genes_MSRD_discard))
+           `40-59` < `60-79`)
   
-  genes_MSRD_increasing %>% distinct(ref_junID)
+  
+  saveRDS(object = genes_MSRD_increasing %>% distinct(ref_junID, .keep_all = T),
+          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
   
   ## MSR_A -------------------------------------------------
-  
   df_MSRA <- df_age_groups_intron_tidy %>%
     #filter(ref_junID %in% df_age_groups_novel_tidy$ref_junID) %>%
     dplyr::select(ref_junID,
@@ -615,8 +694,10 @@ MSR_changing_with_age <- function() {
   
   genes_MSRA_increasing %>% distinct(ref_junID)
   
+  saveRDS(object = genes_MSRA_increasing %>% distinct(ref_junID, .keep_all = T),
+          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
+  
 }
-
 
 
 

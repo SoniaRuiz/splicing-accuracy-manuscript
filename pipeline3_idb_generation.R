@@ -2504,6 +2504,9 @@ clinvar_analysis <- function(cluster,
 
 ## MANE TRANSCRIPTS ------------------------------
 
+# folder_name <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN//results/pipeline3/missplicing-ratio/Brain - Hippocampus/v105/"
+# cluster <- "Brain - Hippocampus"
+
 add_MANE_info <- function(cluster,
                           folder_name) {
   
@@ -2513,8 +2516,8 @@ add_MANE_info <- function(cluster,
   mane_transcripts <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf") %>% 
     as_tibble() %>%
     filter(tag == "MANE_Select" | tag == "MANE_Plus_Clinical") %>%
-    mutate(transcript_id = str_remove(string = transcript_id, pattern = "\\..*") ) %>%
-    distinct(transcript_id)
+    mutate(transcript_id = str_remove(string = transcript_id, pattern = "\\..*") )# %>%
+    #distinct(transcript_id)
   
   ## Load intron data from the IDB
   IDB_path <- paste0(folder_name, "/", cluster, "_db_introns.rds")
@@ -2523,7 +2526,7 @@ add_MANE_info <- function(cluster,
   df_introns_mane <- df_introns %>% 
     as_tibble() %>%
     rowwise() %>%
-    mutate(MANE = ifelse(any((tx_id_junction %>% unlist() %>% unname()) %in% mane_transcripts$transcript_id), T, F))
+    mutate(MANE_2 = ifelse(any((tx_id_junction %>% unlist() %>% unname()) %in% mane_transcripts$transcript_id), T, F))
   
   
   ####################

@@ -1,0 +1,129 @@
+---
+title: "ENCORI analysis"
+author: "Sonia Garcia-Ruiz"
+date: "17/08/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+
+
+
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(GenomicRanges)
+library(DESeq2)
+library(SummarizedExperiment)
+library(biomaRt)
+
+```
+
+# 1. Intro
+
+We downloaded the list of RBPs published in 2020 by *Van Nostrand et al.* [A Large-Scale Binding and Functional Map of Human RNA Binding Proteins](https://www.nature.com/articles/s41586-020-2077-3), and classified them as regulators of RNA splicing (98 RBPs, 28% of the total) and other (258 RBPs, 72% of the total).
+
+
+# 2. Methods
+
+### 2.1. Classify RBPs affected/not affected by age
+
+* Calculate the TPM value of the 356 RBPs from *Van Nostrand et al.* across samples of the brain tissue.
+* Obtain only the RBPs expressed in at least one brain sample. In other words, we only kept for study the RBPs that presented a TPM value greater than 0 in at least one brain sample. These were (N=202) RBPs.
+* Using linear regression models, I predicted the TPM value of each RBP by using the following covariates as predictors: age, center, gebtch, gebtchd, nabtc, nabtchd, nabtcht, hhrdy, sex, rin (these were the most important covariates defined by [Fairbrother-Browne, A. et.al](https://www.nature.com/articles/s42003-021-02792-w) using GTEx v6 data).
+* Depending on the outcome of the linear models, I categorised the RBPs into two groups:
+    * **RBPs affected by age**: RBP = "splicing regulator" and obtained a significant pvalue (pval<=0.05) assigned to the covariage 'age' in the lm. These were a total of (N=25) RBPs.
+    * **RBPs** not affected by age: all the rest (N=177).
+    
+The plot below displays the beta (i.e. Estimate) value assigned to the covariate 'age' for the RBPs classified as 'affected by age' and 'not affected by age'. Results from this plot shows that:
+* Both groups of RBPs present differences in their distributions of Estimate values (Wilcoxon test, p-value = 3.041e-05)
+* RBPs not affected by age are more negatively skewed toward negative values (Wilcoxon test, p-value = 3.041e-05) ONLY because RBPs not affected by age have four different RBPs behaving as outliers: i) EEF2 (essential gene, ribosome and basic translation, translation regulation, cytoplasm, ER), ii) EIF4G2 (essential gene, ribosome and basic translation, translation regulation, cytoplasm, mitochondria, nuclei), iii) PKM (essential gene, novel RBP, cytoplasm, cytoskeleton), and iv) YWHAG (essential gene, novel RBP).) More info is shown in the table below.  
+  
+```{r TPM_RBPs, echo = F}
+
+project_id <- "BRAIN"
+df_lm_age_tidy <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+                                         "/results/pipeline3/rbp/tpm_lm_all.csv")) %>%
+  drop_na()
+
+df_lm_age_tidy <- df_lm_age_tidy %>%
+  mutate(affected_age = ifelse(type != "other" & pval <= 0.05, "affected_age", "not_affected_age"))
+
+ggplot(data = df_lm_age_tidy) + 
+  geom_density(aes(x = Estimate, color = affected_age)) +
+  ggtitle("Effect of age in RBPs affected/not-affected by age") +
+  theme(plot.caption = element_text("Density of beta values returned by the 'age' covariate")) +
+  labs(color = "RBP type")
+
+
+df_lm_age_tidy %>% filter(affected_age =="not_affected_age", pval <= 0.05, Estimate < -4) %>%
+  DT::datatable()
+```
+
+### 2.2. ENCORI and RBP binding site comparison
+
+Then:
+
+* For each RBP analised (25 RBPs affected by age and 177 RBPs not affected by age), I queried the [ENCORI database](https://starbase.sysu.edu.cn/) and retrieved data of RBP-RNA interactions supported by the binding sites of these RBPs derived from CLIP-seq data interactions.
+* I obtained all introns whose MSR_D and MSR_A was increasing with age (N=82,895 and N=104,322, respectively).
+* For each RBP with data in ENCORI (N=8 RBPs affected by age, N=57 not-affected by age), I checked whether their binding sites where within or close (-100bp upstream the 5'ss/+100bp downstream the 3'ss position) to introns whose mis-splicing ratio at the donor (MSR_D) and at the acceptor (MSR_A) showed to be increasing with age.
+* Finally, I statistically tested (Wilcoxon test) whether RBPs affected by age were more likely to bind close with introns whose MSR_D and MSR_A increased with age compared to RBPs not affected by age.
+
+To do this test, I used the data shown in the table below. It contains the figures from the genomic overlaps run between the binding sites of the RBPs affected by age (N=8) and not affected by age (N=57) and the introns whose MSR_D and MSR_A increases with age (N=82,895 and N=104,322).
+
+```{r overlaps_encori, echo = F}
+
+df_RBP_result <- read.csv(file = "../paper_figures/iCLIP/results/RBPs_intronsMSR.csv")
+
+df_RBP_result %>%
+  mutate(ovlps_MSRD_perc = ovlps_MSRD_perc %>% round(digits = 2),
+         ovlps_MSRA_perc = ovlps_MSRA_perc %>% round(digits = 2)) %>%
+  dplyr::rename("overlapping introns MSRD" = ovlps_MSRD,
+                "overlapping introns MSRA" = ovlps_MSRA,
+                "total introns MSRD" = total_MSRD,
+                "total introns MSRA" = total_MSRA,
+                "percent introns MSRD" = ovlps_MSRD_perc,
+                "percent introns MSRA" = ovlps_MSRA_perc)  %>%
+  arrange(RBP_type) %>%
+  DT::datatable()
+```
+
+# 3. Results
+
+Results from this analysis showed that:
+
+* RBPs affected by age (N=8) significantly binds to a higher proportion of introns whose MSR_D increase with age compared to RBPs that are not affected by age (N=58) (Non-paired Wilcoxon test, p-value = 0.011).
+* RBPs affected by age (N=8) significantly binds to a higher proportion of introns whose MSR_A increase with age compared to RBPs that are not affected by age (N=58) (Non-paired Wilcoxon test, p-value = 0.016).
+
+```{r encore_wilcoxon_test, echo = F}
+
+df_RBP_result <- read.csv(file = "../paper_figures/iCLIP/results/RBPs_intronsMSR.csv")
+
+RBPs_affected_age_MSRD <- df_RBP_result %>% 
+                filter(RBP_type == "RBPs_affected_age") %>%
+                pull(ovlps_MSRD_perc)
+RBPs_notaffected_age_MSRD <- df_RBP_result %>% 
+                filter(RBP_type == "RBPs_notaffected_age") %>%
+                pull(ovlps_MSRD_perc)
+
+wilcox.test(x = RBPs_affected_age_MSRD,
+            y = RBPs_notaffected_age_MSRD,
+            paired = F,
+            alternative = "greater")
+
+
+RBPs_affected_age_MSRA <- df_RBP_result %>% 
+                filter(RBP_type == "RBPs_affected_age") %>%
+                pull(ovlps_MSRA_perc)
+RBPs_notaffected_age_MSRA <- df_RBP_result %>% 
+                filter(RBP_type == "RBPs_notaffected_age") %>%
+                pull(ovlps_MSRA_perc)
+
+wilcox.test(x = RBPs_affected_age_MSRA,
+            y = RBPs_notaffected_age_MSRA,
+            paired = F,
+            alternative = "greater")
+
+```
+
+
+
