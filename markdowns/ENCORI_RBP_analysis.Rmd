@@ -65,7 +65,7 @@ Then:
 
 * For each RBP analised (25 RBPs affected by age and 177 RBPs not affected by age), I queried the [ENCORI database](https://starbase.sysu.edu.cn/) and retrieved data of RBP-RNA interactions supported by the binding sites of these RBPs derived from CLIP-seq data interactions.
 * I obtained all introns whose MSR_D and MSR_A was increasing with age (N=82,895 and N=104,322, respectively).
-* For each RBP with data in ENCORI (N=8 RBPs affected by age, N=57 not-affected by age), I checked whether their binding sites where within or close (-100bp upstream the 5'ss/+100bp downstream the 3'ss position) to introns whose mis-splicing ratio at the donor (MSR_D) and at the acceptor (MSR_A) showed to be increasing with age.
+* For each RBP with data in ENCORI (N=8 RBPs affected by age, N=57 not-affected by age), I checked whether their binding sites where within or close (-50bp upstream the 5'ss/+50bp downstream the 3'ss position) to introns whose mis-splicing ratio at the donor (MSR_D) and at the acceptor (MSR_A) showed to be increasing with age.
 * Finally, I statistically tested (Wilcoxon test) whether RBPs affected by age were more likely to bind close with introns whose MSR_D and MSR_A increased with age compared to RBPs not affected by age.
 
 To do this test, I used the data shown in the table below. It contains the figures from the genomic overlaps run between the binding sites of the RBPs affected by age (N=8) and not affected by age (N=57) and the introns whose MSR_D and MSR_A increases with age (N=82,895 and N=104,322).
@@ -91,8 +91,8 @@ df_RBP_result %>%
 
 Results from this analysis showed that:
 
-* RBPs affected by age (N=8) significantly binds to a higher proportion of introns whose MSR_D increase with age compared to RBPs that are not affected by age (N=58) (Non-paired Wilcoxon test, p-value = 0.011).
-* RBPs affected by age (N=8) significantly binds to a higher proportion of introns whose MSR_A increase with age compared to RBPs that are not affected by age (N=58) (Non-paired Wilcoxon test, p-value = 0.016).
+* RBPs affected by age (N=8) significantly binds to a higher proportion of introns whose MSR_D increase with age compared to RBPs that are not affected by age (N=58) (Non-paired Wilcoxon test, p-value = 0.023).
+* RBPs affected by age (N=8) significantly binds to a higher proportion of introns whose MSR_A increase with age compared to RBPs that are not affected by age (N=58) (Non-paired Wilcoxon test, p-value = 0.034).
 
 ```{r encore_wilcoxon_test, echo = F}
 
