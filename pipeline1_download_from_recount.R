@@ -10,7 +10,8 @@ prepare_data_from_rse <- function(rse,
   samples <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
-    filter(gtex.smafrze != "EXCLUDE") %>%
+    filter(gtex.smafrze != "EXCLUDE",
+           gtex.smrin >= 6.0) %>%
     pull(external_id)
   saveRDS(object = samples, file = paste0(folder_path, "/samples.rds"))
   
@@ -18,7 +19,8 @@ prepare_data_from_rse <- function(rse,
   metadata.info <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
-    filter(gtex.smafrze != "EXCLUDE")
+    filter(gtex.smafrze != "EXCLUDE",
+           gtex.smrin >= 6.0)
   saveRDS(object = metadata.info, file = paste0(folder_path, "/samples_metadata.rds"))
   
   ## Save junctions metadata info
@@ -62,8 +64,11 @@ generate_all_split_reads <- function(folder_path,
   
   all_split_reads_tidy %>% head()
   all_split_reads_tidy <- GenomeInfoDb::keepSeqlevels(x = all_split_reads_tidy,
-                                                      value = c( "1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
-                                                                 "2", "20", "21", "22", "3", "4", "5", "6", "7", "8", "9", "X", "Y"), 
+                                                      value = intersect(all_split_reads_tidy %>% 
+                                                                          seqnames %>% 
+                                                                          levels(), 
+                                                                        c( "1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
+                                                                           "2", "20", "21", "22", "3", "4", "5", "6", "7", "8", "9", "X", "Y")), 
                                                       pruning.mode = "tidy")
   all_split_reads_tidy %>% head()
   
@@ -138,10 +143,12 @@ separate_samples <- function(clusters_ID,
     print(paste0(Sys.time(), " - getting samples from '", cluster, "' cluster..."))
     
     if (GTEx) {
+      
       cluster_samples <- metadata.info %>% 
         as_tibble() %>%
         filter(gtex.smtsd == cluster,
-               gtex.smafrze != "EXCLUDE") %>%
+               gtex.smafrze != "EXCLUDE",
+               gtex.smrin >= 6.0) %>%
         distinct(external_id) %>% 
         pull()
       
@@ -193,31 +200,6 @@ separate_split_read_counts_cluster <- function(clusters_ID,
   all_split_reads <- readRDS(file = paste0(folder_destiny, "/all_split_reads.rds"))$junID
   gc()
   
-  # ## Load split reads count
-  # if (GTEx) {
-  #   counts <- readRDS(file = paste0(folder_origin, "/split_read_counts.rds"))  
-  #   # save(rse.Rdata"/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/raw_data/rse.Rdata")
-  #   # save(split_read_counts, file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/raw_data/split_read_counts.Rdata")
-  # } else {
-  #   counts <- readRDS(file = paste0(folder_origin, "/split_read_counts.rds"))  
-  # }
-  
-  ## Save counts data
- 
-  
-  # counts <- counts %>% 
-  #   as.matrix()
-  # gc()
-  # counts <- counts %>% 
-  #   as_tibble()
-  # gc()
-  # counts <- counts %>% 
-  #   tibble::rownames_to_column(junID) %>%
-  #   dplyr::relocate(junID)
-  # 
-  # saveRDS(object = counts, file = paste0(folder_path, "/split_read_counts.rds"))
-  
-  
   for (cluster in clusters_ID) { 
     # cluster <- clusters_ID[1]
     cluster_samples <- readRDS(file = paste0(folder_destiny, "/", cluster, "/", project_id, "_", cluster, "_samples.rds"))
@@ -226,7 +208,9 @@ separate_split_read_counts_cluster <- function(clusters_ID,
       
       print(paste0(Sys.time(), " - getting split_read_counts from ", cluster_samples %>% length(), 
                    " '", cluster, "' samples..."))
-      SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
+      if ("raw_counts" %in% assayNames(rse)) {
+        SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
+      }
       counts <- (rse %>% SummarizedExperiment::assays())[[1]]
       counts <- counts[, cluster_samples %>% as.character(), drop = FALSE]
       counts <- counts[rownames(counts) %in% all_split_reads, , drop = FALSE]
@@ -587,7 +571,7 @@ generate_recount3_median_tpm <- function() {
   
   all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
   
-  for (project_id in all_projects[-c(1:6)]) {
+  for (project_id in all_projects) {
     
     # project_id <- all_projects[7]
     
@@ -619,7 +603,8 @@ generate_recount3_median_tpm <- function() {
       
       # cluster <- clusters_ID[6]
       
-      cluster_samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_samples.rds"))
+      cluster_samples <- readRDS(file = paste0(folder_root, "/results/base_data/", 
+                                               cluster, "/", project_id, "_", cluster, "_samples.rds"))
       
       if (length(cluster_samples) > 0) {
         
@@ -627,8 +612,8 @@ generate_recount3_median_tpm <- function() {
         
         recount_tpm_local <- recount_tpm %>%
           dplyr::select(c("gene", all_of(cluster_samples))) %>%
-          dplyr::mutate(TPM_median = rowMedians(x = as.matrix(.[2:n_cols]))) %>%
-          dplyr::mutate(TPM_mean = rowMeans2(x = as.matrix(.[2:n_cols]))) %>%
+          dplyr::mutate(TPM_median = matrixStats::rowMedians(x = as.matrix(.[2:n_cols]))) %>%
+          dplyr::mutate(TPM_mean = matrixStats::rowMeans2(x = as.matrix(.[2:n_cols]))) %>%
           dplyr::select(gene, TPM_median, TPM_mean)
         
         # recount_tpm_local$TPM_median %>% unique()
@@ -656,92 +641,7 @@ generate_recount3_median_tpm <- function() {
 
 }
 
-prepare_gtex_samples <- function() {
-  
-  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")) {
-    
-    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-    
-    all_projects_used <- NULL
-    all_clusters_used <- NULL
-    all_samples_used <- NULL
-    
-    for (project in all_projects) {
-      
-      # project <- "BRAIN"
-      clusters_used <- NULL
-      
-      clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                        project, "/raw_data/all_clusters_used.rds"))
-      saveRDS(object = clusters,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                            project, "/raw_data/all_clusters.rds"))
-      
-      for (cluster in clusters) {
-        
-        if (!(cluster %in% c("Brain - Cortex", "Brain - Cerebellum"))) {
-          
-          ## Load samples
-          samples <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                           project, "/results/base_data/", cluster, "/", project, "_", cluster, "_samples.rds"))
-          if (samples %>% length() >= 70) {
-            clusters_used <- c(clusters_used, cluster)
-            all_projects_used <- c(all_projects_used, project) %>% unique()
-            all_clusters_used <- c(all_clusters_used, cluster) %>% unique()
-            all_samples_used <- c(all_samples_used, samples) %>% unique()
-          }
-          
-        }
-      }
-      
-      clusters_used <- clusters_used %>% unique()
-      print(paste0(Sys.time(), " - ", project, " finished!"))
-      saveRDS(object = clusters_used,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                            project, "/raw_data/all_clusters_used.rds"))
-    }
-    
-    all_projects_used %>% length()
-    all_clusters_used %>% length()
-    all_samples_used %>% length()
-    
-    saveRDS(object = all_projects_used %>% unique(),
-            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-    
-  } else {
-    all_projects <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
-                       "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", "HEART", "KIDNEY", "LIVER", "LUNG",
-                       "MUSCLE","NERVE", "OVARY", "PANCREAS", "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
-                       "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", "THYROID", "UTERUS", "VAGINA") %>% sort()
-    saveRDS(object = all_projects,
-            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-  }
-  
-  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")) {
-    all_clusters <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
-    
-  } else {
-    
-    all_clusters_used <- NULL
-    
-    for (project in all_projects) {
-      clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                        project, "/raw_data/all_clusters_used.rds"))
-      all_clusters_used <- c(all_clusters_used, clusters)
-    }
-    all_clusters_used %>% head()
-    
-    saveRDS(object = all_clusters_used,
-            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
-  }
-}
-
 tidy_gtex_tpm <- function() {
-  
-  
-  
-  
-
   
   ## LOAD THE TPM DATA
   tpm <- aws.s3::s3read_using(FUN = CePa::read.gct,
@@ -775,11 +675,11 @@ generate_protein_percentage <- function() {
   
   ## Import HUMAN REFERENCE transcriptome
   homo_sapiens_v105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
-    as.data.frame()
+    as_tibble()
   
   ## Get v105 transcripts
   transcripts_v105 <- homo_sapiens_v105 %>%
-    filter(type == "transcript") %>%
+    filter(type == "transcript") %>% 
     dplyr::select(transcript_id, transcript_biotype, gene_id)
   
   transcripts_v105 %>% head()
@@ -853,8 +753,21 @@ generate_protein_percentage <- function() {
   df_all %>%
     filter(junID == "chr1:100007157-100009287:+")
   
-  ## Calculate each biotype percentage
+  df_all$junID %>% unique() %>% length()
+  
+  ## Remove ambiguous jxn (belonging to multiple genes)
+  junID_nonamb <- df_all %>% 
+    group_by(junID) %>% 
+    distinct(gene_id, .keep_all = T) %>% 
+    dplyr::count() %>% 
+    filter(n == 1) %>%
+    pull(junID)
+  
+  junID %>% unique() %>% length()
+  
+  ## Calculate the biotype percentage
   df_all_percentage <- df_all %>% 
+    filter(junID %in% junID_nonamb) %>%
     group_by(junID, transcript_biotype) %>%
     distinct(tx_id_junction, .keep_all = T) %>% 
     summarise(n = n()) %>% 
@@ -862,10 +775,8 @@ generate_protein_percentage <- function() {
     ungroup()
   
   df_all_percentage %>%
-    filter(junID == "chr1:100007157-100009287:+")
+    filter(junID == "chr1:100009324-100010074:+")
   
-  # df_all_percentage[1:1000,] %>% group_by(junID) %>% filter(!any(transcript_biotype == "protein_coding"))  %>% tail()
-  # df_all_percentage %>% filter(junID == "chr1:100143210-100144068:+")
   
   ## Only filter by the protein-coding biotype
   df_all_percentage_tidy <- df_all_percentage %>% 
@@ -876,10 +787,14 @@ generate_protein_percentage <- function() {
     ungroup() %>%
     group_by(junID) %>%
     filter(percent == max(percent)) %>%
-    select(-transcript_biotype, -n) %>%
+    dplyr::select(-transcript_biotype, -n) %>%
     distinct(junID, .keep_all = T) %>%
     ungroup()
   
+  df_all_percentage %>%
+    filter(junID == "chr1:100009324-100010074:+")
+  df_all_percentage_tidy %>%
+    filter(junID == "chr1:100009324-100010074:+")
   
   df_all_percentage_tidy %>% head()
   
@@ -888,14 +803,14 @@ generate_protein_percentage <- function() {
     dplyr::rename(protein_coding = percent)
   
   df_all_percentage_tidy %>%
-    filter(junID == "chr1:100007157-100009287:+")
+    filter(junID == "chr1:100009324-100010074:+")
   
 
   print(object.size(df_all_percentage), units = "Gb")
   print(object.size(df_all_percentage_tidy), units = "Gb")
   
   saveRDS(object = df_all_percentage_tidy,
-          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds")
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_105_biotype.rds")
   
   
   ##########################################

@@ -73,15 +73,19 @@ get_GTEx_gene_expression <- function(rse, ensembl, recount3 = T) {
   
   SummarizedExperiment::assays(rse)$TPM <- recount::getTPM(rse)
   ## Should all be equal to 1
-  colSums(SummarizedExperiment::assay(rse, "TPM")) / 1e6
+  indx <- which(colSums(SummarizedExperiment::assay(rse, "TPM")) / 1e6 > 1) 
+  
+  any(SummarizedExperiment::assays(rse)$TPM[-(indx %>% unlist %>% unname),]/ 1e6 > 1)
   
   ## Tidy the dataframe
-  recount_dds_tpm <- SummarizedExperiment::assays(rse)$TPM %>%
+  recount_dds_tpm <- SummarizedExperiment::assays(rse)$TPM[-(indx %>% unlist %>% unname),] %>%
     as_tibble(rownames = "gene") %>% 
     mutate(gene = gene %>% str_remove("\\..*")) %>% 
     tidyr::gather(key = sample, value = tpm, -gene)
   
-  # recount_dds_tpm <- recount_dds_tpm %>% dplyr::arrange(gene)
+  recount_dds_tpm 
+  
+
   
   ## Filter by 'USE ME' sample
   
@@ -105,27 +109,10 @@ get_GTEx_gene_expression <- function(rse, ensembl, recount3 = T) {
   
   recount_dds_tpm <- recount_dds_tpm %>% 
     filter(sample %in% sample_used) 
-  
-  
-  ## 2. Compare TPM values
-  # dds_tpm %>% filter(gene == "ENSG00000160201")
-  
-  recount_dds_tpm %>%
-    filter(gene == "ENSG00000160201")
-  
-  # df_tpm_merged <- merge(x = dds_tpm %>% data.table::as.data.table(),
-  #                        y = recount_dds_tpm %>% data.table::as.data.table(),
-  #                        by = "gene") 
-  # 
-  # 
-  # dds_tpm %>% distinct(gene) %>% nrow()
-  # recount_dds_tpm %>% distinct(gene) %>% nrow()
-  
-  
 
   
   
-  ## Return recount3 TPM counts
+  ## 2. Add gene name
   
   mapping <- biomaRt::getBM(
     attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
@@ -139,7 +126,8 @@ get_GTEx_gene_expression <- function(rse, ensembl, recount3 = T) {
     dplyr::left_join(mapping,
                      by =  c("gene" = "ensembl_gene_id"))
   
-
+  ## 3. Return recount3 TPM counts
+  
   return(df_return)
   
 }
@@ -284,6 +272,17 @@ RBP_corrected_TPM_analysis <- function(project_id) {
 RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   
   
+  ################################
+  ## LOAD RBPs OF INTEREST
+  ################################
+  
+  if (!exists("all_RBPs")) {
+    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/41586_2020_2077_MOESM3_ESM.xlsx', 
+                                sep = '\t', header = TRUE,
+                                sheetIndex = 1) %>%  as_tibble() 
+  }
+  
+  
   all_RBPs_tidy <- all_RBPs %>%
     mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
     dplyr::select(name, ensembl_gene_id = id, type) %>%
@@ -312,7 +311,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
                                               project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
                                 fileEncoding = "UTF-8") %>% as_tibble()
     
-    
+    print(sample_metadata %>% nrow)
     ## Check the samples are the same
     if ( !( identical(x = names(tpm_uncorrected)[-1],
                       y = names(sample_metadata)[-1]) ) ) {
@@ -424,6 +423,8 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
       RBPs_annotated_tidy <- left_join(x = RBPs_annotated %>% as_tibble(), 
                                        y = all_RBPs_tidy %>% as_tibble(), 
                                        by = c("ensembl_gene_id" = "ensembl_gene_id"))
+    } else {
+      RBPs_annotated_tidy <- all_RBPs_tidy
     }
     
     ## Add gene SYMBOL info
@@ -457,247 +458,13 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   #           RBP_increase$hgnc_symbol)
   # 
   # RBP_decrease$hgnc_symbol %>% unique() %>% sort()
-  # RBP_increase$hgnc_symbol %>% unique() %>% sort()
   
   
 }
 
-RBPs_classify_affected_age <- function (project_id) {
-  
-  iCLIP_MSR_results <- read.csv(file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv", header = T)
-  
-  
-  RBPs_age_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                        "/results/pipeline3/rbp/tpm_lm_all_ensembl105.csv")) %>%
-    drop_na() %>% 
-    as_tibble()
-  
-  df_tidy <- merge(x = iCLIP_MSR_results %>% dplyr::select( RBP_name,RBP_type),
-                   y = RBPs_age_lm,
-                   by.x = "RBP_name",
-                   by.y = "name",
-                   all.x = T) %>%
-    arrange(RBP_type,Estimate )
-  
-  
-  df_tidy %>%
-    filter(type == "splicing regulation") %>%
-    pull(Estimate) %>% summary
-  df_tidy %>%
-    filter(type != "splicing regulation") %>%
-    pull(Estimate) %>% summary
-  
-  
-  plot(density(df_tidy %>%
-                 filter(Estimate <= -0.31, pval <= 0.05) %>%
-                 pull(Estimate) ))
-  
-  
-  lines(density(df_tidy %>%
-                 filter(Estimate >= -0.15 | pval > 0.05) %>%
-                 pull(Estimate) ), col = "red")
-  
-  
-  ##############################
-  plot(density(df_tidy %>%
-                 pull(Estimate)))
-  df_tidy %>%
-    pull(Estimate) %>% 
-    summary
-  
-  RBP_age <- df_tidy %>%
-    filter(Estimate <= -0.75, 
-           pval <= 0.05, 
-           type == "splicing regulation") %>%
-    pull(hgnc_symbol) 
-  
-  RBP_notage <- df_tidy %>%
-    filter(Estimate > -0.15 |
-           pval > 0.05 | 
-           type == "other") %>%
-    pull(hgnc_symbol) 
-  intersect(RBP_age,RBP_notage)
-  df <- iCLIP_MSR_results %>%
-    rowwise() %>%
-    mutate(type_age = NA) %>%
-    mutate(type_age = ifelse(RBP_name %in% RBP_age, "age", NA),
-           type_age = ifelse(RBP_name %in% RBP_notage, "notage", type_age))
-  df %>% as.data.frame()
-  
-  #############################
-  
-  wilcox.test(x = df %>% 
-                filter(type_age == "age") %>%
-                pull(ovlps_MSRD_perc),
-              y = df %>% 
-                filter(type_age == "notage") %>%
-                pull(ovlps_MSRD_perc),
-              paired = F,
-              alternative = "greater")
-  
-  wilcox.test(x = df %>% 
-                filter(type_age == "age") %>%
-                pull(ovlps_MSRA_perc),
-              y = df %>% 
-                filter(type_age == "notage") %>%
-                pull(ovlps_MSRA_perc),
-              paired = F,
-              alternative = "greater")
-  
-  iCLIP_MSR_results <- read.csv(file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv", header = T)
-  
-  
-  
-  
-  
-  
-  ###########################
-  
-  plot(density(df_lm_age_tidy %>%
-                 filter(type != "other") %>%
-                 pull(Estimate)))
-  lines(density(df_lm_age_tidy %>%
-                  filter(type == "other") %>%
-                  pull(Estimate)), col = "red")
-  
-  # compute mean estimates
-  df_lm_age_tidy %>%
-    filter(type != "other") %>%
-    pull(Estimate) %>%  median
-  
-  mean_df_lm_age_tidy <- data.frame(median = c(-0.26, -0.40),
-                                    type = c("other",
-                                             "splicing regulation"))
-  
- 
-  
-  ggplot(data = df_lm_age_tidy, aes(x = Estimate, 
-                                    y=..density..,
-                                    group = type,
-                                    fill = type)) +
-    geom_density(alpha = 0.2) +
-    #ggforce::facet_zoom(xlim = c(-0.2,0)) +
-    
-    #scale_x_log10() +
-    geom_vline(data = mean_df_lm_age_tidy, 
-               aes(xintercept = median, 
-                   color = type), size=1.5) +
-    geom_text(data = mean_df_lm_age_tidy, aes(label = paste0("Median: ", median),
-                                              color = type,
-                                              y=1, x=c(-15,-25))) 
-  
-  
-  RBPs_lm_age <- df_lm_age_tidy %>%
-    filter(Estimate <= -0.3, 
-           type != "other",
-           pval <= 0.05) %>%
-    as_tibble()
-  
-  write.csv(x = RBPs_lm_age$name %>% unique,
-            row.names = F,
-            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv")
-  
-  
-  ## RBPs not affected by age
-  RBPs_lm_other <- df_lm_age_tidy %>%
-    filter(RBP_ID %in% setdiff(df_lm_age_tidy$RBP_ID, RBPs_lm_age$RBP_ID))
-  
-  write.csv(x = RBPs_lm_other$name %>% unique,
-            row.names = F,
-            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv")
-  
-}
 
-MSR_changing_with_age <- function(project_id = "BRAIN") {
-  
-  
-  source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R")
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                        "/results/pipeline3/missplicing-ratio/age/")
-  
-  
-  #ref <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-  
-  age_samples_clusters_tidy <- age_stratification_init_data(project_id = project_id)
-  age_supergroups <- age_samples_clusters_tidy$age_group %>% unique()
-  
-  ## Load the IDBs (the intron and the novel tables)
-  df_age_groups_intron <- map_df(age_supergroups, function(age_group) {
-    readRDS(file = paste0(folder_root, "/", age_group, "/", age_group, "_db_introns.rds")) %>%
-      mutate(sample_type = age_group) %>%
-      return()
-  })
-  
-  common_introns <- df_age_groups_intron %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_supergroups %>% length()) %>%
-    pull(ref_junID)
 
-  
-  ## Filter the INTRONS table by the common mis-spliced introns
-  df_age_groups_intron_tidy <- merge(x = df_age_groups_intron %>% data.table::as.data.table(),
-                                     y = data.table::data.table(ref_junID = common_introns),
-                                     by = "ref_junID",
-                                     all.y = T)
-  
-  
-  
-  ## MSR_D -------------------------------------------------
-  df_MSRD <- df_age_groups_intron_tidy %>%
-    dplyr::select(ref_junID,
-                  seqnames,start,end,strand,
-                  sample_type,
-                  MSR_D = ref_missplicing_ratio_tissue_ND,
-                  gene_name) %>%
-    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_D)
-  
-  # genes_MSRD_discard <- df_MSRD %>%
-  #   rowwise() %>%
-  #   filter(`20-39` > `40-59` |
-  #            `20-39` > `60-79`) %>%
-  #   distinct(gene_name) %>% 
-  #   pull() %>% unlist()
-  
-  genes_MSRD_increasing <- df_MSRD %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`)
-  
-  
-  saveRDS(object = genes_MSRD_increasing %>% distinct(ref_junID, .keep_all = T),
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
-  
-  ## MSR_A -------------------------------------------------
-  df_MSRA <- df_age_groups_intron_tidy %>%
-    #filter(ref_junID %in% df_age_groups_novel_tidy$ref_junID) %>%
-    dplyr::select(ref_junID,
-                  seqnames,start,end,strand,
-                  sample_type,
-                  MSR_A = ref_missplicing_ratio_tissue_NA,
-                  gene_name) %>%
-    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_A)
-  
-  # genes_MSRA_discard <- df_MSRA %>%
-  #   filter(`20-39` > `40-59` |
-  #            `20-39` > `60-79`) %>%
-  #   distinct(gene_name) %>% 
-  #   pull() %>% unlist()
-  
-  genes_MSRA_increasing <- df_MSRA %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`) #%>%
-    #filter(!(gene_name %in% genes_MSRA_discard))
-  
-  genes_MSRA_increasing %>% distinct(ref_junID)
-  
-  saveRDS(object = genes_MSRA_increasing %>% distinct(ref_junID, .keep_all = T),
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
-  
-}
+
 
 
 
@@ -762,6 +529,7 @@ write.csv(x = dds_tpm_pv %>%
 ################################################################################
 
 sample_metadata <- tidy_sample_metadata(rse)
+
 
 write_csv(x = sample_metadata %>%
             as_tibble(rownames = "covariates"), 

@@ -60,9 +60,8 @@ get_mode <- function(data) {
 
 
 get_base_data_annotated <- function(cluster,
-                                    samples,
                                     all_split_reads,
-                                    split_read_counts,
+                                    split_read_counts = NULL,
                                     edb = NULL,
                                     gtf_path = NULL,
                                     gtf_version,
@@ -105,7 +104,11 @@ get_base_data_annotated <- function(cluster,
   
   ## Print the current tissue we are working with
   print(paste0(Sys.time(), " --> All split reads: ", length(all_split_reads$junID)))
-  print(paste0(Sys.time(), " --> ", cluster, ". Split reads: ", length(split_read_counts$junID)))
+  
+  if (!is.null(split_read_counts)) {
+    print(paste0(Sys.time(), " --> ", cluster, ". Split reads: ", length(split_read_counts$junID)))
+  }
+  
  
   
   ################################################################
@@ -113,10 +116,18 @@ get_base_data_annotated <- function(cluster,
   ################################################################
 
   ## Filter by the current cluster's junctions and convert into GRanges format
-  all_split_reads_cluster <- all_split_reads %>% 
-    as_tibble() %>%
-    dplyr::filter(junID %in% split_read_counts$junID) %>% 
-    GenomicRanges::GRanges()
+  
+  if (!is.null(split_read_counts)) {
+    all_split_reads_cluster <- all_split_reads %>% 
+      as_tibble() %>%
+      dplyr::filter(junID %in% split_read_counts$junID) %>% 
+      GenomicRanges::GRanges()
+    rm(split_read_counts)
+  } else {
+    all_split_reads_cluster <- all_split_reads %>% 
+      GenomicRanges::GRanges()
+  }
+  
   
   
   print(paste0(Sys.time(), " --> ", cluster, ". Split reads in recount2: ", length(all_split_reads_cluster)))
@@ -147,7 +158,8 @@ get_base_data_annotated <- function(cluster,
     dplyr::filter(type %in% c("annotated", "novel_donor", "novel_acceptor")) %>%
     dplyr::select(seqnames, start, end, width, strand,
                   junID, ss5score, ss3score, type,
-                  gene_name_junction, gene_id_junction, tx_id_junction)
+                  gene_name_junction, gene_id_junction, tx_id_junction, 
+                  contains("junction_category"))
   
   saveRDS(object = all_split_reads_details, 
           file = paste0(folder_save_path, "/", cluster, "_annotated_SR_details_length_", 
@@ -158,8 +170,6 @@ get_base_data_annotated <- function(cluster,
   
   rm(all_split_reads_details)
   rm(all_split_reads_cluster)
-  rm(split_read_counts)
-  rm(samples)
   gc()
  
 }

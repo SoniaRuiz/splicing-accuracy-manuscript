@@ -2,6 +2,7 @@ library(tidyverse)
 library(SummarizedExperiment)
 library(data.table)
 library(GenomicRanges)
+library(DBI)
 
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
 
@@ -89,7 +90,7 @@ download_from_recount <- function(project_id,
   
   print(paste0(Sys.time(), " - ", project_id, " --> separating samples into clusters."))
   
-  saveRDS(object = clusters_ID, file = paste0(folder_origin, "/all_clusters_used.rds"))
+  # saveRDS(object = clusters_ID, file = paste0(folder_origin, "/all_clusters_used.rds"))
   
   separate_samples(clusters_ID = clusters_ID,
                    folder_origin = folder_origin,
@@ -214,6 +215,11 @@ annotate_from_recount <- function(project_id,
 
 source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_generation.R")
 
+# project_id <- "BRAIN"
+# gtf_version <- "105"
+# folder_root <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/"
+# clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds"))
+# cluster <- "Brain - Frontal Cortex (BA9)"
 idb_generation <- function(project_id,
                            gtf_version,
                            clusters_ID = NULL,
@@ -241,7 +247,8 @@ idb_generation <- function(project_id,
     ############################################
     
     ## Load samples
-    samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster,  "_samples.rds"))
+    samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, 
+                                     "/", project_id, "_", cluster,  "_samples.rds"))
     
     if (samples %>% length() > 0) {
 
@@ -249,7 +256,7 @@ idb_generation <- function(project_id,
       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
 
 
-      ## Load split read data
+      # # ## Load split read data
       all_split_reads_details <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
                                                            cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
       ## Load split read counts
@@ -300,7 +307,6 @@ idb_generation <- function(project_id,
       dir.create(file.path(folder_idb_name), recursive = T, showWarnings = F)
   
       get_missplicing_ratio(cluster = cluster,
-                            samples = samples,
                             split_read_counts = split_read_counts,
                             folder_name = folder_name,
                             folder_save_name = folder_idb_name)
@@ -308,11 +314,11 @@ idb_generation <- function(project_id,
       add_missplicing_class_to_df(cluster = cluster,
                                   folder_name = folder_idb_name)
 
-      get_missplicing_QC(cluster = cluster,
-                         samples = samples,
-                         split_read_counts = split_read_counts,
-                         all_split_reads_details = all_split_reads_details,
-                         folder_name = folder_idb_name)
+      # get_missplicing_QC(cluster = cluster,
+      #                    samples = samples,
+      #                    split_read_counts = split_read_counts,
+      #                    all_split_reads_details = all_split_reads_details,
+      #                    folder_name = folder_idb_name)
   
   
       ############################################
@@ -328,8 +334,8 @@ idb_generation <- function(project_id,
       clinvar_analysis(cluster = cluster,
                        folder_name = folder_idb_name)
 
-      add_MANE_info(cluster = cluster,
-                    folder_name = folder_idb_name)
+      # add_MANE_info(cluster = cluster,
+      #               folder_name = folder_idb_name)
       
       
       
@@ -351,9 +357,17 @@ idb_generation <- function(project_id,
                                          folder_root = folder_idb_name)
     
     }
-    
   }
 }
+
+
+##################################
+## CALLS - SQL GENERATION
+##################################
+
+## Connect to the database -----------------------------------------------------
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
+
 
 
 
@@ -362,17 +376,25 @@ idb_generation <- function(project_id,
 ############################
 
 ## Load the dependency needed for the conservation/constraint scores        
-# print("Loading the 'CNC_CDTS_CONS_gr' file...")
-# aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
-# print("'CNC_CDTS_CONS_gr' file loaded!")
+if (!exists("CNC_CDTS_CONS_gr")) {
+  print("Loading the 'CNC_CDTS_CONS_gr' file...")
+  aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
+  print("'CNC_CDTS_CONS_gr' file loaded!")
+} else {
+  print("Loading the 'CNC_CDTS_CONS_gr' file...")
+  aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
+  print("'CNC_CDTS_CONS_gr' file already loaded!")
+}
+
 
 ## Loop through each project
-all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
 gtf_version <- 105
 
 for (project_id in all_projects) {
 
-  # project_id <- all_projects[7]
+  # project_id <- all_projects[31]
   
   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
   
@@ -394,117 +416,63 @@ for (project_id in all_projects) {
 
   rm(rse)
   gc()
-   
-  clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds"))
-   
+    
+  clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters.rds"))
+    
   annotate_from_recount(project_id = project_id,
                         gtf_version = gtf_version,
                         clusters_ID = clusters_ID,
                         folder_root = folder_root)
   gc()
 
-  # idb_generation(project_id = project_id,
-  #                gtf_version = gtf_version,
-  #                clusters_ID = clusters_ID,
-  #                folder_root = folder_root)
-  # gc()
-  
-
+  idb_generation(project_id = project_id,
+                 gtf_version = gtf_version,
+                 clusters_ID = clusters_ID,
+                 folder_root = folder_root)
+  gc()
   
 }
 
 
+##################################
+## CALLS - SQL GENERATION
+##################################
 
-
-
-
-#############################################
-## ADDING THE TPM VALUE GENERATED BY RECOUNT3
-#############################################
-
-# for (project_id in all_projects) {
-#   
-#   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
-#   clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds"))
-#   
-#   for (cluster in clusters_ID) {
-#   
-#     # cluster <- clusters_ID[1]
-#   
-#     tpm_file <- paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_tpm.rds")
-#     folder_name <- paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v", gtf_version, "/")
-#   
-#     print(cluster)
-#   
-#     ## LOAD SOURCE DATA
-#     file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-#   
-#     if (file.exists(file_name) && file.exists(tpm_file)) {
-#   
-#       df_introns <- readRDS(file = file_name)
-#   
-#       ## GENE TPM
-#       print(paste0(Sys.time(), " - Adding gene TPM..."))
-#   
-#       tpm <- readRDS(file = tpm_file)
-#   
-#       tpm %>% head()
-#       tpm %>% nrow()
-#   
-#       tpm <- tpm  %>%
-#         dplyr::select(gene_id = gene,
-#                       tpm_median = TPM_median,
-#                       tpm_mean = TPM_mean)
-#   
-#       tpm %>% head()
-#       tpm %>% nrow()
-#   
-#   
-#       df_introns <- df_introns %>%
-#         unnest(gene_id)
-#   
-#   
-#       df_merged <- merge(x = df_introns %>% data.table::as.data.table(),
-#                          y = tpm %>% data.table::as.data.table(),
-#                          by = "gene_id",
-#                          all.x = T) %>%
-#         dplyr::rename(tpm_mean_rct3 = tpm_mean)%>%
-#         dplyr::rename(tpm_median_rct3 = tpm_median)
-#   
-#   
-#       df_merged %>% head()
-#       df_merged %>% nrow()
-#   
-#       saveRDS(object = df_merged, file = file_name)
-#     }
-#   
-#   }
+# age <- F
+# 
+# hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+# hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
+# 
+# if (age) {
+#   database_path <- "./database/age-stratification.sqlite"
+#   SRA_projects <- c("BRAIN", "BLOOD", "MUSCLE") %>% sort()
+# } else {
+#   database_path <- "./database/splicing_qc.sqlite"
+#   SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
 # }
+# 
+# SRA_projects %>% length() %>% print()
+# 
+# con <- dbConnect(RSQLite::SQLite(), database_path)
+# dbListTables(con)
+# 
+# ## Remove the tables -----------------------------------------------------------
+# 
+# remove_tables(all = F)
+# dbListTables(con)
+# 
+# 
+# ## Create the tables -----------------------------------------------------------
+# 
+# create_master_table()
+# 
+# create_mane_table()
+# 
+# create_gene_table()
+# 
+# create_intron_table()
+# 
+# create_novel_table()
+# 
+# create_cluster_tables()
 
-
-
-#############################################
-## ADDING ONLY THE CONSERVATION SCORES
-#############################################
-
-# for (project_id in all_projects[-c(1:15)]) {
-# 
-#   
-#   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
-#   clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds"))
-# 
-#   
-#   for (cluster in clusters_ID) {
-# 
-#     # cluster <- clusters_ID[1]
-#     print(paste0(Sys.time(), " - ", cluster))
-# 
-#     folder_name <- paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v", gtf_version, "/")
-# 
-#     add_cdts_cons_scores(cluster = cluster,
-#                          folder_name = folder_name)
-# 
-# 
-#   }
-#   
-# }

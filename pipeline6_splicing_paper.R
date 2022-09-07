@@ -6,8 +6,166 @@ library(biomaRt)
 library(DBI)
 
 ####################################################
-## PAPER ###########################################
+## GENERATE SPLICING DATABASE ######################
 ####################################################
+
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
+
+## CONNECT TO THE DATABASE ------------------------------
+database_path <- "./database/introverse_qc.sqlite"
+con <- dbConnect(RSQLite::SQLite(), "./database/splicing.sqlite")
+dbListTables(con)
+
+age <- F
+
+hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
+
+SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+SRA_projects %>% length() %>% print()
+
+
+
+## Remove the tables -----------------------------------------------------------
+
+remove_tables(all = F)
+dbListTables(con)
+
+
+## Create the tables -----------------------------------------------------------
+
+create_master_table(age, QC = T)
+
+create_mane_table()
+
+create_gene_table()
+
+create_intron_table()
+
+create_novel_table()
+
+create_cluster_tables()
+
+
+prepare_gtex_samples <- function() {
+  
+  
+  if (file.exists("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")) {
+    
+    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+    
+    all_projects_used <- NULL
+    all_clusters_used <- NULL
+    all_samples_used <- NULL
+    
+    for (project_id in all_projects) {
+    
+      
+      clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                        project_id, "/raw_data/all_clusters.rds"))
+      
+      print("All clusters saved!")
+      
+      
+      ## SAVE CLUSTERS SP ------------------------------------------------------
+      
+      clusters_used <- NULL
+      
+      for (cluster in clusters) {
+        
+        if (!(cluster %in% c("Brain - Cortex", "Brain - Cerebellum")) &&
+            !(project_id %in% c("BREAST", "CERVIX_UTERI", "FALLOPIAN_TUBE", "OVARY",
+                                "PROSTATE", "TESTIS", "UTERUS", "VAGINA"))) {
+          
+          ## Load samples
+          samples <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/results/base_data/", cluster, "/", 
+                                           project_id, "_", cluster, "_samples.rds"))
+          
+          if (samples %>% length() >= 70) {
+            clusters_used <- c(clusters_used, cluster)
+            all_projects_used <- c(all_projects_used, project_id) %>% unique()
+            all_clusters_used <- c(all_clusters_used, cluster) %>% unique()
+            all_samples_used <- c(all_samples_used, samples) %>% unique()
+          }
+        }
+      }
+      
+      clusters_used <- clusters_used %>% unique()
+      print(paste0(Sys.time(), " - ", project_id, " finished!"))
+      saveRDS(object = clusters_used,
+              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                            project_id, "/raw_data/all_clusters_used.rds"))
+    }
+    
+    all_projects_used %>% length()
+    all_clusters_used %>% length()
+    all_samples_used %>% length()
+    
+    saveRDS(object = all_projects_used %>% unique(),
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+    
+  } else {
+    all_projects <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
+                       "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", "HEART", "KIDNEY", "LIVER", "LUNG",
+                       "MUSCLE","NERVE", "OVARY", "PANCREAS", "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
+                       "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", "THYROID", "UTERUS", "VAGINA") %>% sort()
+    saveRDS(object = all_projects,
+            file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+  }
+  saveRDS(object = data.frame(project = c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLADDER", "BLOOD", 
+                                           "BLOOD_VESSEL", "BONE_MARROW", "BRAIN", "BREAST",
+                                           "CERVIX_UTERI", "COLON", "ESOPHAGUS", "FALLOPIAN_TUBE", 
+                                           "HEART", "KIDNEY", "LIVER", "LUNG",
+                                           "MUSCLE","NERVE", "OVARY", "PANCREAS", 
+                                           "PITUITARY", "PROSTATE", "SALIVARY_GLAND", "SKIN",
+                                           "SMALL_INTESTINE", "SPLEEN", "STOMACH", "TESTIS", 
+                                           "THYROID", "UTERUS", "VAGINA"),
+                              samples = c(1293, 274, 21, 1048,
+                                          1398, 204, 2931, 482,
+                                          19, 822, 1577, 9,
+                                          942, 98, 251, 655,
+                                          881, 659, 195, 360,
+                                          301, 263, 178, 1940,
+                                          193, 255, 384, 410,
+                                          706, 159, 173),
+                              raw_jxn = c(5768983, 2333266, 822305, 4690652,
+                                          5691345, 2507266, 9484210, 3604618,
+                                          807104, 4478932, 6106677, 617634,
+                                          3991264, 1571657, 2057473, 4660024,
+                                          3726485, 4242128, 2279666, 2329118,
+                                          3134613, 2706136, 2240651, 7186905,
+                                          2415045, 2602164, 2851632, 9220923,
+                                          4636674, 2001206, 2140753)),
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_summary.rds")
+}
+
+
+########################################
+## DATABASE STATS
+########################################
+
+tables <- dbListTables(con)
+
+query <- paste0("SELECT * from 'intron'")
+dbGetQuery(con, query) %>% distinct(ref_junID) %>% nrow()
+
+query <- paste0("SELECT * from 'novel'")
+dbGetQuery(con, query) %>% distinct(ref_junID) %>% nrow()
+dbGetQuery(con, query) %>% distinct(novel_junID) %>% nrow()
+
+dbGetQuery(con, query) %>% dplyr::count(novel_type)
+
+
+query <- paste0("SELECT * from 'master'")
+db_metadata <- dbGetQuery(con, query) %>% as_tibble()
+db_metadata %>%
+  mutate(rin = rin %>% as.double()) %>%
+  filter(rin >= 6)
+
+########################################
+## FUNCTIONS
+########################################
 
 
 ## SECTION 1 ---------------------------------------------
@@ -246,34 +404,34 @@ get_unique_donor_acceptor_jxn <- function() {
   ## Proportion of each type of unique junctions per GTEx tissue.
   ##################################################################################################
   
-  ## Connect to IntroVerse
-  con <- dbConnect(RSQLite::SQLite(), "/home/sruiz/PROJECTS/splicing-project-app/introverse/dependencies/introverse.sqlite")
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
-  
-  ## Load all tissues used in this project
-  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-  
-  
   df_proportions <- map_df(all_projects, function(project_id) {
     
-    # project_id <- all_projects[1]
+    # project_id <- all_projects[5]
     
     print(paste0(Sys.time(), " - ", project_id))
     
+    clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/raw_data/all_clusters_used.rds"))
+    
     all_clusters <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
+      filter(SRA_project == project_id,
+             cluster %in% clusters_used) %>%
       distinct(cluster) %>%
       pull()
     
-
+    print(all_clusters)
+    
+    if (!identical(clusters_used %>% sort(), all_clusters %>% sort())) {
+      print("Error! Both set of clusters are not identical.")
+      break;
+    }
+    
     map_df(all_clusters, function(cluster_id) {
     
       # cluster_id <- all_clusters[1]
       
       ## Print the tissue
-      print(paste0(Sys.time(), " - ", cluster_id))
+      print(paste0(cluster_id))
       
       samples <- df_metadata %>%
         dplyr::count(cluster) %>%
@@ -288,9 +446,9 @@ get_unique_donor_acceptor_jxn <- function() {
       ## GET THE INTRONS
       ####################
       
-      query <- paste0("SELECT ref_junID, ref_mean_counts, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+      query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT DISTINCT ref_junID, ref_mean_counts, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
+      query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
       introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
       
       
@@ -301,9 +459,9 @@ get_unique_donor_acceptor_jxn <- function() {
       ## GET THE NOVEL JUNCTIONS
       ###########################
       
-      query <- paste0("SELECT novel_junID, novel_mean_counts FROM '", cluster_id, "_", project_id, "_misspliced'")
+      query <- paste0("SELECT DISTINCT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
       novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
-      query <- paste0("SELECT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", paste(novel_junctions$novel_junID, collapse = ","), ")")
+      query <- paste0("SELECT DISTINCT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", paste(novel_junctions$novel_junID, collapse = ","), ")")
       novel_junctions <- merge(x = novel_junctions,
                                y = dbGetQuery(con, query) %>% as_tibble(),
                                by = "novel_junID",
@@ -359,7 +517,8 @@ get_unique_donor_acceptor_jxn <- function() {
                         samples = samples))
     })
   })
-  DBI::dbDisconnect(conn = con)
+  
+  
   
   ## Save results --------------------------------------------------------------------------
 
@@ -368,20 +527,27 @@ get_unique_donor_acceptor_jxn <- function() {
             file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/paper/unique_donor_acceptor_jxn.rds")
   } else {
     df_proportions <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/paper/unique_donor_acceptor_jxn.rds")
+    
+    df_proportions %>%
+      arrange(desc(annotated_prop))
   }
   
-  all_clusters <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+  ###################
+  ## STATS
+  ###################
   
-  df_proportions %>%
-    arrange(samples)
-  df_proportions %>% head()
+  df_proportions %>% 
+    pull(annotated_junc) %>% mean
+  df_proportions %>% 
+    pull(donor_junc) %>% mean
+  df_proportions %>% 
+    pull(acceptor_junc) %>% mean
   
   #df_proportions <- df_proportions %>% 
   #cor.test(x = df_proportions$acceptor_prop,
   #         y = df_proportions$samples)
   
   df_proportions <- df_proportions %>%
-    filter(tissue %in% all_clusters) %>%
     dplyr::select(tissue, 
                   donor = donor_prop, 
                   acceptor = acceptor_prop, 
@@ -423,14 +589,14 @@ get_unique_donor_acceptor_jxn <- function() {
   
   
   ggplot(df_proportions_final %>% filter(type %in% c("donor", "acceptor")), 
-         aes(x = tissue, y = prop, 
+         aes(x = tissue, y = prop * 100, 
              group = type, fill = type)) +
-    geom_col(position = position_identity()) +
+    geom_col(position = position_dodge()) +
     #geom_text(aes(label = round(x = prop, digits = 2)), 
     #          position = position_stack(vjust = 0.5, reverse = TRUE), colour = "white", size = 1.5) +
     coord_flip() +
     theme_light() +
-    ylab("unique junctions across samples (%)") +
+    ylab("unique num. junctions across samples (%)") +
     xlab("") +
     #scale_fill_viridis_d()  +
     #ggtitle("Percentage of unique introns and unique novel junctions per tissue") +
@@ -465,38 +631,32 @@ get_unique_donor_acceptor_jxn <- function() {
 
 get_unique_donor_acceptor_reads <- function() {
   
-  ##############################################################################################
-  ## Distribution of mean counts of novel donor, novel acceptor and annotated junctions 
-  ## across all tissues
-  ##############################################################################################
-  
-  
-  ## Connect to IntroVerse
-  con <- dbConnect(RSQLite::SQLite(), "/home/sruiz/PROJECTS/splicing-project-app/introverse/dependencies/introverse.sqlite")
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
-  
-  ## Load all tissues used in this project
-  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-  
-  
-  
   df_mean_counts <- map_df(all_projects, function(project_id) {
     
-    # project_id <- all_projects[1]
+    #############################
+    ## GET THE CLUSTERS
+    #############################
     
     print(paste0(Sys.time(), " - ", project_id))
     
+    clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/raw_data/all_clusters_used.rds"))
+    
     all_clusters <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
+      filter(SRA_project == project_id,
+             cluster %in% clusters_used) %>%
       distinct(cluster) %>%
       pull()
+    
+    if (!identical(clusters_used %>% sort(), all_clusters %>% sort())) {
+      print("Error! Both set of clusters are not identical.")
+    }
     
     
     map_df(all_clusters, function(cluster_id) {
     
-      # cluster <- all_clusters[1]
+      # project_id <- "BRAIN"
+      # cluster_id <- "Brain - Frontal Cortex (BA9)"
       print(cluster_id)
       
       samples <- df_metadata %>%
@@ -504,66 +664,78 @@ get_unique_donor_acceptor_reads <- function() {
         filter(cluster == cluster_id) %>% 
         pull(n)
       
-      folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                            project_id)
-      samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster_id, "/", 
-                                       project_id, "_", cluster_id,  "_samples.rds"))
-      
+     
       
       ####################
       ## GET THE INTRONS
       ####################
       
-      # query <- paste0("SELECT ref_junID, ref_mean_counts, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
-      # introns <- dbGetQuery(con, query) %>% as_tibble()
-      # query <- paste0("SELECT DISTINCT ref_junID, ref_mean_counts, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
-      # introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+      query <- paste0("SELECT ref_junID, ref_sum_counts, ref_n_individuals FROM '", 
+                      cluster_id, "_", project_id, "_nevermisspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT DISTINCT ref_junID, ref_sum_counts, ref_n_individuals FROM '", 
+                      cluster_id, "_", project_id, "_misspliced'")
+      introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
       
-      
-      introns <- readRDS(file = paste0(folder_root, "/results/pipeline3/missplicing-ratio/",
-                                       cluster_id, "/v105/", cluster_id, "_db_introns.rds"))
+   
       
       ###########################
       ## GET THE NOVEL JUNCTIONS
       ###########################
       
-      # query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_misspliced'")
-      # novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
-      # query <- paste0("SELECT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", paste(novel_junctions$novel_junID, collapse = ","), ")")
-      # novel_junctions <- merge(x = novel_junctions,
-      #                          y = dbGetQuery(con, query) %>% as_tibble(),
-      #                          by = "novel_junID",
-      #                          all.x = T) %>% as_tibble()
+      query <- paste0("SELECT novel_junID, novel_sum_counts, novel_n_individuals FROM '", cluster_id, "_", project_id, "_misspliced'")
+      novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
+      query <- paste0("SELECT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", paste(novel_junctions$novel_junID, collapse = ","), ")")
+      novel_junctions <- merge(x = novel_junctions,
+                               y = dbGetQuery(con, query) %>% as_tibble(),
+                               by = "novel_junID",
+                               all.x = T) %>% as_tibble()
       
-      # folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id)
-      # samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster_id, "/", project_id, "_", cluster_id,  "_samples.rds"))
-      # 
-      # db_intron <- readRDS(file = paste0(folder_root, "/results/pipeline3/missplicing-ratio/",
-      #                                  cluster_id, "/v105/", cluster_id, "_db_introns.rds"))
-      novel_junctions <- readRDS(file = paste0(folder_root, "/results/pipeline3/missplicing-ratio/",
-                                               cluster_id, "/v105/", cluster_id, "_db_novel.rds"))
-      
+    
       ###########################
       ## GET THE PROPORTIONS
       ###########################
+
       
       annotated <- introns %>%
         dplyr::distinct(ref_junID, .keep_all = T) %>%
-        #dplyr::mutate(ref_mean_counts = ref_sum_counts / ref_n_individuals) %>%
+        mutate(ref_mean_counts = ref_sum_counts / ref_n_individuals ) %>%
         pull(ref_sum_counts) %>% 
-        sum()
+        mean()
+      
+      ###########################################################
+      
+      introns %>%
+        dplyr::distinct(ref_junID, .keep_all = T) %>%
+        pull(ref_sum_counts) %>%
+        summary()
+      novel_junctions %>%
+        filter(novel_type == "novel_acceptor") %>%
+        dplyr::distinct(novel_junID, .keep_all = T) %>%
+        pull(novel_sum_counts) %>% 
+        summary()
+      novel_junctions %>%
+        filter(novel_type == "novel_donor") %>%
+        dplyr::distinct(novel_junID, .keep_all = T) %>%
+        pull(novel_sum_counts) %>% 
+        summary()
+      
+      ###########################################################
       
       acceptor <- novel_junctions %>%
         filter(novel_type == "novel_acceptor") %>%
         dplyr::distinct(novel_junID, .keep_all = T) %>%
-        #mutate(novel_mean_counts = novel_sum_counts / novel_n_individuals ) %>%
+        mutate(novel_mean_counts = novel_sum_counts / novel_n_individuals ) %>%
         pull(novel_sum_counts) %>% 
         sum()
+      
+      
+      
       
       donor <- novel_junctions %>%
         filter(novel_type == "novel_donor") %>%
         dplyr::distinct(novel_junID, .keep_all = T) %>%
-        #mutate(novel_mean_counts = novel_sum_counts / novel_n_individuals ) %>%
+        mutate(novel_mean_counts = novel_sum_counts / novel_n_individuals ) %>%
         pull(novel_sum_counts) %>% 
         sum()
       
@@ -572,9 +744,10 @@ get_unique_donor_acceptor_reads <- function() {
       donor_p = donor * 100 / (annotated + acceptor + donor)
       
       return(data.frame(tissue = cluster_id,
-                        samples = samples %>% length(),
+                        samples = samples,
                         type = c("annotated","acceptor", "donor"),
-                        counts = c(annotated_p, acceptor_p, donor_p)))
+                        prop_counts = c(annotated_p, acceptor_p, donor_p),
+                        mean_counts = c(annotated, acceptor, donor)))
     
     })
     
@@ -588,17 +761,35 @@ get_unique_donor_acceptor_reads <- function() {
   } else {
     df_mean_counts <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/paper/unique_donor_acceptor_reads.rds") %>%
       as_tibble()
+    
+    df_mean_counts %>%
+      filter(type == "annotated") %>%
+      pull(mean_counts) %>% mean
+    df_mean_counts %>%
+      filter(type == "acceptor") %>%
+      pull(mean_counts) %>% mean
+    
+    
+    df_mean_counts %>%
+      filter(type == "annotated") %>%
+      pull(prop_counts ) %>% mean
+    df_mean_counts %>%
+      filter(type == "acceptor") %>%
+      pull(prop_counts ) %>% mean
+    df_mean_counts %>%
+      filter(type == "donor") %>%
+      pull(prop_counts ) %>% mean
   }
   
   # saveRDS(df_mean_counts, file = "/home/sruiz/PROJECTS/splicing-project/results/paper/figure1_data.rds")
   
   # df_mean_counts <- readRDS("/home/sruiz/PROJECTS/splicing-project/results/paper/figure1_data.rds")
-  all_clusters <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
+  #all_clusters <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
   
   ## Spread
   df_mean_counts <- df_mean_counts %>% 
-    filter(tissue %in% all_clusters) %>%
-    tidyr::spread(key = "type", value = "counts")
+    #filter(tissue %in% all_clusters) %>%
+    tidyr::spread(key = "type", value = "prop_counts")
 
   
   
@@ -621,15 +812,16 @@ get_unique_donor_acceptor_reads <- function() {
   
   ggplot(data = df_mean_counts_tidy %>% filter(type %in% c("acceptor", "donor"))) +
     geom_col(mapping = aes(x = tissue, y = mean, fill = type), 
-             position = position_stack(), 
+             position = position_dodge(), 
              alpha = 0.9) +
+    coord_cartesian(ylim=c(0,1)) +
     coord_flip() +
     xlab("") +
     ylab("read counts across samples (%)") +
     theme_light() +
     scale_color_viridis_d() +
-    scale_y_continuous(breaks = c(0,1,2)) +
-    #coord_cartesian(ylim=c(1.1,50)) +
+    scale_y_continuous(breaks = c(0,0.5,0.75,1)) +
+    
     scale_fill_manual(values =  c("#A41F9AFF","#0D0887FF","#EF7F4FFF"),#c( "#440154FF", "#35B779FF", "#39558CFF"),
                       breaks = c("annotated", "acceptor", "donor"),
                       labels = c("annotated introns", "novel acceptor", "novel donor")) +
@@ -658,31 +850,92 @@ get_unique_donor_acceptor_reads <- function() {
   
 }
 
+get_mean_read_count_FTCX <- function() {
+  
+  tables <- c("Brain - Frontal Cortex (BA9)_BRAIN_misspliced")#,
+              #"Brain - Frontal Cortex (BA9)_BRAIN_nevermisspliced")
+  
+  annotated_sum_count <- NULL
+  novel_sum_count <- NULL
+  novel_donor_sum_count <- NULL
+  novel_acceptor_sum_count <- NULL
+  
+  query <- paste0("SELECT novel_junID, novel_type from 'novel'")
+  db_novel <- dbGetQuery(con, query) %>% as_tibble()
+  
+  for (table in tables) {
+    
+    if (!(table %in% c("intron", "novel", "gene", "mane", "master"))) {
+      
+      print(paste0("Table: '", table, "'!"))
+      
+      query <- paste0("SELECT * from '", table,"'")
+      db <- dbGetQuery(con, query) %>% as_tibble()
+      
+      annotated_sum_count <- c(annotated_sum_count, db$ref_sum_counts)
+      novel_sum_count <- c(novel_sum_count, db$novel_sum_counts)
+      
+      if ( table == "Brain - Frontal Cortex (BA9)_BRAIN_misspliced" ) {
+        novel_donor_sum_count <- c(novel_donor_sum_count, db %>%
+                                     filter(novel_junID %in% (db_novel %>% 
+                                                                filter(novel_type == "novel_donor") %>%
+                                                                pull(novel_junID))) %>%
+                                     pull(novel_sum_counts))
+        
+        novel_acceptor_sum_count <- c(novel_acceptor_sum_count, db %>%
+                                        filter(novel_junID %in% (db_novel %>% 
+                                                                   filter(novel_type == "novel_acceptor") %>%
+                                                                   pull(novel_junID))) %>%
+                                        pull(novel_sum_counts))
+      }
+
+      
+    }
+  }
+  annotated_sum_count %>% length()
+  novel_donor_sum_count %>% length()
+  novel_acceptor_sum_count %>% length()
+  
+  (annotated_sum_count %>% sum()) / (annotated_sum_count %>% length() + 
+                                       novel_donor_sum_count %>% length() +
+                                       novel_acceptor_sum_count %>% length())
+  (novel_donor_sum_count %>% sum()) / (annotated_sum_count %>% length() + 
+                                       novel_donor_sum_count %>% length() +
+                                       novel_acceptor_sum_count %>% length())
+  (novel_acceptor_sum_count %>% sum()) / (annotated_sum_count %>% length() + 
+                                       novel_donor_sum_count %>% length() +
+                                       novel_acceptor_sum_count %>% length())
+  novel_sum_count %>% mean
+  novel_donor_sum_count %>% mean 
+  novel_acceptor_sum_count %>% mean 
+  novel_donor_sum_count %>% sum() 
+  novel_acceptor_sum_count %>% sum() 
+  (novel_donor_sum_count %>% mean +
+      novel_acceptor_sum_count %>% mean) /2
+  
+}
+
 get_maxentscan_score <- function() {
-  
-  #############################
-  ## Figure 5 ##
-  ## MAXENTSCAN score
-  #############################
-  
-  ## Connect to IntroVerse
-  con <- dbConnect(RSQLite::SQLite(), "/home/sruiz/PROJECTS/splicing-project-app/introverse/dependencies/introverse.sqlite")
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
-  
-  
-  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-  
   
   df_mes <- map_df(all_projects, function(project_id) {
     
+    #############################
+    ## GET THE CLUSTERS
+    #############################
+    
     print(paste0(Sys.time(), " - ", project_id))
+    
+    # clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+    #                                        project_id, "/raw_data/all_clusters_used.rds"))
     
     all_clusters <- df_metadata %>%
       filter(SRA_project == project_id) %>%
       distinct(cluster) %>%
       pull()
+    
+    # if (!identical(clusters_used, all_clusters)) {
+    #   print("Error! Both set of clusters are not identical.")
+    # }
     
     map_df(all_clusters, function(cluster_id) {
       
@@ -707,9 +960,9 @@ get_maxentscan_score <- function() {
       ## GET THE INTRONS
       ####################
       
-      query <- paste0("SELECT ref_junID, ref_mean_counts, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+      query <- paste0("SELECT ref_junID, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT DISTINCT ref_junID, ref_mean_counts, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
+      query <- paste0("SELECT DISTINCT ref_junID, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
       introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
       query <- paste0("SELECT ref_junID, ref_ss5score, ref_ss3score FROM 'intron' WHERE ref_junID IN (",
                       paste(introns$ref_junID, collapse = ","),")")
@@ -726,7 +979,7 @@ get_maxentscan_score <- function() {
       ## GET THE NOVEL JUNCTIONS
       ###########################
       
-      query <- paste0("SELECT ref_junID, novel_junID, novel_mean_counts FROM '", cluster_id, "_", project_id, "_misspliced'")
+      query <- paste0("SELECT ref_junID, novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
       novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
       query <- paste0("SELECT novel_junID, novel_type, novel_ss5score, novel_ss3score FROM 'novel' WHERE novel_junID IN (", 
                       paste(novel_junctions$novel_junID, collapse = ","), ")")
@@ -743,23 +996,25 @@ get_maxentscan_score <- function() {
       # db_novel <- readRDS(file = paste0(folder_root, "/results/pipeline3/missplicing-ratio/",
       #                                   cluster, "/v105/", cluster, "_db_novel.rds"))
       
-      df_merged <- merge(x = introns %>% dplyr::select(ref_junID, ref_ss5score,
-                                                       ref_ss3score, ref_type),
-                         y = novel_junctions %>% dplyr::select(ref_junID, novel_junID, 
-                                                        novel_ss5score, novel_ss3score, novel_type),
+      df_merged <- merge(x = introns %>% 
+                           dplyr::select(ref_junID, ref_ss5score,
+                                         ref_ss3score, ref_type),
+                         y = novel_junctions %>% 
+                           dplyr::select(ref_junID, novel_junID, 
+                                         novel_ss5score, novel_ss3score, novel_type),
                          by = "ref_junID")  %>%
         mutate(diff_ss5score = ref_ss5score - novel_ss5score,
                diff_ss3score = ref_ss3score - novel_ss3score,
-               tissue = cluster)
+               tissue = cluster_id)
       
       df_merged %>% return()
     })
   })
   
-  all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds"))
-  
-  df_mes <- df_mes %>%
-    filter(tissue %in% all_clusters)
+  # all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds"))
+  # 
+  # df_mes <- df_mes %>%
+  #   filter(tissue %in% all_clusters)
   
   saveRDS(object = df_mes %>% as_tibble(), 
           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/paper/df_mes.rds")
@@ -806,8 +1061,8 @@ get_maxentscan_score <- function() {
   file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel2_ss5plot.svg"
   ggplot2::ggsave(filename = file_name,
                   width = 183, height = 183, units = "mm", dpi = 300)
-  ## ss3score -----------------------------------------------------------
   
+  ## ss3score -----------------------------------------------------------
   
   df_3ss <- df_mes %>% 
     filter(novel_type == "novel_acceptor") %>%
@@ -874,28 +1129,41 @@ get_maxentscan_score <- function() {
 }
 
 
+##################################
+## MODULO, DISTANCE Y MSR
+##################################
 
 ## SECTION 2 ---------------------------------------------
 
 get_distances <- function() {
   
+  
+  ###############################
+  ## GET DATA FOR FRONTAL CORTEX
+  ###############################
+  
   limit_bp <- 30
-  cluster <- "Brain - Frontal Cortex (BA9)"
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/results/pipeline3/missplicing-ratio/",
-                        cluster, "/v105/")
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
   
-  if (file.exists(paste0(folder_root, "/", cluster, "_db_novel.rds"))) {
-    df_novel <- readRDS(file = paste0(folder_root, "/", cluster, "_db_novel.rds"))
-  } else {
-    print(paste0(paste0(folder_root, "/", cluster, "_db_novel.rds"), " file doesn't exist."))
-  }
+  query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                  paste(introns$novel_junID, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "novel_junID",
+                   all.x = T) %>% 
+    as_tibble() 
   
+  
+ 
   #############################
   ## PLOT THE DISTANCES GRAPH 
   #############################
   
   
-  df_novel_tidy <- df_novel %>%
+  df_novel_tidy <- introns %>%
     mutate(novel_type = str_replace(string = novel_type,
                                     pattern = "_",
                                     replacement = " "))
@@ -943,10 +1211,10 @@ get_distances <- function() {
   
   
   distance_rectangle <- ggplot() +
-    geom_rect(aes(xmin = 0, xmax = 30, ymin = 1, ymax = 100),
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
     geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
-    geom_rect(aes(xmin = -30, xmax = 0, ymin = 49, ymax = 51),
+    geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
     geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
     theme_void()
@@ -965,19 +1233,24 @@ get_distances <- function() {
 
 get_distances_PC <- function() {
   
+  ###############################
+  ## GET DATA FOR FRONTAL CORTEX
+  ###############################
+  
   limit_bp <- 30
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
   
-  cluster <- "Brain - Frontal Cortex (BA9)"
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/results/pipeline3/missplicing-ratio/",
-                        cluster, "/v105/")
-  
-  if (file.exists(paste0(folder_root, "/", cluster, "_db_novel.rds"))) {
-    df_novel <- readRDS(file = paste0(folder_root, "/", cluster, "_db_novel.rds"))
-  } else {
-    print(paste0(paste0(folder_root, "/", cluster, "_db_novel.rds"), " file doesn't exist."))
-  }
-  
-  
+  query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                  paste(introns$novel_junID, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "novel_junID",
+                   all.x = T) %>% 
+    as_tibble() 
+
   
   
   #############################
@@ -985,7 +1258,7 @@ get_distances_PC <- function() {
   #############################
 
   
-  df_novel_tidy <- df_novel %>%
+  df_novel_tidy <- introns %>%
     filter(protein_coding %in% c(0,100)) %>%
     mutate(type_PC = ifelse(protein_coding == 100, "protein coding (PC)", "non PC")) %>%
     mutate(novel_type = str_replace(string = novel_type,
@@ -1038,14 +1311,14 @@ get_distances_PC <- function() {
           legend.title = element_text(colour = "black", size = "14"),
           legend.position = "top") 
   
-  df_novel_tidy %>% filter(type_PC == "non PC") %>% distinct(ref_junID) %>% nrow()
+  
   
   
   distance_rectangle <- ggplot() +
-    geom_rect(aes(xmin = 0, xmax = 30, ymin = 1, ymax = 100),
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
     geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
-    geom_rect(aes(xmin = -30, xmax = 0, ymin = 49, ymax = 51),
+    geom_rect(aes(xmin = (limit_bp * -1), xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
     geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
     theme_void()
@@ -1057,6 +1330,10 @@ get_distances_PC <- function() {
   file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel2_distancesPC.svg"
   ggplot2::ggsave(filename = file_name,
                   width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  
+  df_novel_tidy %>% filter(type_PC == "non PC") %>% distinct(ref_junID) %>% nrow()
   
   plot_NPC <- ggplot(data = df_novel_tidy %>% filter(type_PC == "non PC")) + 
     geom_histogram(aes(x = distance, fill = novel_type),
@@ -1103,47 +1380,67 @@ get_distances_PC <- function() {
   ## COMBINE ALL PLOTS
   #######################################
   
-  plot <- ggpubr::ggarrange(ss5plot,
-                            ss3plot,
-                            deltaplot,
-                            plot_all / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1)), 
-                            plot_PC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1)), 
-                            plot_NPC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1)),
-                            #common.legend = T,
-                            labels = c("a", "b", "c", 
-                                       "d", "f", "g"),
-                            align = "v",
-                            ncol = 2, 
-                            nrow = 3)
-  
-  
-  
-  
-
-  plot
-  
-  file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel_2.svg"
-  ggplot2::ggsave(file_name, width = 183, height = 143, units = "mm", dpi = 300)
+  # plot <- ggpubr::ggarrange(ss5plot,
+  #                           ss3plot,
+  #                           deltaplot,
+  #                           plot_all / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1)), 
+  #                           plot_PC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1)), 
+  #                           plot_NPC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1)),
+  #                           #common.legend = T,
+  #                           labels = c("a", "b", "c", 
+  #                                      "d", "f", "g"),
+  #                           align = "v",
+  #                           ncol = 2, 
+  #                           nrow = 3)
+  # 
+  # 
+  # 
+  # 
+  # 
+  # plot
+  # 
+  # file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel_2.svg"
+  # ggplot2::ggsave(file_name, width = 183, height = 143, units = "mm", dpi = 300)
 
 
 }
 
+##IGNORE
 get_modulo_basic_single_tissue <- function() {
   
-  cluster <- "Brain - Frontal Cortex (BA9)"
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/results/pipeline3/missplicing-ratio/",
-                        cluster, "/v105/")
   
-  if (file.exists(paste0(folder_root, "/", cluster, "_db_novel.rds"))) {
-    df_novel <- readRDS(file = paste0(folder_root, "/", cluster, "_db_novel.rds"))
-  } else {
-    print(paste0(paste0(folder_root, "/", cluster, "_db_novel.rds"), " file doesn't exist."))
-  }
-  ## Load novel junction database for current tissue
-  df_novel %>% head()
+  con <- dbConnect(RSQLite::SQLite(), "./database/splicing.sqlite")
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
   
   
-  df_novel_tidy <- df_novel %>%
+  ###############################
+  ## GET DATA FOR FRONTAL CORTEX
+  ###############################
+  
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
+  
+  query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                  paste(introns$novel_junID, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "novel_junID",
+                   all.x = T) %>% 
+    as_tibble() 
+  query <- paste0("SELECT ref_junID, protein_coding FROM 'intron' WHERE ref_junID IN (",
+                  paste(introns$ref_junID, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "ref_junID",
+                   all.x = T) %>% 
+    as_tibble() 
+  
+  
+  df_novel_tidy <- introns %>%
     filter(abs(distance) <= 100) %>%
     mutate(novel_type = str_replace(string = novel_type,
                                     pattern = "_",
@@ -1263,37 +1560,69 @@ get_modulo_basic_single_tissue <- function() {
                   width = 183, height = 183, units = "mm", dpi = 300)
 }
 
+## NOT IGNORE
 get_modulo_basic_multiple_tissue <- function() {
   
-  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  ############################
+  ## CONNECT TO THE DATABASE
+  ############################
+  
+  con <- dbConnect(RSQLite::SQLite(), "database/splicing.sqlite")
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) 
+  
+  
+  all_projects <- df_metadata$SRA_project %>% unique()
+  
   
   df_modulo_tissues <- map_df(all_projects, function(project_id) {
     
-    # project_id <- all_projects[1]
     print(paste0(Sys.time(), " - ", project_id))
     
-    all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                           project_id, "/raw_data/all_clusters_used.rds"))
-        
-    map_df(all_clusters, function(cluster) {
+    all_clusters <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    map_df(all_clusters, function(cluster_id) {
       
-      # cluster <- all_clusters[1]
-      print(cluster)
+      # cluster_id <- all_clusters[1]
+      print(cluster_id)
       
       ## Load IDB
-      db_intron <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                                         "/results/pipeline3/missplicing-ratio/", cluster, "/v105/", cluster, "_db_introns.rds"))
-      db_intron <- db_intron %>%
-        filter(MANE == T)
-      db_novel <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                                        "/results/pipeline3/missplicing-ratio/", cluster, "/v105/", cluster, "_db_novel.rds"))
-      ## Load novel junction database for current tissue
-      db_novel %>% head()
+      
+      ## Print the tissue
+      print(paste0(Sys.time(), " - ", cluster_id))
+      
+      samples <- df_metadata %>%
+        dplyr::count(cluster) %>%
+        filter(cluster == cluster_id) %>% 
+        pull(n)
+  
+  
       
       
-      df_novel_tidy <- db_novel %>%
-        filter(abs(distance) <= 100,
-               ref_junID %in% db_intron$ref_junID) %>%
+      query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                      paste(introns$novel_junID, collapse = ","),")")
+      introns <- merge(x = introns,
+                       y = dbGetQuery(con, query) %>% as_tibble(),
+                       by = "novel_junID",
+                       all.x = T) %>% 
+        as_tibble() 
+      query <- paste0("SELECT ref_junID, protein_coding FROM 'intron' WHERE ref_junID IN (",
+                      paste(introns$ref_junID, collapse = ","),")  AND MANE = 1")
+      introns <- merge(x = introns,
+                       y = dbGetQuery(con, query) %>% as_tibble(),
+                       by = "ref_junID",
+                       all.x = T) %>% 
+        as_tibble() 
+      
+      
+      df_novel_tidy <- introns %>%
+        filter(abs(distance) <= 100) %>%
         mutate(novel_type = str_replace(string = novel_type,
                                         pattern = "_",
                                         replacement = " ")) %>%
@@ -1304,7 +1633,7 @@ get_modulo_basic_multiple_tissue <- function() {
         group_by(modulo) %>%
         summarise(n = n()) %>%
         mutate(freq = n / sum(n)) %>%
-        mutate(tissue = cluster)
+        mutate(tissue = cluster_id)
       
       return(df_novel_tidy)
     })
@@ -1365,6 +1694,7 @@ get_modulo_basic_multiple_tissue <- function() {
   ## (df_modulo_tissues %>% filter(modulo == 2) %>% pull(freq) %>% mean + df_modulo_tissues %>% filter(modulo == 2) %>% pull(freq) %>% mean) * 100
 }
 
+## IGNORE
 get_modulo_tissues_v1 <- function() {
   
   #############################
@@ -1557,6 +1887,7 @@ get_modulo_tissues_v1 <- function() {
 
 }
 
+## NOT IGNORE
 get_modulo_tissues_v2 <- function() {
   
   #############################
@@ -1566,36 +1897,62 @@ get_modulo_tissues_v2 <- function() {
   
   if (!file.exists("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/df_modulo_tissues.rds")) {
     
-    all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+    con <- dbConnect(RSQLite::SQLite(), "database/splicing.sqlite")
+    dbListTables(con)
+    query <- paste0("SELECT * FROM 'master'")
+    df_metadata <- dbGetQuery(con, query) 
+    
+    
+    all_projects <- df_metadata$SRA_project %>% unique()
+    
     
     df_modulo_tissues <- map_df(all_projects, function(project_id) {
       
-      # project_id <- all_projects[1]
-      
       print(paste0(Sys.time(), " - ", project_id))
       
-      all_clusters <-  readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                             project_id, "/raw_data/all_clusters_used.rds"))
+      all_clusters <- df_metadata %>%
+        filter(SRA_project == project_id) %>%
+        distinct(cluster) %>%
+        pull()
       
-      map_df(all_clusters, function(cluster) {
+      map_df(all_clusters, function(cluster_id) {
         
-        # cluster <- all_clusters[1]
-        print(cluster)
+        # cluster_id <- all_clusters[1]
+        print(cluster_id)
         
         ## Load IDB
-        db_intron <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                                          "/results/pipeline3/missplicing-ratio/", cluster, "/v105/", cluster, "_db_introns.rds"))
-        db_intron <- db_intron %>%
-          filter(MANE == T)
-        db_novel <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
-                                          "/results/pipeline3/missplicing-ratio/", cluster, "/v105/", cluster, "_db_novel.rds"))
-        ## Load novel junction database for current tissue
-        db_novel %>% head()
+        
+        ## Print the tissue
+        print(paste0(Sys.time(), " - ", cluster_id))
+        
+        samples <- df_metadata %>%
+          dplyr::count(cluster) %>%
+          filter(cluster == cluster_id) %>% 
+          pull(n)
         
         
-        df_novel_tidy <- db_novel %>%
-          filter(abs(distance) <= 100,
-                 ref_junID %in% db_intron$ref_junID) %>%
+        
+        
+        query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+        introns <- dbGetQuery(con, query) %>% as_tibble()
+        query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                        paste(introns$novel_junID, collapse = ","),")")
+        introns <- merge(x = introns,
+                         y = dbGetQuery(con, query) %>% as_tibble(),
+                         by = "novel_junID",
+                         all.x = T) %>% 
+          as_tibble() 
+        query <- paste0("SELECT ref_junID, protein_coding FROM 'intron' WHERE ref_junID IN (",
+                        paste(introns$ref_junID, collapse = ","),") AND MANE = 1")
+        introns <- merge(x = introns,
+                         y = dbGetQuery(con, query) %>% as_tibble(),
+                         by = "ref_junID",
+                         all.x = T) %>% 
+          as_tibble() 
+        
+        
+        df_novel_tidy <- introns %>%
+          filter(abs(distance) <= 100) %>%
           mutate(novel_type = str_replace(string = novel_type,
                                           pattern = "_",
                                           replacement = " ")) %>%
@@ -1613,59 +1970,71 @@ get_modulo_tissues_v2 <- function() {
         
         ## Number of modulo 0 unique introns
         modulo0_donor_exon <- (df_novel_tidy %>%
-                                 filter(modulo == 0, type_p == "novel donor exon") %>% nrow()) * 100 / (df_novel_tidy %>%
-                                                                                                          filter(type_p == "novel donor exon") %>% 
-                                                                                                          nrow())
+                                 filter(modulo == 0, type_p == "novel donor exon") %>% nrow()) * 100 / 
+          (df_novel_tidy %>%
+             filter(type_p == "novel donor exon") %>% 
+             nrow())
         modulo0_donor_intron <- (df_novel_tidy %>%
-                                   filter(modulo == 0, type_p == "novel donor intron") %>% nrow()) * 100 / (df_novel_tidy %>%
-                                                                                                              filter(type_p == "novel donor intron") %>% 
-                                                                                                              nrow())
+                                   filter(modulo == 0, type_p == "novel donor intron") %>% nrow()) * 100 / 
+          (df_novel_tidy %>%
+             filter(type_p == "novel donor intron") %>% 
+             nrow())
         modulo0_aceptor_exon <- (df_novel_tidy %>%
-                                   filter(modulo == 0, type_p == "novel acceptor exon") %>% nrow()) * 100 / (df_novel_tidy %>%
-                                                                                                               filter(type_p == "novel acceptor exon") %>% 
-                                                                                                               nrow())
+                                   filter(modulo == 0, type_p == "novel acceptor exon") %>% nrow()) * 100 /
+          (df_novel_tidy %>%
+             filter(type_p == "novel acceptor exon") %>% 
+             nrow())
         modulo0_aceptor_intron <- (df_novel_tidy %>%
-                                     filter(modulo == 0, type_p == "novel acceptor intron") %>% nrow()) * 100 / (df_novel_tidy %>%
-                                                                                                                   filter(type_p == "novel acceptor intron") %>% 
-                                                                                                                   nrow())
+                                     filter(modulo == 0, type_p == "novel acceptor intron") %>% nrow()) * 100 / 
+          (df_novel_tidy %>%
+             filter(type_p == "novel acceptor intron") %>% 
+             nrow())
         
         ## Number of modulo 1
         modulo1_donor_exon <- (df_novel_tidy %>%
-                                 filter(modulo == 1, type_p == "novel donor exon") %>% nrow()) * 100 / (df_novel_tidy %>% 
-                                                                                                          filter(type_p == "novel donor exon") %>% 
-                                                                                                          nrow())
+                                 filter(modulo == 1, type_p == "novel donor exon") %>% nrow()) * 100 / 
+          (df_novel_tidy %>% 
+             filter(type_p == "novel donor exon") %>% 
+             nrow())
         modulo1_donor_intron <- (df_novel_tidy %>%
-                                   filter(modulo == 1, type_p == "novel donor intron") %>% nrow()) * 100 / (df_novel_tidy %>% 
-                                                                                                              filter(type_p == "novel donor intron") %>% 
-                                                                                                              nrow())
+                                   filter(modulo == 1, type_p == "novel donor intron") %>% nrow()) * 100 / 
+          (df_novel_tidy %>% 
+             filter(type_p == "novel donor intron") %>% 
+             nrow())
         modulo1_aceptor_exon <- (df_novel_tidy %>%
-                                   filter(modulo == 1, type_p == "novel acceptor exon") %>% nrow()) * 100 / (df_novel_tidy %>%
-                                                                                                               filter(type_p == "novel acceptor exon") %>% 
-                                                                                                               nrow())
+                                   filter(modulo == 1, type_p == "novel acceptor exon") %>% nrow()) * 100 / 
+          (df_novel_tidy %>%
+             filter(type_p == "novel acceptor exon") %>% 
+             nrow())
         modulo1_aceptor_intron <- (df_novel_tidy %>%
-                                     filter(modulo == 1, type_p == "novel acceptor intron") %>% nrow()) * 100 / (df_novel_tidy %>%
-                                                                                                                   filter(type_p == "novel acceptor intron") %>% 
-                                                                                                                   nrow())
+                                     filter(modulo == 1, type_p == "novel acceptor intron") %>% nrow()) * 100 / 
+          (df_novel_tidy %>%
+             filter(type_p == "novel acceptor intron") %>% 
+             nrow())
         
         ## Number of modulo 2
         modulo2_donor_exon <- (df_novel_tidy %>%
-                                 filter(modulo == 2, type_p == "novel donor exon") %>% nrow()) * 100 / (df_novel_tidy %>% 
-                                                                                                          filter(type_p == "novel donor exon") %>% 
-                                                                                                          nrow())
+                                 filter(modulo == 2, type_p == "novel donor exon") %>% nrow()) * 100 / 
+          (df_novel_tidy %>% 
+             filter(type_p == "novel donor exon") %>% 
+             nrow())
         modulo2_donor_intron <- (df_novel_tidy %>%
-                                   filter(modulo == 2, type_p == "novel donor intron") %>% nrow()) * 100 / (df_novel_tidy %>% 
-                                                                                                              filter(type_p == "novel donor intron") %>% 
-                                                                                                              nrow())
+                                   filter(modulo == 2, type_p == "novel donor intron") %>% nrow()) * 100 / 
+          (df_novel_tidy %>% 
+             filter(type_p == "novel donor intron") %>% 
+             nrow())
         modulo2_aceptor_exon <- (df_novel_tidy %>%
-                                   filter(modulo == 2, type_p == "novel acceptor exon") %>% nrow()) * 100 / (df_novel_tidy %>% 
-                                                                                                               filter(type_p == "novel acceptor exon") %>% 
-                                                                                                               nrow())
+                                   filter(modulo == 2, type_p == "novel acceptor exon") %>% nrow()) * 100 / 
+          (df_novel_tidy %>% 
+             filter(type_p == "novel acceptor exon") %>% 
+             nrow())
         modulo2_aceptor_intron <- (df_novel_tidy %>%
-                                     filter(modulo == 2, type_p == "novel acceptor intron") %>% nrow()) * 100 / (df_novel_tidy %>% 
-                                                                                                                   filter(type_p == "novel acceptor intron") %>% 
-                                                                                                                   nrow())
+                                     filter(modulo == 2, type_p == "novel acceptor intron") %>% nrow()) * 100 / 
+          (df_novel_tidy %>% 
+             filter(type_p == "novel acceptor intron") %>% 
+             nrow())
         
-        return(data.frame(tissue = cluster,
+        return(data.frame(tissue = cluster_id,
                           modulo = c(modulo0_donor_exon, 
                                      modulo0_donor_intron, 
                                      modulo0_aceptor_exon, 
@@ -1697,10 +2066,12 @@ get_modulo_tissues_v2 <- function() {
         
       })
     })
-    saveRDS(df_modulo_tissues, file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/df_modulo_tissues_100bpfilter.rds")
+    saveRDS(df_modulo_tissues, 
+            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/df_modulo_tissues_100bpfilter.rds")
     
   } else {
-    df_modulo_tissues <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/df_modulo_tissues.rds")  
+    df_modulo_tissues <- readRDS(file = 
+                                   "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/df_modulo_tissues_100bpfilter.rds")  
   }
   
   df_modulo_tissues <- df_modulo_tissues %>%
@@ -1760,30 +2131,50 @@ get_modulo_tissues_v2 <- function() {
   
 }
 
-
-
-## SECTION 3 ---------------------------------------------
-
 get_missplicing_ratio_PC <- function()  {
   
   
-  cluster <- "Brain - Frontal Cortex (BA9)"
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/results/pipeline3/missplicing-ratio/",
-                        cluster, "/v105/")
+  ###############################
+  ## GET DATA FOR FRONTAL CORTEX
+  ###############################
+  
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
+  
+  query <- paste0("SELECT ref_junID, MSR_D,  MSR_A, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT ref_junID, MSR_D,  MSR_A, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+  query <- paste0("SELECT ref_junID, protein_coding FROM 'intron' WHERE ref_junID IN (",
+                  paste(introns$ref_junID, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "ref_junID",
+                   all.x = T) %>% 
+    as_tibble() 
+  
+ 
+  
+  introns %>% head()
+  introns %>% nrow()
+  
+  # folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/results/pipeline3/missplicing-ratio/",
+  #                       cluster_id, "/v105/")
+  # 
+  # 
+  # if (file.exists(paste0(folder_root, "/", cluster_id, "_db_introns.rds"))) {
+  #   df <- readRDS(file = paste0(folder_root, "/", cluster_id, "_db_introns.rds"))
+  # } else {
+  #   print(paste0(paste0(folder_root, "/", cluster_id, "_db_introns.rds"), " file doesn't exist."))
+  # }
   
   
-  if (file.exists(paste0(folder_root, "/", cluster, "_db_introns.rds"))) {
-    df <- readRDS(file = paste0(folder_root, "/", cluster, "_db_introns.rds"))
-  } else {
-    print(paste0(paste0(folder_root, "/", cluster, "_db_introns.rds"), " file doesn't exist."))
-  }
   
-  df %>% head()
-  df %>% nrow()
+  ################################
+  ## TIDY DATA FOR PROTEIN-CODING
+  ################################
   
-  
-  
-  df_tidy <- df %>%
+  df_tidy <- introns %>%
     filter(protein_coding %in% c(0,100)) %>%
     mutate(type_PC = ifelse(protein_coding == 100, "PC", "non PC")) 
   
@@ -1792,25 +2183,18 @@ get_missplicing_ratio_PC <- function()  {
   
   
   df_tidy <- df_tidy %>%
-    dplyr::select(type_PC, 
-                  MSR_D = ref_missplicing_ratio_tissue_ND,
-                  MSR_A = ref_missplicing_ratio_tissue_NA) %>%
+    dplyr::select(type_PC, MSR_D, MSR_A) %>%
     gather(key = "MSR_type", value = "MSR", -type_PC)
   
-  ##########################
+  ###########################
   ## PLOT MIS-SPLICING RATIO 
-  ##########################
+  ###########################
   
-  #y_axes_values <- density(x = df_tidy %>% filter(protein_coding == 100) %>% pull(ref_missplicing_ratio_tissue_ND))$y
-  #y_axes <- c(0, y_axes_values %>% max() + 
-  #              y_axes_values %>% max() / 4)
-  
-  plotMSR <- ggplot(data = df_tidy) + 
+  plotMSR_PC <- ggplot(data = df_tidy %>% filter(type_PC == "PC")) + 
     geom_density(aes(x = MSR, fill = MSR_type), alpha = 0.8) +
-    facet_grid(vars(type_PC)) +
+    ggforce::facet_zoom(xlim=c(0,0.05)) +
+    ggtitle("Protein-coding") +
     xlab("Mis-splicing ratio") +
-    #ylim(y_axes) +
-    #ggforce::facet_zoom(xlim = c(0,0.15)) +
     theme_light() +
     scale_fill_manual(values = c("#35B779FF","#440154FF"),
                       breaks = c("MSR_D","MSR_A"),
@@ -1826,101 +2210,120 @@ get_missplicing_ratio_PC <- function()  {
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, 
                                nrow = 1))
-  plotMSR
+  plotMSR_NPC <- ggplot(data = df_tidy %>% filter(type_PC == "non PC")) + 
+    geom_density(aes(x = MSR, fill = MSR_type), alpha = 0.8) +
+    ggforce::facet_zoom(xlim=c(0,0.05)) +
+    #facet_wrap(vars(type_PC)) +
+    ggtitle("Non protein-coding") +
+    xlab("Mis-splicing ratio") +
+    theme_light() +
+    scale_fill_manual(values = c("#35B779FF","#440154FF"),
+                      breaks = c("MSR_D","MSR_A"),
+                      labels = c("MSR_Donor","MSR_Acceptor")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text =  element_text(colour = "black", size = "12"),
+          plot.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL,
+                               ncol = 2, 
+                               nrow = 1))
+  
+  ggpubr::ggarrange(plotMSR_PC,
+                    plotMSR_NPC,
+                    labels = c("c", "d"), common.legend = T)
   file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel3_MSR.svg"
   ggplot2::ggsave(file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  # plot_NPC <- ggplot(data = df_tidy %>% filter(protein_coding == 0)) + 
-  #   geom_density(aes(x = ref_missplicing_ratio_tissue_NA, fill = "#440154FF"),
-  #                alpha = 0.8) +
-  #   geom_density(aes(x = ref_missplicing_ratio_tissue_ND, fill = "#35B779FF"), 
-  #                alpha = 0.8) +
-  #   ggtitle(paste0("Non-protein coding (NPC)\n")) +
-  #   xlab("Mis-splicing ratio") +
-  #   ggforce::facet_zoom(xlim = c(0,0.15)) +
-  #   #ylim(y_axes) +
-  #   ylab("") +
-  #   #ylab("Intron count") +
-  #   #scale_y_continuous(limits = c(0, 85000)) +
-  #   
-  #   theme_light() +
-  #   scale_fill_manual(values = c("#35B779FF","#440154FF"),
-  #                     breaks = c("#35B779FF","#440154FF"),
-  #                     labels = c("MSR_D","MSR_A")) +
-  #   theme(axis.line = element_line(colour = "black"), 
-  #         axis.text = element_text(colour = "black", size = "9"),
-  #         axis.title = element_text(colour = "black", size = "9"),
-  #         plot.title = element_text(colour = "black", size = "9"),
-  #         legend.text = element_text(size = "9"),
-  #         legend.title = element_text(size = "9"),
-  #         legend.position = "top") +
-  #   guides(fill = guide_legend(title = NULL,
-  #                              ncol = 2, 
-  #                              nrow = 1))
-  # 
-  # plotMSR <- ggpubr::ggarrange(plot_PC, 
-  #                           plot_NPC,
-  #                           common.legend = T,
-  #                           #labels = c("a.1","a.2"),
-  #                           align = "hv",
-  #                           ncol = 2, 
-  #                           nrow = 1)
 
   
-  
-  
-  
-  
-  
+  wilcox.test(x = df_tidy %>% filter(type_PC == "PC", MSR_type == "MSR_D") %>% pull(MSR),
+              y = df_tidy %>% filter(type_PC == "PC", MSR_type == "MSR_A") %>% pull(MSR),
+              alternative = "less")
+  wilcox.test(x = df_tidy %>% filter(type_PC == "non PC", MSR_type == "MSR_D") %>% pull(MSR),
+              y = df_tidy %>% filter(type_PC == "non PC", MSR_type == "MSR_A") %>% pull(MSR),
+              alternative = "less")
 }
+
+
+#################################
+## LINEAR MODELS
+#################################
+
+## SECTION 3 ---------------------------------------------
 
 get_lm_single_tissue <- function() {
   
-  #########################
-  ## LOAD AND TIDY DATA
-  #########################
-  cluster <- "Brain - Frontal Cortex (BA9)"
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/results/pipeline3/missplicing-ratio/",
-                        cluster, "/v105/")
   
-
-  idb <- readRDS(file = paste0(folder_root, "/", cluster, "_db_introns.rds"))
+  ###############################
+  ## QUERY THE DATABASE
+  ## GET DATA FOR FRONTAL CORTEX
+  ###############################
   
-  # idb <- idb %>%
-  #   as.data.frame() %>%
-  #   dplyr::distinct(ref_junID, .keep_all = T) %>%
-  #   dplyr::rename(intron_length = width,
-  #                 intron_5ss_score = ref_ss5score,
-  #                 intron_3ss_score = ref_ss3score,
-  #                 gene_length = gene_width,
-  #                 gene_tpm = tpm_median_rct3,
-  #                 gene_num_transcripts = n_transcripts,
-  #                 CDTS_5ss = CDTS_5ss_mean,
-  #                 CDTS_3ss = CDTS_3ss_mean,
-  #                 mean_phastCons20way_5ss = phastCons20way_5ss_mean,
-  #                 mean_phastCons20way_3ss = phastCons20way_3ss_mean)
-  idb <- idb %>%
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
+  
+  
+  query <- paste0("SELECT * 
+                  FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT * 
+                  FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+  
+  query <- paste0("SELECT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
+                  ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, 
+                  protein_coding
+                  FROM 'intron' 
+                  WHERE ref_junID IN (",
+                  paste(introns$ref_junID, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "ref_junID",
+                   all.x = T) %>% 
+    as_tibble() 
+  
+  
+  query <- paste0("SELECT id, n_transcripts, gene_width, gene_name 
+                  FROM 'gene' WHERE id IN (",
+                  paste(introns$gene_id, collapse = ","),")")
+  introns <- merge(x = introns,
+                   y = dbGetQuery(con, query) %>% as_tibble(),
+                   by.x = "gene_id",
+                   by.y = "id",
+                   all.x = T) %>% 
+    as_tibble() 
+  
+  
+  #########################
+  ## TIDY DATA
+  #########################
+  
+  idb <- introns %>%
     as.data.frame() %>%
     dplyr::distinct(ref_junID, .keep_all = T) %>%
-    dplyr::rename(intron_length = width,
+    dplyr::rename(intron_length = ref_length,
                   intron_5ss_score = ref_ss5score,
                   intron_3ss_score = ref_ss3score,
                   gene_length = gene_width,
-                  gene_tpm = tpm_median_rct3,
+                  gene_tpm = gene_tpm,
                   gene_num_transcripts = n_transcripts,
-                  CDTS_5ss = CDTS_5ss_mean,
-                  CDTS_3ss = CDTS_3ss_mean,
+                  CDTS_5ss = ref_CDTS5score,
+                  CDTS_3ss = ref_CDTS3score,
                   protein_coding = protein_coding,
-                  mean_phastCons20way_5ss = phastCons20way_5ss_mean,
-                  mean_phastCons20way_3ss = phastCons20way_3ss_mean)
+                  mean_phastCons20way_5ss = ref_cons5score,
+                  mean_phastCons20way_3ss = ref_cons3score)
+  
   
   #########################
   ## LINEAR MODELS
   #########################
   
   
-  fit_donor <- lm(ref_missplicing_ratio_tissue_ND ~ 
+  fit_donor <- lm(MSR_D ~ 
                     intron_length +
-                    intron_length + 
                     intron_5ss_score + 
                     intron_3ss_score +
                     gene_length +
@@ -1934,7 +2337,7 @@ get_lm_single_tissue <- function() {
                   data = idb)
   fit_donor %>% summary()
   
-  fit_acceptor <- lm(ref_missplicing_ratio_tissue_NA ~ 
+  fit_acceptor <- lm(MSR_A ~ 
                        intron_length + 
                        intron_5ss_score + 
                        intron_3ss_score +
@@ -2014,16 +2417,241 @@ get_lm_single_tissue <- function() {
   
 }
 
-get_estimate_variance <- function() {
+get_common_introns_across_tissues <- function () {
+  
+  
+  ################################
+  ## CONNECT TO THE DATABASE
+  ################################
+  
+  print(paste0(Sys.time(), " - getting unique and common junctions across clusters..."))
+  
+  
+  ## Getting all introns that are common across all GTEx tissues -------------------------------------------
+  
+  all_introns <- list()
+  
+  for (project_id in all_projects) {
+    
+    print(paste0(Sys.time(), " - ", project_id))
+    
+    #############################
+    ## GET THE CLUSTERS
+    #############################
+    
+    print(paste0(Sys.time(), " - ", project_id))
+    
+    clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/raw_data/all_clusters_used.rds"))
+    print(clusters_used)
+    all_clusters <- df_metadata %>%
+      filter(SRA_project == project_id,
+             cluster %in% clusters_used) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    if (!identical(clusters_used, all_clusters)) {
+      print("Error! Both set of clusters are not identical.")
+    }
+    
+    for(cluster_id in all_clusters) { 
+      
+      query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+      introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+      
+      
+      all_introns[[cluster_id]] <- introns$ref_junID
+      
+      print(paste0(Sys.time(), " - intron IDs collected from '", cluster_id, "'"))
+      
+    }
+  }
+  common_introns <- data.frame(ref_junID = Reduce(intersect,  all_introns))
+  common_introns %>% head()
+  common_introns %>% nrow()
+  
+  
+  
+  query <- paste0("SELECT * FROM 'intron' WHERE ref_junID IN (", paste(common_introns$ref_junID, collapse = ","), ")")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/common_introns.rds")
+  saveRDS(object = introns, file = file_name)
+  
+}
+
+get_estimate_variance_across_tissues <- function() {
+  
+  
+  ## LOAD COMMON INTRONS
+  common_introns <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/common_introns.rds")
+
+  
+  ################################
+  ## QUERY THE DATABASE PER TISSUE
+  ################################
+
+  df_estimates <- map_df(all_projects, function(project_id) {
+    
+    print(paste0(Sys.time(), " - ", project_id))
+    
+    #############################
+    ## GET THE CLUSTERS
+    #############################
+    
+    print(paste0(Sys.time(), " - ", project_id))
+    
+    clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+                                           project_id, "/raw_data/all_clusters_used.rds"))
+    
+    all_clusters <- df_metadata %>%
+      filter(SRA_project == project_id,
+             cluster %in% clusters_used) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    if (!identical(clusters_used %>% sort(), all_clusters %>% sort())) {
+      print("Error! Both set of clusters are not identical.")
+    }
+    
+    map_df(all_clusters, function(cluster_id) {
+ 
+      print(cluster_id)
+      
+      query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm FROM '", cluster_id, "_", project_id, "_misspliced'")
+      introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+      
+      query <- paste0("SELECT ref_junID, ref_length AS intron_length, ref_ss5score AS intron_5ss_score, 
+                      ref_ss3score AS intron_3ss_score, 
+                      ref_cons5score AS mean_phastCons20way_5ss, 
+                      ref_cons3score AS mean_phastCons20way_3ss, 
+                      ref_CDTS5score AS CDTS_5ss, 
+                      ref_CDTS3score AS CDTS_3ss, protein_coding, gene_id FROM 'intron' WHERE ref_junID IN (",
+                      paste(introns$ref_junID, collapse = ","),")")
+      introns <- merge(x = introns,
+                       y = dbGetQuery(con, query) %>% as_tibble(),
+                       by = "ref_junID",
+                       all.x = T) %>% 
+        as_tibble() 
+      
+      
+      query <- paste0("SELECT id, n_transcripts AS gene_num_transcripts, 
+                      gene_width AS gene_length, gene_name FROM 'gene' WHERE id IN (",
+                      paste(introns$gene_id, collapse = ","),")")
+      introns <- merge(x = introns,
+                       y = dbGetQuery(con, query) %>% as_tibble(),
+                       by.x = "gene_id",
+                       by.y = "id",
+                       all.x = T) %>% 
+        as_tibble() 
+      
+      
+      model <- lm(MSR_D ~ 
+                    intron_length + 
+                    intron_5ss_score *
+                    intron_3ss_score +
+                    gene_tpm +
+                    gene_length +
+                    gene_num_transcripts +
+                    protein_coding +
+                    CDTS_5ss + 
+                    CDTS_3ss + 
+                    mean_phastCons20way_5ss +
+                    mean_phastCons20way_3ss,  
+                  data = introns)
+      
+      
+      #model %>% summary() %>% print()
+      #MSR_Donor_list[[tissue]] <- model
+      
+      
+      #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
+      #model$coefficients[-ind_sign] <- 0
+      
+      MSR_Donor <- data.frame(tissue = cluster_id,
+                              intron_length = model$coefficients["intron_length"] %>% unname(),
+                              intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
+                              intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
+                              gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
+                              gene_length = model$coefficients["gene_length"] %>% unname(),
+                              #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
+                              protein_coding = model$coefficients["protein_coding"] %>% unname(),
+                              gene_num_transcripts = model$coefficients["gene_num_transcripts"] %>% unname(),
+                              CDTS_5ss = model$coefficients["CDTS_5ss"] %>% unname(),
+                              CDTS_3ss  = model$coefficients["CDTS_3ss"] %>% unname(),
+                              mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
+                              mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname(),
+                              pval = ((model %>% summary())$coefficients  %>% as.data.frame())[,4])
+      
+      
+      ## Acceptor
+      model <- lm(MSR_A ~
+                    intron_length + 
+                    intron_5ss_score *
+                    intron_3ss_score +
+                    gene_tpm +
+                    gene_length +
+                    gene_num_transcripts +
+                    # u2_intron +
+                    # clinvar +
+                    protein_coding +
+                    CDTS_5ss + 
+                    CDTS_3ss + 
+                    mean_phastCons20way_5ss +
+                    mean_phastCons20way_3ss,  
+                  data = introns)
+      #model %>% summary() %>% print()
+      #MSR_Acceptor_list[[tissue]] <- model
+      
+      #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
+      #model$coefficients[-ind_sign] <- 0
+      
+      MSR_Acceptor <- data.frame(tissue = cluster_id,
+                                 intron_length = model$coefficients["intron_length"] %>% unname(),
+                                 intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
+                                 intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
+                                 gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
+                                 gene_length = model$coefficients["gene_length"] %>% unname(),
+                                 #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
+                                 protein_coding = model$coefficients["protein_coding"] %>% unname(),
+                                 gene_num_transcripts = model$coefficients["gene_num_transcripts"] %>% unname(),
+                                 CDTS_5ss = model$coefficients["CDTS_5ss"] %>% unname(),
+                                 CDTS_3ss  = model$coefficients["CDTS_3ss"] %>% unname(),
+                                 mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
+                                 mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname(),
+                                 pval = ((model %>% summary())$coefficients  %>% as.data.frame())[,4])
+      
+      return(rbind(MSR_Donor %>% mutate(type = "MSR_Donor"), 
+                   MSR_Acceptor %>% mutate(type = "MSR_Acceptor")))
+      
+    })
+  })
+  
+  
+  #############################
+  ## SAVE RESULTS
+  #############################
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/variance_estimate.rds")
+  saveRDS(object = df_estimates, file = file_name)
+  
+}
+
+plot_estimate_variance_across_tissues <- function() {
   
 
-  df_estimate <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/variance_estimate.rds"))
-  graph_title <- "Distribution of the estimate values across 54 GTEx tissues"
-  
-  
-  
+  df_estimate <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/variance_estimate.rds")) %>%
+    group_by(type) %>%
+    mutate(pval_corrected =p.adjust(pval)) %>%
+    filter(pval_corrected <= 0.05) %>%
+    dplyr::select(-c(pval, pval_corrected))
+ 
   MSR_Donor <- df_estimate %>%
-    filter(type == "MSR_Donor")
+    filter(type == "MSR_Donor") 
   MSR_Acceptor <- df_estimate %>%
     filter(type == "MSR_Acceptor")
   
@@ -2034,7 +2662,7 @@ get_estimate_variance <- function() {
   
   ## DONOR
   
-  MSR_Donor_tidy <- MSR_Donor %>%
+  MSR_Donor_tidy <- MSR_Donor %>% 
     dplyr::rename("Intron Length" = "intron_length",
                   "Intron 5'ss MES score" = "intron_5ss_score",
                   "Intron 3'ss MES score" = "intron_3ss_score", 
@@ -2046,8 +2674,11 @@ get_estimate_variance <- function() {
                   "Conservation 5'ss" = "mean_phastCons20way_5ss",
                   "Conservation 3'ss" = "mean_phastCons20way_3ss", 
                   "Protein coding" = "protein_coding") %>%
-    gather(tissue, feature, -type, -tissue) %>%
+    gather(tissue, feature, -type, -tissue) %>% as_tibble() %>%
     mutate(type = "MSR_Donor")
+  
+  MSR_Donor_tidy %>%
+    group_by()
   
   MSR_Acceptor_tidy <- MSR_Acceptor %>%
     dplyr::rename("Intron Length" = "intron_length",
@@ -2080,7 +2711,7 @@ get_estimate_variance <- function() {
     coord_flip() +
     facet_grid(vars(type)) +
     #ggtitle(graph_title) +
-    ylab("Distribution of the estimate") +
+    ylab("Distribution of the significant beta values (pval<=0.05)") +
     xlab(" ") +
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
@@ -2098,17 +2729,17 @@ get_estimate_variance <- function() {
     geom_hline(yintercept = 0,linetype='dotted')
   
   
-  ggpubr::ggarrange(ggpubr::ggarrange(plotMSR,           
-                                      plotLM,
-                                      ncol = 2,
-                                      labels = c("a", "b")),
-                    plotTissuesLM, 
-                    common.legend = F,
-                    labels = c("", "c"),
-                    #ncol = 2, 
-                    nrow = 2,
-                    #widths = c(1,1,2,2),
-                    align = "v")
+  # ggpubr::ggarrange(ggpubr::ggarrange(plotMSR,           
+  #                                     plotLM,
+  #                                     ncol = 2,
+  #                                     labels = c("a", "b")),
+  #                   plotTissuesLM, 
+  #                   common.legend = F,
+  #                   labels = c("", "c"),
+  #                   #ncol = 2, 
+  #                   nrow = 2,
+  #                   #widths = c(1,1,2,2),
+  #                   align = "v")
   
   
   plotTissuesLM
@@ -2134,8 +2765,11 @@ get_estimate_variance <- function() {
 
 
 
+#################################
+## AGE STRATIFICATION
+#################################
+
 ## SECTION 4 ---------------------------------------------
-## AGE STRATIFICATION AND RBP EXPRESSION -----------------
 
 get_common_age_stratification <- function(project_id = "BRAIN") {
   
@@ -2235,10 +2869,10 @@ get_common_age_stratification <- function(project_id = "BRAIN") {
   
   ## MSR_D -------------------------------------------------
 
-  df_MSRD <- df_age_groups_intron_tidy %>%
+  df_MSRD <- df_age_groups_tidy %>%
     dplyr::select(ref_junID,
            sample_type,
-           MSR_D = ref_missplicing_ratio_tissue_ND,
+           MSR_D,
            gene_name) %>%
     mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
     spread(sample_type, MSR_D)
@@ -2959,257 +3593,14 @@ supplementary_age_stratification <- function() {
 ## ENCORI STUFF
 ##################################
 
-define_RBP_affected_by_age <- function(project_id = "BRAIN") {
-  
-  # #############################################################
-  # ## Load the genes whose MSR values increase with age
-  # #############################################################
-  # 
-  # genes_increase_MSRD <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
-  # genes_increase_MSRA <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
-  # 
-  # genes_increase_MSR <- intersect(genes_increase_MSRD, genes_increase_MSRA) %>% unique() %>% sort()
-  # 
-  # write.csv(x = genes_increase_MSR,
-  #           row.names = F,
-  #           file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/genes_increase_MSR.csv")
-  # 
-  # genes_increase_MSR <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/genes_increase_MSR.csv")
-  
-  
-  ####################################################################
-  ## Load RBPs whose TPM levels show a negative linear 
-  ## relationship with age
-  ####################################################################
-  
-  df_lm_age_tidy <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                           "/results/pipeline3/rbp/tpm_lm_all.csv")) %>%
-    drop_na()
-  
-  ## PLOT DENSITIES (to decide the 'Estimate' values that means the RBP is affected by age)
-  df_lm_age_tidy
 
-  
-  ## RBPs affected by age
-  RBPs_lm_age <- df_lm_age_tidy %>%
-    filter(#Estimate > 0-05,
-           type != "other",
-           pval <= 0.05) %>%
-    as_tibble()
-  
-  write.csv(x = RBPs_lm_age$name %>% unique,
-            row.names = F,
-            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv")
-  
-  
-  ## RBPs not affected by age
-  RBPs_lm_other <- df_lm_age_tidy %>% filter(RBP_ID %in% setdiff(df_lm_age_tidy$RBP_ID, RBPs_lm_age$RBP_ID))
-  
-  write.csv(x = RBPs_lm_other$name %>% unique,
-            row.names = F,
-            file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv")
-  
-  
-  wilcox.test(x = RBPs_lm_age$Estimate,
-              y = RBPs_lm_other$Estimate,
-              alternative = "less")
-  
-  ####################################################################
-  ## Load RBPs whose level of expression (i.e. TPM) decrease with age
-  ####################################################################
-  
-  # df_analysis_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-  #                                                 "/results/pipeline3/rbp/tpm_age_spread.csv"), check.names = F) %>% as_tibble()
-  # RBPs <- df_analysis_corrected %>%
-  #   filter(`20-39` > `40-59`,
-  #          `40-59` > `60-79`) 
-  # 
-  # ## Add RBPs the gene symbol
-  # ensembl105 <- biomaRt::useEnsembl(biomart = 'genes', 
-  #                                   dataset = 'hsapiens_gene_ensembl',
-  #                                   version = 105)
-  # RBP_symbols <- biomaRt::getBM(
-  #   attributes = c('hgnc_symbol'), 
-  #   filters = 'ensembl_gene_id',
-  #   values = RBPs$RBP,
-  #   mart = ensembl105
-  # ) %>% pull(hgnc_symbol)
-  # 
-  # write.csv(x = RBP_symbols,
-  #           row.names = F,
-  #           file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv")
-  
-  
-  
-  ####################################################################
-  ## INTERSECT BOTH DATASETS OF RBPs
-  ####################################################################
-  # RBPs_splicing$hgnc_symbol %>% unique %>% length()
-  # RBPs_other$hgnc_symbol %>% unique %>% length()
-  # RBP_symbols %>% unique %>% length()
-  # 
-  # intersect(RBPs_splicing$hgnc_symbol, RBP_symbols)
-  # intersect(RBPs_other$hgnc_symbol, RBP_symbols)
-  
-  # curl 'https://starbase.sysu.edu.cn/api/RBPTarget/?assembly=hg19&geneType=mRNA&RBP=GEMIN5&clipExpNum=5&pancancerNum=0&target=APOE&cellType=all' > ENCORI_hg19_RBPTarget_GEMIN5_APOE.txt
-  
 
-}
 
-analise_encori <- function(project_id = "BRAIN") {
-  
-  ## LOAD MSR
-  chain <- rtracklayer::import.chain(con = "data/hg19ToHg38.over.chain")
-  genes_MSRD_increasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds") %>%
-    mutate(start = start - 100,
-           end = end - 100) %>%
-    GRanges()
-  genes_MSRA_increasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds") %>%
-    mutate(start = start - 100,
-           end = end - 100) %>%
-    GRanges()
-  
-  df_RBP_result <- map_df(c("RBPs_affected_age", "RBPs_notaffected_age"), function(type) {
-    
-    # type <- "RBPs_notaffected_age"
-    # type <- "RBPs_affected_age"
-    
-    ## LOAD RPB list
-    if (type == "RBPs_affected_age") {
-      RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv",
-                       header = F)
-    } else {
-      RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv", 
-                       header = F)
-    }
-    
-    ## Check iCLIP results
-    map_df(RBPs$V1, function (RBP) {
-      
-      # RBP <- "SRSF9" RBPs$V1[1]
-      file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/results/", 
-                          type, "/ENCORI_hg19_", RBP, "_allgenes_copy.txt")
-      
-      #print(file_name)
-      if (file.exists(file_name)) {
-        
-        RBP_result <- read.delim(file = file_name, header = T,sep = "\t") %>%
-          as_tibble()
-        
-        if (RBP_result %>% nrow() > 1) {
-          
-          print(paste0(RBP, " - ", type))
-        
-          RBP_result_GR <- RBP_result %>% 
-            dplyr::rename(start = narrowStart, end = narrowEnd) %>% 
-            GRanges()
-          
-          
-          # liftover
-          
-          # http://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/
-          
-  
-          RBP_result_GRh38 <- rtracklayer::liftOver(x = RBP_result_GR, 
-                                                    chain = chain) %>% 
-            unlist() %>% 
-            diffloop::rmchr()
-          
-          ## Overlaps - MSR_D
-          
-          
-          
-          overlaps_MSRD <- GenomicRanges::findOverlaps(query = genes_MSRD_increasing,
-                                                       subject = RBP_result_GRh38,
-                                                       type = "any",
-                                                       ignore.strand = F)
-          
-          
-          # genes_MSRD_increasing_RBP <- genes_MSRD_increasing[queryHits(overlaps),] %>%
-          #   as_tibble() %>%
-          #   mutate(RBP_name = RBP_result_GRh38[subjectHits(overlaps),]$RBP,
-          #          RBP_gene.name = RBP_result_GRh38[subjectHits(overlaps),]$geneName,
-          #          RBP_cellline.tissue = RBP_result_GRh38[subjectHits(overlaps),]$cellline.tissue) %>%
-          #   unnest(gene_name)
-          
-          
-          ## Overlaps - MSR_A
-        
-          
-          overlaps_MSRA <- GenomicRanges::findOverlaps(query = genes_MSRA_increasing,
-                                                       subject = RBP_result_GRh38 ,
-                                                       type = "any",
-                                                       ignore.strand = F)
-          
-          # genes_MSRA_increasing_RBP <- genes_MSRA_increasing[queryHits(overlaps),] %>%
-          #   as_tibble() %>%
-          #   mutate(RBP_name = RBP_result_GRh38[subjectHits(overlaps),]$RBP,
-          #          RBP_gene.name = RBP_result_GRh38[subjectHits(overlaps),]$geneName,
-          #          RBP_cellline.tissue = RBP_result_GRh38[subjectHits(overlaps),]$cellline.tissue) %>%
-          #   unnest(gene_name)
-          
-          
-          ## Return result
-          
-          # rbind(genes_MSRD_increasing_RBP,
-          #       genes_MSRA_increasing_RBP) %>% return()
-          #print("File exists!")
-          
-          data.frame(RBP_name = RBP,
-                     RBP_type = type,
-                     ovlps_MSRD = genes_MSRD_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRA = genes_MSRA_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRD = genes_MSRD_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRA = genes_MSRA_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRD_perc = (((genes_MSRD_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                       genes_MSRD_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
-                     ovlps_MSRA_perc = (((genes_MSRA_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                          genes_MSRA_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow())) %>% return()
-        }
-        
-       
-      
-      }
-      
-    })
-    
-    # file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/results/", 
-    #                     type, "/RBP_MSR.rds")
-    # saveRDS(object = df_RBP_result, file = file_name)
-    
-  })
-  
-  write_csv(x = df_RBP_result,
-            file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv", col_names = T)
-  
 
-}
+
  
 
 
-RBPs_iCLIP_differences <- function () {
-  
-  
-  df_RBP_result <- read.csv(file = "paper_figures/iCLIP/results/RBPs_intronsMSR.csv")
-  
-  wilcox.test(x = df_RBP_result %>% 
-                filter(RBP_type == "RBPs_affected_age") %>%
-                pull(ovlps_MSRD_perc),
-              y = df_RBP_result %>% 
-                filter(RBP_type == "RBPs_notaffected_age") %>%
-                pull(ovlps_MSRD_perc),
-              paired = F,
-              alternative = "greater")
-  
-  wilcox.test(x = df_RBP_result %>% 
-                filter(RBP_type == "RBPs_affected_age") %>%
-                pull(ovlps_MSRA_perc),
-              y = df_RBP_result %>% 
-                filter(RBP_type == "RBPs_notaffected_age") %>%
-                pull(ovlps_MSRA_perc),
-              paired = F,
-              alternative = "greater")
-}
 
 
 

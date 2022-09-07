@@ -1361,7 +1361,6 @@ add_never_misspliced_to_df <- function(cluster,
 
 
 get_missplicing_ratio <- function(cluster,
-                                  samples,
                                   split_read_counts,
                                   folder_name,
                                   folder_save_name,
@@ -1379,52 +1378,19 @@ get_missplicing_ratio <- function(cluster,
     
   }
   
-  
   print(paste0(Sys.time(), " - Calulating MSR_Donor and MSR_Acceptor."))
-  
-  
   df_tidy %>% head()
-  
-  # SNCA David's novel exon: 
-  # df_tidy %>% filter(novel_junID == "67198600")
+
   
   print(paste0(Sys.time(), " --> ", cluster, ": ", df_tidy %>%
                  distinct(ref_junID) %>%
                  nrow(), " reference junctions."))
   
-  # df_tidy %>%
-  #   filter(is.na(ref_counts)) %>%
-  #   nrow()
-  
-  # df_tidy %>%
-  #   filter(gene_name_start == "SNCA") %>%
-  #   select(ref_junID, ref_n_individuals, ref_mean_counts, ref_sum_counts) %>%
-  #   distinct(ref_junID, .keep_all = T)
-  
-  ## Threshold for the minimum number of reads
-  # threshold <- 5
-  
-  
-  ## 50% of the total number of samples must present a mean of at least 5 reads
-  # print(paste0("Threshold samples: ", round(samples %>% length() * 0.5)))
-  # print(paste0("Threshold counts: ", threshold)) #(round(samples %>% length() * 0.5) * threshold)  / samples %>% length()))
-  #print(paste0("Threshold counts: ", threshold))
-  
-  
-  ## Obtain only reference junction expressed in 50% of samples presenting at least 5 reads
-  # df <- df_tidy %>%
-  #   filter(#ref_n_individuals >= round(samples %>% length() * 0.5), 
-  #     #ref_mean_counts >= threshold, #(round(samples %>% length() * 0.5) * threshold)  / samples %>% length(),
-  #     !is.na(ref_counts))
   
   ## Get only mis-spliced reference introns and novel junctions
   df <- df_tidy %>%
-    dplyr::filter(!is.na(ref_counts), 
-                  ref_counts > 0)
-  
-  # df %>%
-  #   filter(gene_name_start == "SNCA")%>%
-  #   distinct(ref_junID, .keep_all = T)
+    dplyr::filter(!is.na(ref_counts), ref_counts > 0)
+
   
   ## Get novel junctions ---------------------------------------------------------------------------------------------------------------------------
   
@@ -1450,122 +1416,34 @@ get_missplicing_ratio <- function(cluster,
                   gene_id) %>%
     distinct(novel_junID, .keep_all = T)
   
-  # db_novel %>%
-  #   filter(novel_junID == "67198600")
-  # db_novel %>%
-  #   filter(gene_name == "SNCA")%>%
-  #   distinct(ref_junID, .keep_all = T)
-  
-  # db_novel %>% filter(gene_name == "SNCA") %>% distinct(ref_junID) %>% nrow
-  
-  # db_novel %>% distinct(ref_junID) %>% nrow()
-  # db_novel %>% nrow()
-  # db_novel %>% distinct(novel_junID) %>% nrow()
-  
+
   saveRDS(object = db_novel, file = paste0(folder_save_name, "/", cluster, "_db_novel.rds"))
   
   print(paste0(Sys.time(), " - Novel junctions DB saved!"))
   
-  
-  
-  ## Get novel junctions details ----------------------------------------------------------------------------
-  
-  # split_read_counts_novel <- split_read_counts %>%
-  #   filter(junID %in% (db_novel$novel_junID %>% unique())) %>%
-  #   dplyr::select(junID, samples %>% as.character()) %>%
-  #   #mutate_all(~replace(., is.na(.), 0)) %>%
-  #   as_tibble()
-  # 
-  # split_read_counts_novel_details <- split_read_counts_novel %>% #head() %>%
-  #   gather(sample, count, samples %>% as.character()) %>%
-  #   dplyr::rename(novel_junID = junID,
-  #                 novel_counts = count) %>%
-  #   dplyr::filter(!is.na(novel_counts))
-  # 
-  # 
-  # split_read_counts_novel_details %>%
-  #   as.data.frame() %>%
-  #   filter(novel_junID == "1001789")
-  # 
-  # 
-  # 
-  # for (sample in split_read_counts_novel_details$sample %>% unique()) { # sample <- db_novel_details$sample[1]
-  #   
-  #   if (!is.null(db)) {
-  #     
-  #     ind <- which(db$run %>% as.character() == sample)
-  #     people <- db[ind, ]
-  #     
-  #     if (str_detect(people$characteristics[1], "female")) {
-  #       sex <- "female"
-  #     }else if (str_detect(people$characteristics[1], "male")) {
-  #       sex <- "male"
-  #     }
-  #     
-  #     data <- people$characteristics[1]
-  #     position <- str_locate(data, "age at death")
-  #     age <- substr(data, position[2] + 3, position[2] + 4) %>% 
-  #       as.integer()
-  #     
-  #     mapped_read_count <- people$mapped_read_count
-  #     avg_read_length <- people$avg_read_length
-  #     
-  #   } else {
-  #     
-  #     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = "/data/splicing_tolerance/splicing_tolerance.sqlite")
-  #     query <- DBI::dbSendQuery(con, paste0("SELECT * FROM GTEX_info WHERE sample_recount_id == '", sample,"';")) #  WHERE smafrze == 'USE ME'
-  #     people <- DBI::dbFetch(query)
-  #     DBI::dbClearResult(query)
-  #     DBI::dbDisconnect(con)
-  #     
-  #     if (str_detect(people$bigwig_file[1], "female")) {
-  #       sex <- "female"
-  #     } else if (str_detect(people$bigwig_file[1], "male")) {
-  #       sex <- "male"
-  #     }
-  #     
-  #     age <- people$age
-  #     mapped_read_count <- people$mapped_read_count
-  #     avg_read_length <- people$avg_read_length
-  #   }
-  #   
-  #   
-  #   
-  #   ind <- which(split_read_counts_novel_details$sample == sample)
-  #   split_read_counts_novel_details[ind,"age"] <- age
-  #   split_read_counts_novel_details[ind,"sex"] <- sex
-  #   split_read_counts_novel_details[ind,"mapped_read_count"] <- mapped_read_count
-  #   split_read_counts_novel_details[ind,"avg_read_length"] <- avg_read_length
-  #   
-  #   # print(paste0(sample)) 
-  # }
-  # 
-  # saveRDS(object = split_read_counts_novel_details,
-  #         file = paste0(folder_save_name, "/", cluster, "_db_novel_details.rds"))
-  # 
-  # print(paste0(Sys.time(), " - Details of novel junctions DB saved!"))
-  
-  
+
   
   ## Generate reference introns data base ---------------------------------------------------------------------------
   
   
   
-  
   ## The novel junction itself is not important anymore. 
   ## We calculate the mis-splicing ratio per novel event and reference intron
+  df %>%
+    filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-")
+  
   df_ref <- df %>% 
-    #filter(ref_junID == "1000209") %>%
     group_by(ref_junID, type) %>%
+    distinct(novel_junID, .keep_all = T) %>% 
     mutate(novel_mean_counts = novel_sum_counts / novel_n_individuals) %>%
     mutate(ref_mean_counts = ref_sum_counts / ref_n_individuals) %>%
-    dplyr::mutate(ref_missplicing_ratio_tissue = sum(novel_mean_counts) / 
-                    (sum(novel_mean_counts) + ref_mean_counts)) %>% 
-    #as.data.frame()
-    #dplyr::mutate(ref_missplicing_ratio_tissue2 = sum(novel_mean_counts)/(sum(novel_mean_counts) + (ref_mean_counts))) %>%
+    dplyr::mutate(ref_missplicing_ratio_tissue = 
+                    sum(novel_sum_counts) / (sum(novel_sum_counts) + ref_sum_counts)) %>%  
     distinct(ref_missplicing_ratio_tissue, .keep_all = T) %>%
-    ungroup() #%>% select(ref_missplicing_ratio_tissue)
+    ungroup()
   
+  df_ref %>%
+    filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-") %>% as.data.frame()
   
   df_ref_tidy <- df_ref %>% 
     spread(key = type, value = ref_missplicing_ratio_tissue) %>%
@@ -1575,7 +1453,8 @@ get_missplicing_ratio <- function(cluster,
     distinct(ref_junID, .keep_all = T)  %>%
     ungroup()
   
-  df_ref_tidy[1,]
+  df_ref_tidy %>%
+    filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-") %>% as.data.frame()
   #df_ref_tidy %>% filter(ref_junID == "10086104") %>% as.data.frame()
   #df_ref %>% filter(ref_junID == "10086104") %>% as.data.frame()
   
@@ -1703,81 +1582,6 @@ get_missplicing_ratio <- function(cluster,
   rm(df)
   rm(df_tidy)
   gc()
-  
-  ## Get reference introns details ----------------------------------------------------------------------------
-  
-  # split_read_counts_ref <- split_read_counts %>%
-  #   filter(junID %in% (db_ref_joined$ref_junID %>% unique())) %>%
-  #   dplyr::select(junID, samples %>% as.character()) %>%
-  #   #mutate_all(~replace(., is.na(.), 0)) %>%
-  #   as_tibble()
-  # 
-  # 
-  # split_read_counts_ref_details <- split_read_counts_ref %>% 
-  #   gather(sample, count, samples %>% as.character()) %>%
-  #   dplyr::rename(ref_junID = junID) %>%
-  #   dplyr::filter(!is.na(count))
-  # 
-  # 
-  # 
-  # for (sample in split_read_counts_ref_details$sample %>% unique()) { # sample <- split_read_counts_ref_details$sample[1]
-  #   
-  #   if (!is.null(db)) {
-  #     
-  #     ind <- which(db$run %>% as.character() == sample)
-  #     people <- db[ind, ]
-  #     
-  #     if (str_detect(people$characteristics[1], "female")) {
-  #       sex <- "female"
-  #     }else if (str_detect(people$characteristics[1], "male")) {
-  #       sex <- "male"
-  #     }
-  #     
-  #     data <- people$characteristics[1]
-  #     position <- str_locate(data, "age at death")
-  #     age <- substr(data, position[2] + 3, position[2] + 4) %>% 
-  #       as.integer()
-  #     
-  #     mapped_read_count <- people$mapped_read_count
-  #     avg_read_length <- people$avg_read_length
-  #     
-  #   } else {
-  #     
-  #     con <- DBI::dbConnect(RSQLite::SQLite(), dbname = "/data/splicing_tolerance/splicing_tolerance.sqlite")
-  #     query <- DBI::dbSendQuery(con, paste0("SELECT * FROM GTEX_info WHERE sample_recount_id == '", sample,"';")) #  WHERE smafrze == 'USE ME'
-  #     people <- DBI::dbFetch(query)
-  #     DBI::dbClearResult(query)
-  #     DBI::dbDisconnect(con)
-  #     
-  #     if (str_detect(people$bigwig_file[1], "female")) {
-  #       sex <- "female"
-  #     }else if (str_detect(people$bigwig_file[1], "male")) {
-  #       sex <- "male"
-  #     }
-  #     
-  #     age <- people$age
-  #     mapped_read_count <- people$mapped_read_count
-  #     avg_read_length <- people$avg_read_length
-  #   }
-  #   
-  #   
-  #   ind <- which(split_read_counts_ref_details$sample == sample)
-  #   split_read_counts_ref_details[ind,"age"] <- age
-  #   split_read_counts_ref_details[ind,"sex"] <- sex
-  #   split_read_counts_ref_details[ind,"mapped_read_count"] <- mapped_read_count
-  #   split_read_counts_ref_details[ind,"avg_read_length"] <- avg_read_length
-  #   
-  #   #split_read_counts_ref_details
-  #   #print(sample)
-  # }
-  # 
-  # 
-  # 
-  # saveRDS(object = split_read_counts_ref_details,
-  #         file = paste0(folder_save_name, "/", cluster, "_db_introns_details.rds"))
-  # 
-  # 
-  # print(paste0(Sys.time(), " - Intron details DB saved!"))
   
 }
 
@@ -2553,104 +2357,6 @@ add_MANE_info <- function(cluster,
 }
 
 
-## MODULO 3  ------------------------------------
-
-get_stats_modulo <- function(cluster,
-                             folder_name,
-                             PC = T,
-                             stats = F) {
-  
-  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
-  df_novel %>% head()
-  df_novel %>% nrow() 
-  
-  
-  
-  
-  if (stats) {
-    
-    ## First hypothesis - Protein-coding novel donor junctions produce less frame-shift
-    print(paste0(Sys.time(), " - First hypothesis - Protein-coding novel donor junctions produce less frame-shift."))
-    
-    donor_data <- df_tidy %>%
-      filter(novel_type == "novel_donor", protein_coding == 100) %>%
-      mutate(modulo = distance %% 3) 
-    
-    acceptor_data <- df_tidy %>%
-      filter(novel_type == "novel_acceptor", protein_coding == 100) %>%
-      mutate(modulo = distance %% 3) 
-    
-    
-    # data <- data.frame(group = "novel_donor",
-    #                    value = abs(x_data$modulo))
-    # data <- rbind(data,
-    #               data.frame(group = "novel_acceptor",
-    #                          value = abs(y_data$modulo)))
-    
-    # group_by(data, group) %>%
-    #   summarise(
-    #     count = n(),
-    #     median = median(value, na.rm = TRUE),
-    #     mean = mean(value, na.rm = TRUE),
-    #     IQR = IQR(value, na.rm = TRUE)
-    #   )
-    
-    wilcox.test(x = donor_data %>% pull(modulo),
-                y = acceptor_data %>% pull(modulo),
-                exact = FALSE, 
-                alternative = "less") %>% print()
-    
-    print(paste0((acceptor_data %>% filter(modulo == 0) %>% nrow() * 100) / acceptor_data %>% nrow(), "% of modulo3 = 0 protein-coding acceptor junctions."))
-    print(paste0((donor_data %>% filter(modulo == 0) %>% nrow() * 100) / donor_data %>% nrow(), "% of modulo3 = 0 protein-coding donor junctions."))
-    
-    
-    
-    ###########################################################################################
-    ## Second hypothesis - Never protein-coding novel donor junctions produce less frame-shift
-    ###########################################################################################
-    
-    print(paste0(Sys.time(), " - Second hypothesis - Never protein-coding novel donor junctions produce less frame-shift."))
-    
-    donor_data <- df_tidy %>%
-      filter(novel_type == "novel_donor", protein_coding == 0) %>%
-      mutate(modulo = distance %% 3) 
-    
-    acceptor_data <- df_tidy %>%
-      filter(novel_type == "novel_acceptor", protein_coding == 0) %>%
-      mutate(modulo = distance %% 3) 
-    
-    
-    
-    
-    # data <- data.frame(group = "novel_donor",
-    #                    value = abs(x_data$modulo))
-    # data <- rbind(data,
-    #               data.frame(group = "novel_acceptor",
-    #                          value = abs(y_data$modulo)))
-    
-    # group_by(data, group) %>%
-    #   summarise(
-    #     count = n(),
-    #     median = median(value, na.rm = TRUE),
-    #     mean = mean(value, na.rm = TRUE),
-    #     IQR = IQR(value, na.rm = TRUE)
-    #   )
-    
-    wilcox.test(x = donor_data %>% pull(modulo),
-                y = acceptor_data %>% pull(modulo),
-                exact = FALSE, 
-                alternative = "less") %>% print()
-    
-    print(paste0((acceptor_data %>% filter(modulo == 0) %>% nrow() * 100) / acceptor_data %>% nrow(), "% of modulo3 = 0 non-protein-coding acceptor junctions."))
-    print(paste0((donor_data %>% filter(modulo == 0) %>% nrow() * 100) / donor_data %>% nrow(), "% of modulo3 = 0 non-protein-coding donor junctions."))
-  }
-}
-
-
-
-
-
-
 ## CDTS - CONSERVATION ----------------------------
 
 add_cdts_cons_scores <- function(cluster,
@@ -2737,117 +2443,10 @@ add_cdts_cons_scores <- function(cluster,
 }
 
 
-
-
-
-## EXON LENGTH ------------------------------------
-
-add_exon_length <- function(cluster,
-                            folder_name) {
-  
-  
-  ## Load splice table
-  splice_table <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/results/base_data/homosapiens_v104_splicetable.rds"))
-  splice_table %>% head()
-  
-  
-  ## Load intron database
-  file_stats <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-  df_stats <- readRDS(file = file_stats)
-  df_stats <- df_stats %>%
-    mutate(left_exon_length = 0,
-           right_exon_length = 0)
-  df_stats %>% head()
-  
-  
-  
-  ## Get the length of both flanking exons
-  
-  splice_table <- splice_table %>%
-    mutate(left_exon_length = splice_table$lend - splice_table$lstart,
-           right_exon_length = splice_table$rend - splice_table$rstart)
-  
-  splice_table %>% head()
-  
-  
-  
-  ## Get genomic overlaps between the splice table and the intron database
-  overlaps <-  GenomicRanges::findOverlaps(query = GRanges(seqnames = splice_table$seqid,
-                                                           IRanges(start = splice_table$lend + 1, 
-                                                                   end = splice_table$rstart - 1),
-                                                           strand = splice_table$strand),
-                                           subject = GRanges(seqnames = df_stats$seqnames,
-                                                             IRanges(start = df_stats$start, 
-                                                                     end = df_stats$end),
-                                                             strand = df_stats$strand),
-                                           ignore.strand = F,
-                                           type = "equal")
-  
-  ## QC
-  if (subjectHits(overlaps) %>% unique %>% length() !=
-      df_stats %>% nrow()) {
-    print("Error: some introns from the intron database have not been found in annotation!")
-  }
-  
-  
-  
-  ## Merge both datasets
-  df_stats[subjectHits(overlaps),]$left_exon_length <- splice_table[queryHits(overlaps),]$left_exon_length 
-  df_stats[subjectHits(overlaps),]$right_exon_length <- splice_table[queryHits(overlaps),]$right_exon_length 
-  
-  
-  # ## Adding the position of the intron within the transcript -- can't do this, as I don't know which specific transcript was mis-spliced.
-  # ## Load the ensembl dataset
-  # homo_sapiens_v104_gtf <- rtracklayer::import("/data/references/ensembl/gtf_gff3/v104/Homo_sapiens.GRCh38.104.gtf") %>%
-  #   as.data.frame()
-  # homo_sapiensv104_exons <- homo_sapiens_v104_gtf %>%
-  #   filter(type == "exon")
-  # 
-  # overlaps <-  GenomicRanges::findOverlaps(query = GRanges(seqnames = homo_sapiensv104_exons$seqnames,
-  #                                                          IRanges(start = homo_sapiensv104_exons$end + 1, 
-  #                                                                  end = homo_sapiensv104_exons$end + 1),
-  #                                                          strand = homo_sapiensv104_exons$strand),
-  #                                          subject = GRanges(seqnames = df_stats$seqnames,
-  #                                                            IRanges(start = df_stats$start, 
-  #                                                                    end = df_stats$start),
-  #                                                            strand = df_stats$strand),
-  #                                          ignore.strand = F,
-  #                                          type = "equal")
-  # 
-  # ## QC
-  # if (subjectHits(overlaps) %>% unique %>% length() !=
-  #     df_stats %>% nrow()) {
-  #   print("Error: some introns from the intron database have not been found in annotation!")
-  # }
-  # 
-  # # homo_sapiensv104_exons[queryHits(overlaps),][2:3,]
-  # # df_stats[subjectHits(overlaps),][2:3,]
-  # # homo_sapiensv104_exons[queryHits(overlaps),] %>%
-  # #   filter( (transcript_id == "ENST00000379236" ||
-  # #             transcript_id == "ENST00000453580")) %>%
-  # #   filter(end == "1213093")
-  #   
-  # 
-  # ## Merge both datasets
-  # df_stats <- df_stats %>%
-  #   mutate(intron_number = 0)
-  # df_stats[subjectHits(overlaps),]$intron_number <- (homo_sapiensv104_exons[queryHits(overlaps),]$exon_number %>% as.integer()) + 1 
-  # 
-  # df_stats %>% head()
-  
-  
-  
-  file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-  saveRDS(object = df_stats, file = file_name)
-  
-  print(paste0(Sys.time(), " - file saved!"))
-}
-
-
-
-
-
 ## GENE TPM AND GENE LENGTH -----------------------
+
+# folder_name <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/ADIPOSE_TISSUE//results/pipeline3/missplicing-ratio/Adipose - Subcutaneous/v105/"
+# cluster <- "Adipose - Subcutaneous"
 
 add_gene_tpm_length <- function(cluster,
                                 tpm_file,
@@ -2858,7 +2457,8 @@ add_gene_tpm_length <- function(cluster,
   
   ## LOAD SOURCE DATA
   file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-  df_introns <- readRDS(file = file_name) 
+  df_introns <- readRDS(file = file_name) %>%
+    as_tibble()
   
   ## PRINT SOME STATS
   df_introns %>% head()
@@ -2911,8 +2511,8 @@ add_gene_tpm_length <- function(cluster,
                      y = tpm %>% data.table::as.data.table(),
                      by = "gene_id",
                      all.x = T) %>% 
-    dplyr::rename(tpm_mean_rct3 = tpm_mean)%>% 
-    dplyr::rename(tpm_median_rct3 = tpm_median)
+    dplyr::rename(tpm_mean_rct = tpm_mean) %>% 
+    dplyr::rename(tpm_median_rct = tpm_median)
   
   
   df_merged %>% head()
