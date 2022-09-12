@@ -298,7 +298,7 @@ create_gene_table <- function() {
 ## CREATE INTRON TABLE
 ##################################
 
-create_intron_table <- function() {
+create_intron_table <- function(age = F) {
   
   ## Connect to the DB
   con <- dbConnect(RSQLite::SQLite(), database_path)
@@ -319,6 +319,13 @@ create_intron_table <- function() {
     filter(type == "transcript") %>%
     distinct(transcript_id) %>% pull()
   
+  hg38_transcripts <- hg38 %>%
+    as_tibble() %>%
+    filter(type == "transcript") %>%
+    dplyr::select(transcript_id, transcript_support_level) %>%
+    mutate(transcript_support_level = str_sub(string = transcript_support_level,
+                                              start = 1,
+                                              end = 1))
   
   ###################################
   ## CREATE INTRONS TABLE
@@ -371,8 +378,13 @@ create_intron_table <- function() {
           distinct(ref_junID, .keep_all = T) %>% 
           as_tibble() %>%
           dplyr::select(ref_junID,
+                        seqnames,
+                        start,
+                        end,
+                        strand,
                         ref_length = width,
-                        ref_ss5score, ref_ss3score,
+                        ref_ss5score, 
+                        ref_ss3score,
                         ref_cons5score = phastCons20way_5ss_mean,
                         ref_cons3score = phastCons20way_3ss_mean,
                         ref_CDTS5score = CDTS_5ss_mean,
@@ -390,16 +402,80 @@ create_intron_table <- function() {
     })  
   })  
   
-  #######################################
+  
+  ######################################
   ## ADD MANE INFO - ROWISE
   ######################################
+  
   print(paste0(Sys.time(), " --> adding MANE info ..."))
   
   df_all_introns <- df_all_introns %>%
     distinct(ref_junID, .keep_all = T) %>% 
     rowwise() %>%
-    mutate(MANE = ifelse(any((tx_id_junction %>% unlist() %>% unname()) %in% mane_transcripts), T, F))
+    mutate(MANE = ifelse(any((tx_id_junction %>% unlist() %>% unname()) %in% mane_transcripts), T, F)) 
+  
+  
+  ######################################
+  ## ADD TSL INFO 
+  ######################################
+  
+  print(paste0(Sys.time(), " --> adding TSL info ..."))
+ 
+  ## 10 to the TSL field to be an integer and reduce disk space
+  df_all_introns <- df_all_introns %>%
+    unnest(tx_id_junction) %>%
+    dplyr::left_join(y = hg38_transcripts,
+                     by = c("tx_id_junction" = "transcript_id")) %>%
+    mutate(TSL = ifelse(is.na(transcript_support_level) | 
+                          transcript_support_level == "N", 
+                        10, transcript_support_level),
+           TSL = TSL %>% as.integer())
+
+  df_all_introns <- df_all_introns %>% 
+    group_by(ref_junID) %>%
+    mutate(TSL = TSL %>% min) %>%
+    dplyr::select(-tx_id_junction,
+                  -transcript_support_level) %>%
+    distinct(ref_junID, .keep_all = T)
+  
+  df_all_introns
+  
+  ######################################
+  ## ADD MAXENTSCAN INFO 
+  ######################################
+  
+  wd <- getwd()
+  ## Add MaxEntScan score to the split reads
+  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_all_introns %>% dplyr::rename(junID = ref_junID),
+                                                 max_ent_tool_path = "/home/sruiz/fordownload/",
+                                                 homo_sapiens_fasta_path = "/data/references/fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa")
+  
+  all_split_reads_tidy %>% as_tibble()
+  
+  all_split_reads_tidy <- all_split_reads_tidy %>% 
+    select(-donorSeqStart,
+           -donorSeqStop,
+           -AcceptorSeqStart,
+           -AcceptorSeqStop,
+           -donor_sequence,
+           -acceptor_sequence)
+  
+  setwd(wd)
+  
+  df_all_introns <- all_split_reads_tidy %>%
+    mutate(ref_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
+  
+  setdiff(df_all_introns$junID, df_all_introns$ref_junID)
+  
+  df_all_introns <- df_all_introns %>%
+    dplyr::select(-one_of("junID","ref_ss5score","ref_ss3score")) %>% 
+    dplyr::rename(ref_ss5score = ss5score, 
+                  ref_ss3score = ss3score) %>%
+    dplyr::relocate(ref_junID) %>%
+    dplyr::relocate(c(ref_ss5score, ref_ss3score), .before = ref_length ) 
     
+  
+  df_all_introns %>% as_tibble()
   
   #######################################
   ## QC
@@ -423,7 +499,13 @@ create_intron_table <- function() {
        filter(n > 1) %>% nrow()) != 0) {
     print(paste0("Error! There are introns that have been assigned to multiple MANE across tissues."))
   } 
-  df_all_introns %>% distinct(ref_junID)
+  if ((df_all_introns %>%
+    rowwise() %>%
+    filter(ref_junID %>% str_detect( pattern = "\\*")) %>%
+    select(ref_junID)) %>% nrow() > 1) {
+    print(paste0("Error! There are introns with '*' strand."))
+  }
+  df_all_introns %>% distinct(ref_junID) %>% as_tibble()
 
 
   #######################################
@@ -436,7 +518,6 @@ create_intron_table <- function() {
   ## Flatten each gene list element internally
   ## Only keep introns belonging to one single gene
   df_all_introns_tidy <- df_all_introns %>%
-    dplyr::select(-tx_id_junction) %>%
     distinct(ref_junID, .keep_all = T) %>% 
     rowwise() %>%
     mutate(gene = ifelse(gene_id %>% unlist() %>% length() > 1, T, F))
@@ -476,6 +557,8 @@ create_intron_table <- function() {
     dplyr::rename(gene_id = id)
   
   
+ 
+  
   ## Extra QC
   ## Same introns should have been assigned same scores across tissues
   # df_all_introns %>%
@@ -512,6 +595,7 @@ create_intron_table <- function() {
   ref_CDTS3score DOUBLE NOT NULL,
   clinvar TEXT NOT NULL, 
   MANE BOOL NOT NULL,
+  TSL NUMERIC NOT NULL,
   protein_coding INTEGER NOT NULL,
   gene_id INTEGER NOT NULL,
   FOREIGN KEY (gene_id) REFERENCES 'gene'(id))")
@@ -532,7 +616,12 @@ create_intron_table <- function() {
     distinct(ref_coordinates, .keep_all = T) %>%
     tibble::rowid_to_column("ref_junID")
   
-  any(df_all_introns_tidy$gene_id %>% is.na())
+  df_all_introns_tidy <- df_all_introns_tidy %>%
+    dplyr::select(-seqnames, -start, -end, -strand)
+  
+  if (any(df_all_introns_tidy$gene_id %>% is.na())) {
+    print("ERROR! some introns do not have a gene assigned")
+  }
   
   DBI::dbAppendTable(conn = con,
                      name = "intron", 
@@ -559,6 +648,7 @@ create_novel_table <- function() {
   con <- dbConnect(RSQLite::SQLite(), database_path)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
   
+  # DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=0")
   # dbRemoveTable(conn = con, "novel")
   
   ## GET GENES
@@ -577,7 +667,7 @@ create_novel_table <- function() {
   
   
   ###################################
-  ## CREATE NOVEL TABLE 
+  ## GET NOVEL JUNCTION DATA 
   ###################################
   
   SRA_projects <- (df_metadata$SRA_project %>% unique())
@@ -617,6 +707,7 @@ create_novel_table <- function() {
           dplyr::mutate(#novel_mean_counts = round((novel_sum_counts / novel_n_individuals), digits = 2),
                         novel_type = novel_type %>% as.character()) %>%
           dplyr::select(ref_junID,
+                        seqnames, start, end, strand,
                         novel_junID,
                         novel_ss5score, 
                         novel_ss3score, 
@@ -637,20 +728,75 @@ create_novel_table <- function() {
   ## PREPARE DATA BEFORE DATABASE 
   #############################################
   
+  
+  df_all_novels_tidy <- df_all_novels %>%
+    distinct(novel_junID, ref_junID, .keep_all = T) %>%
+    rowwise() %>%
+    mutate(ref_junID = ifelse(str_detect(string = ref_junID, pattern = "\\*"), 
+                              str_replace(string = ref_junID, pattern = "\\*", strand ),
+                              ref_junID))
+  
   print(paste0(Sys.time(), " - flattening each gene list element internally..."))
   
   ## Flatten each gene list element internally
-  df_all_novels_tidy <- df_all_novels %>%
-    filter(ref_junID %in% df_all_introns$ref_coordinates) %>%
-    distinct(novel_junID, ref_junID, .keep_all = T) %>%
-    mutate_if(is.list, simplify_all) %>%    
-    unnest(gene_id)
+  df_all_novels_tidy <- df_all_novels_tidy %>% 
+    dplyr::inner_join(y = df_all_introns %>% dplyr::select(ref_coordinates) %>% data.table::as.data.table(),
+                      by = c("ref_junID" = "ref_coordinates")) 
+  
+  df_all_novels_tidy <- df_all_novels_tidy %>% unnest(gene_id) %>%  distinct(novel_junID, ref_junID, .keep_all = T)
   
   df_all_novels %>% nrow()
   df_all_novels_tidy %>% nrow()
   
+    
+    
+  
   print(paste0(Sys.time(), " - merging novel junctions with other lists..."))
   
+  
+  
+  ######################################
+  ## ADD MAXENTSCAN INFO 
+  ######################################
+  
+  wd <- getwd()
+  ## Add MaxEntScan score to the split reads
+  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_all_novels_tidy %>% dplyr::rename(junID = novel_junID),
+                                                 max_ent_tool_path = "/home/sruiz/fordownload/",
+                                                 homo_sapiens_fasta_path = "/data/references/fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa")
+  
+  all_split_reads_tidy %>% as_tibble()
+  
+  all_split_reads_tidy <- all_split_reads_tidy %>% 
+    select(-donorSeqStart,
+           -donorSeqStop,
+           -AcceptorSeqStart,
+           -AcceptorSeqStop,
+           -donor_sequence,
+           -acceptor_sequence)
+  
+  setwd(wd)
+  
+  
+  df_all_novels_tidy <- all_split_reads_tidy %>%
+    mutate(novel_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
+  
+  setdiff(all_split_reads_tidy$junID, df_all_novels_tidy$novel_junID)
+  
+  df_all_novels_tidy <- df_all_novels_tidy %>%
+    dplyr::select(-one_of("junID","novel_ss5score","novel_ss3score")) %>% 
+    dplyr::rename(novel_ss5score = ss5score, 
+                  novel_ss3score = ss3score) %>%
+    dplyr::relocate(ref_junID, novel_junID) %>%
+    dplyr::relocate(c(novel_ss5score, novel_ss3score), .before = novel_type ) 
+  
+  
+  df_all_novels_tidy %>% as_tibble()
+  
+  
+  ######################################
+  ## MERGE WITH OTHER TABLES - FOREIGN KEY
+  ######################################
   
   ## Add the GENE ID for the foreign key
   df_all_novels_tidy <- merge(x = df_all_novels_tidy %>% as.data.table(),
@@ -671,28 +817,7 @@ create_novel_table <- function() {
     dplyr::select(-ref_junID) %>%
     dplyr::rename(ref_junID = ref_junID.y)
   
-  # df_all_novels_tidy %>% nrow()
-  # df_all_novels_tidy %>% as_tibble()
-  # 
-  # 
-  # any(df_all_novels_tidy$ref_junID %>% is.na)
-  # any(df_all_novels_tidy$gene_id %>% is.na)
-  
-  ## Extra QC
-  ## Same Novel Junctions should have been assigned same scores across genes
-  ## and tissues
-  # df_all_novels_tidy %>%
-  #   dplyr::group_by(novel_junID, gene_id) %>%
-  #   distinct(novel_ss5score) %>% nrow()
-  # df_all_novels_tidy %>%
-  #   dplyr::group_by(novel_junID, gene_id) %>%
-  #   distinct(novel_ss3score) %>% nrow()
-  # df_all_novels_tidy %>%
-  #   dplyr::group_by(novel_junID) %>%
-  #   distinct(novel_ss3score) %>% nrow()
-  # df_all_novels_tidy %>%
-  #   distinct(novel_junID) %>% nrow()
-  
+
   df_all_novels_tidy <- df_all_novels_tidy %>% as_tibble()
   
   ####################################
@@ -708,8 +833,9 @@ create_novel_table <- function() {
     distinct(ref_junID) %>%
     dplyr::count() %>% 
     filter(n > 1)
-    
-  ## If there are ambigous junctions, we  them
+
+
+  ## If there are ambigous junctions, we remove them
   if (df_ambiguous %>% nrow() > 1) {
     
     df_all_novels_tidy <- df_all_novels_tidy %>% 
@@ -720,8 +846,8 @@ create_novel_table <- function() {
     } else {
       file_name <- "database/ambiguous_novel_junctions.rds"
     }
-    saveRDS(object = df_ambiguous$novel_junID,
-            file = file_name)
+    
+    saveRDS(object = df_ambiguous$novel_junID, file = file_name)
     
   }
   
@@ -752,13 +878,13 @@ create_novel_table <- function() {
     as_tibble() %>%
     dplyr::rename(novel_coordinates = novel_junID ) %>%
     distinct(novel_coordinates, .keep_all = T) %>%
-    tibble::rowid_to_column("novel_junID")
+    tibble::rowid_to_column("novel_junID") %>%
+    dplyr::select(-gene_id, -seqnames, -start,
+                  -end, -strand)
   
   DBI::dbAppendTable(conn = con,
                      name = "novel", 
-                     value = df_all_novels_tidy %>%
-                       distinct(novel_coordinates, .keep_all = T) %>%
-                       dplyr::select(-gene_id))
+                     value = df_all_novels_tidy)
   
   
   print("'Novel' table populated!")
@@ -903,8 +1029,9 @@ create_cluster_tables <- function() {
         ## TIDY DATA ----------------------------------------------------------- 
         
         df_introns_tidy <- df_introns_gr %>%
-          #dplyr::mutate(ref_mean_counts = round((ref_sum_counts / ref_n_individuals), digits = 2)) %>% 
+          dplyr::mutate(r_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) %>% 
           dplyr::select(ref_junID, 
+                        r_junID,
                         ref_n_individuals, 
                         ref_sum_counts,
                         MSR_D = ref_missplicing_ratio_tissue_ND,
@@ -912,9 +1039,12 @@ create_cluster_tables <- function() {
                         gene_tpm = tpm_mean_rct,
                         ref_type)
         
+       
+        
         df_novel_tidy <- df_novel_gr %>% 
-          #dplyr::mutate(novel_mean_counts = round((novel_sum_counts / novel_n_individuals), digits = 2)) %>%
+          dplyr::mutate(n_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) %>%
           dplyr::select(ref_junID,
+                        n_junID,
                         novel_junID,
                         novel_n_individuals, 
                         novel_sum_counts)
@@ -955,8 +1085,10 @@ create_cluster_tables <- function() {
         df_all_misspliced <- merge(x = df_introns_tidy %>% as.data.table(),
                                    y = df_novel_tidy %>% as.data.table(),
                                    by = "ref_junID",
-                                   all.y = T)# %>%
-          #relocate(ref_mean_counts, .after = ref_n_individuals)
+                                   all.y = T) %>%
+          dplyr::select(-ref_junID, -novel_junID) %>%
+          dplyr::rename(ref_junID = r_junID,
+                        novel_junID = n_junID)
         
         
         
@@ -993,8 +1125,9 @@ create_cluster_tables <- function() {
         
        
         
-        ###################################################################
+        #######################################
         ## CHECK INTEGRITY WITH PARENT TABLE
+        #######################################
         
         master_novel <- df_novel %>%
           filter(novel_junID %in% 
@@ -1100,32 +1233,39 @@ create_cluster_tables <- function() {
                             all.x = T) %>%
             filter(is.na(novel_junID)) %>%
             #relocate(ref_mean_counts, .after = ref_n_individuals) %>%
-            dplyr::select(-novel_junID,-novel_n_individuals,
+            dplyr::select(-novel_junID,
+                          -novel_n_individuals,
                           -novel_sum_counts)
           
            
           df_never <- merge(x = df_never %>% as.data.table(),
                             y = df_intron %>% dplyr::select(ref_junID, ref_coordinates, gene_id) %>% as.data.table(),
-                            by.x = "ref_junID",
+                            by.x = "r_junID",
                             by.y = "ref_coordinates",
                             all.x = T) %>%
-            filter(!is.na(ref_junID)) %>%
-            dplyr::select(-ref_junID) %>% 
+            filter(!is.na(r_junID)) %>%
+            dplyr::select(-ref_junID.x,-r_junID,-n_junID) %>% 
             dplyr::rename(ref_junID = ref_junID.y) %>%
             relocate(ref_junID)
           
           df_never %>% filter(!is.na(ref_junID))
           
+          if (any(df_never$ref_type != "never")) {
+            print("Error! Some never mis-spliced junctions have been stored as mis-spliced.")
+          }
           if ((intersect(df_never$ref_junID, db_introns$ref_junID) %>%
               length()) > 0) {
             print("Error! Some never mis-spliced junctions have been stored as mis-spliced.")
+          }
+          if (any(duplicated(df_never$ref_junID))) {
+            print("Error! Some never mis-spliced junctions are duplicated.")
           }
           
           ## Remove introns and novel junctions with not TPM data
           df_never <- df_never %>%
             filter(!(gene_tpm %>% is.na()))
           
-          any(duplicated(df_never$ref_junID))
+          
           
           DBI::dbAppendTable(conn = con,
                              name = paste0(cluster, "_", db, "_nevermisspliced"), 

@@ -157,7 +157,7 @@ get_base_data_annotated <- function(cluster,
     as_tibble() %>%
     dplyr::filter(type %in% c("annotated", "novel_donor", "novel_acceptor")) %>%
     dplyr::select(seqnames, start, end, width, strand,
-                  junID, ss5score, ss3score, type,
+                  junID, contains("ss5score"), contains("ss3score"), type,
                   gene_name_junction, gene_id_junction, tx_id_junction, 
                   contains("junction_category"))
   

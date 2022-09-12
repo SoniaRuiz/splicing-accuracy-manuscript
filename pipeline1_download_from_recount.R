@@ -10,8 +10,8 @@ prepare_data_from_rse <- function(rse,
   samples <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
-    filter(gtex.smafrze != "EXCLUDE",
-           gtex.smrin >= 6.0) %>%
+    filter(# gtex.smrin >= 6.0, 
+           gtex.smafrze != "EXCLUDE") %>%
     pull(external_id)
   saveRDS(object = samples, file = paste0(folder_path, "/samples.rds"))
   
@@ -19,8 +19,8 @@ prepare_data_from_rse <- function(rse,
   metadata.info <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
-    filter(gtex.smafrze != "EXCLUDE",
-           gtex.smrin >= 6.0)
+    filter(# gtex.smrin >= 6.0,
+      gtex.smafrze != "EXCLUDE")
   saveRDS(object = metadata.info, file = paste0(folder_path, "/samples_metadata.rds"))
   
   ## Save junctions metadata info
@@ -92,24 +92,9 @@ generate_all_split_reads <- function(folder_path,
     
   all_split_reads_tidy %>% head()
   
-  wd <- getwd()
-  ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = all_split_reads_tidy,
-                                                 max_ent_tool_path = "/home/sruiz/fordownload/",
-                                                 homo_sapiens_fasta_path = "/data/references/fasta/Homo_sapiens.GRCh38.dna.primary_assembly.fa")
-  
-  all_split_reads_tidy <- all_split_reads_tidy %>% 
-    select(-donorSeqStart,
-           -donorSeqStop,
-           -AcceptorSeqStart,
-           -AcceptorSeqStop,
-           -donor_sequence,
-           -acceptor_sequence)
-  
-  setwd(wd)
-  all_split_reads_tidy %>% head()
-  
-  any(all_split_reads_tidy$junID %>% duplicated()) %>% print()
+  if (any(all_split_reads_tidy$junID %>% duplicated())) {
+    print(paste0("Split reads duplicated: ", any(all_split_reads_tidy$junID %>% duplicated())))
+  }
   
   
   
@@ -147,8 +132,8 @@ separate_samples <- function(clusters_ID,
       cluster_samples <- metadata.info %>% 
         as_tibble() %>%
         filter(gtex.smtsd == cluster,
-               gtex.smafrze != "EXCLUDE",
-               gtex.smrin >= 6.0) %>%
+               #gtex.smrin >= 6.0,
+               gtex.smafrze != "EXCLUDE") %>%
         distinct(external_id) %>% 
         pull()
       

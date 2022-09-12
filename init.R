@@ -173,7 +173,6 @@ annotate_from_recount <- function(project_id,
     if (cluster_samples %>% length() > 0) {
       
       get_base_data_annotated(cluster = cluster,
-                              samples = cluster_samples,
                               all_split_reads = all_split_reads,
                               split_read_counts = split_read_counts,
                               blacklist_path = "/data/references/ENCODE_blacklist_v2/hg38-blacklist.v2.bed",
@@ -361,12 +360,6 @@ idb_generation <- function(project_id,
 }
 
 
-##################################
-## CALLS - SQL GENERATION
-##################################
-
-## Connect to the database -----------------------------------------------------
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
 
 
 
@@ -388,11 +381,11 @@ if (!exists("CNC_CDTS_CONS_gr")) {
 
 
 ## Loop through each project
-# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
 gtf_version <- 105
 
-for (project_id in all_projects) {
+for (project_id in all_projects[-c(1:7)]) {
 
   # project_id <- all_projects[31]
   
@@ -434,45 +427,55 @@ for (project_id in all_projects) {
 }
 
 
+
 ##################################
 ## CALLS - SQL GENERATION
 ##################################
 
-# age <- F
-# 
-# hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-# hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
-# 
-# if (age) {
-#   database_path <- "./database/age-stratification.sqlite"
-#   SRA_projects <- c("BRAIN", "BLOOD", "MUSCLE") %>% sort()
-# } else {
-#   database_path <- "./database/splicing_qc.sqlite"
-#   SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-# }
-# 
-# SRA_projects %>% length() %>% print()
-# 
-# con <- dbConnect(RSQLite::SQLite(), database_path)
-# dbListTables(con)
-# 
-# ## Remove the tables -----------------------------------------------------------
-# 
-# remove_tables(all = F)
-# dbListTables(con)
-# 
-# 
-# ## Create the tables -----------------------------------------------------------
-# 
-# create_master_table()
-# 
-# create_mane_table()
-# 
-# create_gene_table()
-# 
-# create_intron_table()
-# 
-# create_novel_table()
-# 
-# create_cluster_tables()
+## Connect to the database -----------------------------------------------------
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
+age <- F
+getwd()
 
+hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
+
+if (age) {
+  database_path <- "./database/age-stratification.sqlite"
+  SRA_projects <- c("BRAIN", "BLOOD", "MUSCLE") %>% sort()
+} else {
+  database_path <- "./database/splicing_qc.sqlite"
+  SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+}
+
+SRA_projects %>% length() %>% print()
+
+con <- dbConnect(RSQLite::SQLite(), database_path)
+dbListTables(con)
+
+## Remove the tables -----------------------------------------------------------
+
+remove_tables(all = T)
+dbListTables(con)
+
+
+## Create the tables -----------------------------------------------------------
+
+create_master_table()
+
+create_mane_table()
+
+create_gene_table()
+
+create_intron_table()
+
+create_novel_table()
+
+create_cluster_tables()
+
+
+con <- dbConnect(RSQLite::SQLite(), database_path)
+dbListTables(con)
+query <- paste0("SELECT * FROM 'Skin - Sun Exposed (Lower leg)_SKIN_misspliced' LIMIT 10")
+dbGetQuery(con, query)

@@ -135,8 +135,8 @@ get_distances <- function(cluster,
                                 novel_end = novel_junctions %>% end() %>% as.character(),
                                 novel_strand = novel_junctions %>% strand() %>% as.character(),
                                 novel_width = novel_junctions %>% width() %>% as.character(),
-                                novel_ss5score = novel_junctions$ss5score,
-                                novel_ss3score = novel_junctions$ss3score,
+                                #novel_ss5score = novel_junctions$ss5score,
+                                #novel_ss3score = novel_junctions$ss3score,
                                 ref_junID = ref_junctions$junID,
                                 ref_counts = ref_junctions$counts,
                                 #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
@@ -145,8 +145,8 @@ get_distances <- function(cluster,
                                 ref_strand = ref_junctions %>% strand(),
                                 ref_end = ref_junctions %>% end(),
                                 ref_width = ref_junctions %>% width(),
-                                ref_ss5score = ref_junctions$ss5score,
-                                ref_ss3score = ref_junctions$ss3score,
+                                #ref_ss5score = ref_junctions$ss5score,
+                                #ref_ss3score = ref_junctions$ss3score,
                                 stringsAsFactors = FALSE)
           
           ## In case the novel junction has been attached to many ref junctions, the ref junction chosen will be 
@@ -207,8 +207,8 @@ get_distances <- function(cluster,
                                 novel_end = novel_junctions %>% end(),
                                 novel_strand = novel_junctions %>% strand(),
                                 novel_width = novel_junctions %>% width(),
-                                novel_ss5score = novel_junctions$ss5score,
-                                novel_ss3score = novel_junctions$ss3score,
+                                #novel_ss5score = novel_junctions$ss5score,
+                                #novel_ss3score = novel_junctions$ss3score,
                                 ref_junID = ref_junctions$junID,
                                 ref_counts = ref_junctions$counts,
                                 #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
@@ -217,8 +217,8 @@ get_distances <- function(cluster,
                                 ref_end = ref_junctions %>% end(),
                                 ref_strand = ref_junctions %>% strand(),
                                 ref_width = ref_junctions %>% width(),
-                                ref_ss5score = ref_junctions$ss5score,
-                                ref_ss3score = ref_junctions$ss3score,
+                                #ref_ss5score = ref_junctions$ss5score,
+                                #ref_ss3score = ref_junctions$ss3score,
                                 stringsAsFactors = FALSE)
           
           
@@ -264,8 +264,8 @@ get_distances <- function(cluster,
                                 novel_end = novel_junctions %>% end(),
                                 novel_strand = novel_junctions %>% strand(),
                                 novel_width = novel_junctions %>% width(),
-                                novel_ss5score = novel_junctions$ss5score,
-                                novel_ss3score = novel_junctions$ss3score,
+                                #novel_ss5score = novel_junctions$ss5score,
+                                #novel_ss3score = novel_junctions$ss3score,
                                 ref_junID = ref_junctions$junID,
                                 ref_counts = ref_junctions$counts,
                                 #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
@@ -274,8 +274,8 @@ get_distances <- function(cluster,
                                 ref_end = ref_junctions %>% end(),
                                 ref_strand = ref_junctions %>% strand(),
                                 ref_width = ref_junctions %>% width(),
-                                ref_ss5score = ref_junctions$ss5score,
-                                ref_ss3score = ref_junctions$ss3score,
+                                #ref_ss5score = ref_junctions$ss5score,
+                                #ref_ss3score = ref_junctions$ss3score,
                                 stringsAsFactors = FALSE)
           
           
@@ -321,8 +321,8 @@ get_distances <- function(cluster,
                                 novel_end = novel_junctions %>% end(),
                                 novel_strand = novel_junctions %>% strand(),
                                 novel_width = novel_junctions %>% width(),
-                                novel_ss5score = novel_junctions$ss5score,
-                                novel_ss3score = novel_junctions$ss3score,
+                                #novel_ss5score = novel_junctions$ss5score,
+                                #novel_ss3score = novel_junctions$ss3score,
                                 ref_junID = ref_junctions$junID,
                                 ref_counts = ref_junctions$counts,
                                 #ref_counts_norm = ref_junctions$counts / sample_mapped_read_count,
@@ -331,8 +331,8 @@ get_distances <- function(cluster,
                                 ref_end = ref_junctions %>% end(),
                                 ref_strand = ref_junctions %>% strand(),
                                 ref_width = ref_junctions %>% width(),
-                                ref_ss5score = ref_junctions$ss5score,
-                                ref_ss3score = ref_junctions$ss3score,
+                                #ref_ss5score = ref_junctions$ss5score,
+                                #ref_ss3score = ref_junctions$ss3score,
                                 stringsAsFactors = FALSE)
           
           
@@ -1205,7 +1205,10 @@ add_never_misspliced_to_df <- function(cluster,
   ## Add features to never mis-spliced junctions
   print(paste0(Sys.time(), " - ", cluster, " adding features to never mis-spliced junctions..."))
   df_never <- merge(df_never %>% data.table::as.data.table(), 
-                    all_split_reads_details[, c("junID", "ss5score","ss3score", "seqnames", "start", "end", "strand")], #%>%
+                    all_split_reads_details %>%
+                      dplyr::select(contains("junID"),
+                                    contains("ss5score"),
+                                    contains("ss3score"), "seqnames", "start", "end", "strand"),
                       #mutate(junID = junID %>% as.integer()) %>% data.table::as.data.table(), 
                     by.x = "junID",
                     by.y = "junID", 
@@ -1219,10 +1222,10 @@ add_never_misspliced_to_df <- function(cluster,
     print("Error: some never mis-spliced introns are located on the sex and MT chromosomes!")
     break;
   }
-  if (any(df_never$ss5score %>% is.na())) {
-    print("Error: some never mis-spliced introns are located on the sex and MT chromosomes!")
-    break;
-  }
+  # if (any(df_never$ss5score %>% is.na())) {
+  #   print("Error: some never mis-spliced introns are located on the sex and MT chromosomes!")
+  #   break;
+  # }
   
   ## Change name of features to match with features from the mis-splicing df
   df_never <- df_never %>% 
@@ -1230,9 +1233,7 @@ add_never_misspliced_to_df <- function(cluster,
                   ref_seq = seqnames,
                   ref_start = start,
                   ref_end = end,
-                  ref_strand = strand,
-                  ref_ss5score = ss5score,
-                  ref_ss3score = ss3score) 
+                  ref_strand = strand) 
   df_never %>% head()
   df_never %>% nrow()
   df_never %>% distinct(ref_junID) %>% nrow()
@@ -1406,8 +1407,8 @@ get_missplicing_ratio <- function(cluster,
                   start = novel_start,
                   end = novel_end,
                   strand = novel_strand,
-                  novel_ss5score,
-                  novel_ss3score,
+                  contains("novel_ss5score"),
+                  contains("novel_ss3score"),
                   novel_n_individuals,
                   novel_sum_counts,
                   #novel_missplicing_ratio_sample,
@@ -1467,8 +1468,8 @@ get_missplicing_ratio <- function(cluster,
                   -novel_start,
                   -novel_end,
                   -novel_strand,
-                  -novel_ss5score,
-                  -novel_ss3score,
+                  -contains("novel_ss5score"),
+                  -contains("novel_ss3score"),
                   -novel_n_individuals,
                   -novel_mean_counts,
                   -novel_sum_counts,
@@ -1513,8 +1514,8 @@ get_missplicing_ratio <- function(cluster,
                   -novel_end,
                   -novel_strand,
                   #-novel_width,
-                  -novel_ss5score,
-                  -novel_ss3score,
+                  -contains("novel_ss5score"),
+                  -contains("novel_ss3score"),
                   -novel_n_individuals,
                   #-novel_mean_counts,
                   -novel_sum_counts,
