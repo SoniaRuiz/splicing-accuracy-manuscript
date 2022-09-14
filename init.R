@@ -368,63 +368,63 @@ idb_generation <- function(project_id,
 ## CALLS 
 ############################
 
-## Load the dependency needed for the conservation/constraint scores        
-if (!exists("CNC_CDTS_CONS_gr")) {
-  print("Loading the 'CNC_CDTS_CONS_gr' file...")
-  aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
-  print("'CNC_CDTS_CONS_gr' file loaded!")
-} else {
-  print("Loading the 'CNC_CDTS_CONS_gr' file...")
-  aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
-  print("'CNC_CDTS_CONS_gr' file already loaded!")
-}
-
-
-## Loop through each project
-all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-gtf_version <- 105
-
-for (project_id in all_projects[-c(1:7)]) {
-
-  # project_id <- all_projects[31]
-  
-  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
-  
-  print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
-
-  rse <- recount3::create_rse_manual(
-    project = project_id,
-    project_home = "data_sources/gtex",
-    organism = "human",
-    annotation = "gencode_v29",
-    type = "jxn"
-  )
-
-  download_from_recount(project_id = project_id,
-                        recount_version = 3,
-                        clusters_ID = rse$gtex.smtsd %>% unique(),
-                        rse = rse,
-                        folder_root = folder_root)
-
-  rm(rse)
-  gc()
-    
-  clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters.rds"))
-    
-  annotate_from_recount(project_id = project_id,
-                        gtf_version = gtf_version,
-                        clusters_ID = clusters_ID,
-                        folder_root = folder_root)
-  gc()
-
-  idb_generation(project_id = project_id,
-                 gtf_version = gtf_version,
-                 clusters_ID = clusters_ID,
-                 folder_root = folder_root)
-  gc()
-  
-}
+# ## Load the dependency needed for the conservation/constraint scores        
+# if (!exists("CNC_CDTS_CONS_gr")) {
+#   print("Loading the 'CNC_CDTS_CONS_gr' file...")
+#   aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
+#   print("'CNC_CDTS_CONS_gr' file loaded!")
+# } else {
+#   print("Loading the 'CNC_CDTS_CONS_gr' file...")
+#   aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
+#   print("'CNC_CDTS_CONS_gr' file already loaded!")
+# }
+# 
+# 
+# ## Loop through each project
+# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+# # all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+# gtf_version <- 105
+# 
+# for (project_id in all_projects[-c(1:7)]) {
+# 
+#   # project_id <- all_projects[31]
+#   
+#   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
+#   
+#   print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
+# 
+#   rse <- recount3::create_rse_manual(
+#     project = project_id,
+#     project_home = "data_sources/gtex",
+#     organism = "human",
+#     annotation = "gencode_v29",
+#     type = "jxn"
+#   )
+# 
+#   download_from_recount(project_id = project_id,
+#                         recount_version = 3,
+#                         clusters_ID = rse$gtex.smtsd %>% unique(),
+#                         rse = rse,
+#                         folder_root = folder_root)
+# 
+#   rm(rse)
+#   gc()
+#     
+#   clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters.rds"))
+#     
+#   annotate_from_recount(project_id = project_id,
+#                         gtf_version = gtf_version,
+#                         clusters_ID = clusters_ID,
+#                         folder_root = folder_root)
+#   gc()
+# 
+#   idb_generation(project_id = project_id,
+#                  gtf_version = gtf_version,
+#                  clusters_ID = clusters_ID,
+#                  folder_root = folder_root)
+#   gc()
+#   
+# }
 
 
 
@@ -435,6 +435,7 @@ for (project_id in all_projects[-c(1:7)]) {
 ## Connect to the database -----------------------------------------------------
 source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
 source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
+
 age <- F
 getwd()
 
@@ -445,7 +446,7 @@ if (age) {
   database_path <- "./database/age-stratification.sqlite"
   SRA_projects <- c("BRAIN", "BLOOD", "MUSCLE") %>% sort()
 } else {
-  database_path <- "./database/splicing_qc.sqlite"
+  database_path <- "./database/splicing.sqlite"
   SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
 }
 
@@ -456,26 +457,74 @@ dbListTables(con)
 
 ## Remove the tables -----------------------------------------------------------
 
-remove_tables(all = T)
+remove_tables(all = F)
 dbListTables(con)
 
 
 ## Create the tables -----------------------------------------------------------
 
-create_master_table()
-
-create_mane_table()
-
-create_gene_table()
-
-create_intron_table()
-
-create_novel_table()
+# create_master_table()
+# 
+# create_mane_table()
+# 
+# create_gene_table()
+# 
+# create_intron_table()
+# 
+# create_novel_table()
 
 create_cluster_tables()
 
 
-con <- dbConnect(RSQLite::SQLite(), database_path)
-dbListTables(con)
-query <- paste0("SELECT * FROM 'Skin - Sun Exposed (Lower leg)_SKIN_misspliced' LIMIT 10")
-dbGetQuery(con, query)
+## QC of the tables ------------------------------------------------------------
+
+# tables <- dbListTables(con)
+# 
+# df_result <- map_df(tables, function(table) {
+#     
+#   # table <- "Adipose - Subcutaneous_ADIPOSE_TISSUE_misspliced"
+#   if (!(table %in% c("intron", "novel", "gene", "mane", "master"))) {
+#     
+#     print(paste0("Table: '", table, "'!"))
+#     
+#     query <- paste0("SELECT * FROM '", table, "'")
+#     
+#     db <- DBI::dbGetQuery(con, query)
+#     if (str_detect(string = table,
+#                    pattern = "never")) {
+#       db <- db %>%
+#         mutate(novel_junID = NA)
+#     }
+#     db %>% 
+#       dplyr::select(ref_junID, dplyr::contains("novel_junID")) %>%
+#       distinct(ref_junID, novel_junID, .keep_all = T) %>%
+#       as_tibble() %>%
+#       return()
+#     
+#   } else {
+#     return(NULL)
+#   }
+#   
+# })
+# 
+# df_result %>% distinct(ref_junID)
+# df_result %>% distinct(novel_junID)
+#  
+# con <- dbConnect(RSQLite::SQLite(), database_path)
+# dbListTables(con)
+# query <- paste0("SELECT * FROM 'intron'")
+# df_all_introns <- dbGetQuery(con, query)
+# df_all_introns %>% nrow()
+# query <- paste0("SELECT * FROM 'novel'")
+# df_all_novel <- dbGetQuery(con, query)
+# df_all_novel %>% nrow()
+# 
+# missing_ref_jun <- setdiff(df_all_introns$ref_junID, df_result$ref_junID)
+# ambiguous_novel_junc <- readRDS(file = "database/ambiguous_novel_junctions.rds")
+# intersect(missing_ref_jun, ambiguous_novel_junc$ref_junID)
+# 
+# 
+# 
+# df_all_introns %>% filter(ref_junID %in% setdiff(df_all_introns$ref_junID, df_result$ref_junID))
+# df_all_novel %>% filter(novel_junID %in% setdiff(df_all_novel$novel_junID, df_result$novel_junID)) %>% 
+#   distinct(novel_junID, .keep_all = T)

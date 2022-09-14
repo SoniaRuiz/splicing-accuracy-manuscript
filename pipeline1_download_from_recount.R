@@ -2,6 +2,14 @@
 ## FUNCTIONS
 ################################
 
+library(tidyverse)
+library(SummarizedExperiment)
+library(data.table)
+library(GenomicRanges)
+library(DBI)
+
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
+
 prepare_data_from_rse <- function(rse,
                                   folder_path) {
 
@@ -648,7 +656,7 @@ tidy_gtex_tpm <- function() {
 
 }
 
-generate_protein_percentage <- function() {
+generate_biotype_percentage <- function() {
   
   
   #######################################
@@ -675,55 +683,98 @@ generate_protein_percentage <- function() {
   
   print(paste0(Sys.time(), " - loading the recount3 split reads ... "))
 
-  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+  
+  #######################################
+  ## LOOP THROUGH THE TISSUES
+  #######################################
   
   df_all <- map_df(all_projects, function(project) {
     
-    # project <- all_projects[1]
+    # project <- all_projects[7]
     print(project)
     
     all_clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                          project, "/raw_data/all_clusters_used.rds"))
+                                          project, "/raw_data/all_clusters.rds"))
     
     df_all <- map_df(all_clusters, function(cluster) {
       
       # cluster <- all_clusters[1]
       print(cluster)
       df_all <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                      project, "/results/base_data/", cluster, "/", cluster, "_annotated_SR_details_length_105.rds")) %>%
-        dplyr::select(junID, tx_id_junction) %>%
-        unnest(tx_id_junction) %>%
-        mutate(protein_coding = NA)
+                                      project, "/results/base_data/", cluster, "/", 
+                                      cluster, "_annotated_SR_details_length_105.rds")) %>%
+        dplyr::select(junID, seqnames, start, end, strand, tx_id_junction)
       
       return(df_all)
+      
     })
     
     return(df_all)
     
   })
   
+  ## Check if the junction "chr1:100007157-100011364:+" belongs to multiple genes across the tissues
+  df_test_1 <- merge(x = df_all %>% filter(junID == "chr1:100007157-100011364:+") %>% unnest(tx_id_junction),
+                     y = transcripts_v105,
+                     by.x = "tx_id_junction",
+                     by.y = "transcript_id",
+                     all.x = T)
+  df_test_1 %>%
+    group_by(junID) %>% 
+    distinct(gene_id, .keep_all = T) %>% 
+    dplyr::count() %>% 
+    distinct(n, .keep_all = T)
   
-  df_all %>% head()
-  df_all %>% nrow()
-  print(object.size(df_all), units = "Gb")
+  ## Check if the junction "chr7:117604990-117616228:-", which ultimately has
+  ## been classified as lncRNA = 100, has only lncRNA transcripts
+  df_biotype %>%
+    filter(junID == "chr7:117604990-117616228:-")
+  
+  saveRDS(object = df_all %>%
+            distinct(junID, .keep_all = T) %>% 
+            mutate(ref_coord = paste0("chr", seqnames, ":", 
+                                      start, "-", end, ":", strand)) %>% 
+            dplyr::select(-junID) %>%
+            dplyr::rename(junID = ref_coord) %>% 
+            data.table::as.data.table(),
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_introns_raw.rds")
+  
+  #######################################
+  ## EXPLORE AND TIDY THE RESULT
+  #######################################
+  
+  df_all_introns <- df_all %>%
+    mutate(ref_coord = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) %>% 
+    dplyr::select(-junID) %>%
+    dplyr::rename(junID = ref_coord)
+  
+  # indx <- which(str_detect(df_all_introns %>% distinct(junID) %>% pull(), pattern = "\\*"))
+  # if (indx %>% length > 0) {
+  #   print("ERROR!")
+  # }
+  
+  #df_all_introns %>% head()
+  #df_all_introns %>% nrow()
+  #print(object.size(df_all_introns), units = "Gb")
   
   
   ## Merge datasets to add transcript biotype
   print(paste0(Sys.time(), " --> adding transcript biotype..."))
   
-  df_all <- df_all %>% data.table::as.data.table()
+  df_all_introns <- df_all_introns %>% data.table::as.data.table()
   transcripts_v105 <- transcripts_v105 %>% data.table::as.data.table()
   
-  df_all <- merge(x = df_all,
-                  y = transcripts_v105,
-                  by.x = "tx_id_junction",
-                  by.y = "transcript_id",
-                  all.x = T)
+  df_all_introns <- merge(x = df_all_introns,
+                          y = transcripts_v105,
+                          by.x = "tx_id_junction",
+                          by.y = "transcript_id",
+                          all.x = T)
   
-  df_all %>% head()
-  df_all %>% nrow()
+  # df_all_introns %>% head()
+  # df_all_introns %>% nrow()
   
-  print(object.size(df_all), units = "Gb")
+  #print(object.size(df_all_introns), units = "Gb")
     
 
 
@@ -732,40 +783,35 @@ generate_protein_percentage <- function() {
   #######################################
   
   
-  print(paste0(Sys.time(), " --> starting protein-coding percentage calculation!"))
-  print(paste0(Sys.time(), " --> ", df_all$junID %>% unique() %>% length(), " total number of junctions."))
+  print(paste0(Sys.time(), " --> starting protein-coding percentage calculation ..."))
+  #print(paste0(Sys.time(), " --> ", df_all_introns$junID %>% unique() %>% length(), " total number of junctions."))
   
-  df_all %>%
-    filter(junID == "chr1:100007157-100009287:+")
-  
-  df_all$junID %>% unique() %>% length()
+
   
   ## Remove ambiguous jxn (belonging to multiple genes)
-  junID_nonamb <- df_all %>% 
+  junID_OK <- df_all_introns %>% 
     group_by(junID) %>% 
     distinct(gene_id, .keep_all = T) %>% 
     dplyr::count() %>% 
     filter(n == 1) %>%
     pull(junID)
   
-  junID %>% unique() %>% length()
+  # junID %>% unique() %>% length()
   
   ## Calculate the biotype percentage
-  df_all_percentage <- df_all %>% 
-    filter(junID %in% junID_nonamb) %>%
+  df_all_percentage <- df_all_introns %>% 
+    filter(junID %in% junID_OK) %>%
     group_by(junID, transcript_biotype) %>%
     distinct(tx_id_junction, .keep_all = T) %>% 
     summarise(n = n()) %>% 
     mutate(percent = (n / sum(n)) * 100) %>%
     ungroup()
   
-  df_all_percentage %>%
-    filter(junID == "chr1:100009324-100010074:+")
-  
-  
+  saveRDS(object = df_all_percentage,
+          file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_105_raw_biotype.rds")
+
   ## Only filter by the protein-coding biotype
-  df_all_percentage_tidy <- df_all_percentage %>% 
-    #filter(junID == "1003624") %>%
+  df_all_percentage_tidy_PC <- df_all_percentage %>% 
     group_by(junID) %>%
     rowwise() %>%
     mutate(percent = ifelse (transcript_biotype == "protein_coding", percent, 0)) %>%
@@ -776,25 +822,35 @@ generate_protein_percentage <- function() {
     distinct(junID, .keep_all = T) %>%
     ungroup()
   
-  df_all_percentage %>%
-    filter(junID == "chr1:100009324-100010074:+")
-  df_all_percentage_tidy %>%
-    filter(junID == "chr1:100009324-100010074:+")
+  ## Only filter by the lncRNA biotype
+  df_all_percentage_tidy_lncRNA <- df_all_percentage %>% 
+    group_by(junID) %>%
+    rowwise() %>%
+    mutate(percent = ifelse (transcript_biotype == "lncRNA", percent, 0)) %>%
+    ungroup() %>%
+    group_by(junID) %>%
+    filter(percent == max(percent)) %>%
+    dplyr::select(-transcript_biotype, -n) %>%
+    distinct(junID, .keep_all = T) %>%
+    ungroup()
   
-  df_all_percentage_tidy %>% head()
   
+  df_all_percentage_tidy_merged <- merge(x = df_all_percentage_tidy_PC %>% dplyr::rename(percent_PC = percent) %>% as.data.table(),
+                                         y = df_all_percentage_tidy_lncRNA %>% dplyr::rename(percent_lncRNA = percent) %>% as.data.table(),
+                                         by = "junID")
+  df_all_percentage_tidy_merged %>% nrow()
   
-  df_all_percentage_tidy <- df_all_percentage_tidy %>%
-    dplyr::rename(protein_coding = percent)
-  
-  df_all_percentage_tidy %>%
-    filter(junID == "chr1:100009324-100010074:+")
+  if (df_all_percentage_tidy_merged %>% filter(percent_PC == 100) %>% distinct(percent_lncRNA) %>% pull() != 0) {
+    print("ERROR! some only protein-coding introns have been also classified as lncRNAs!")
+  }
+  if (df_all_percentage_tidy_merged %>% filter(percent_lncRNA == 100) %>% distinct(percent_PC) %>% pull() != 0) {
+    print("ERROR! some only lncRNA introns have been also classified as protein-coding!")
+  }
   
 
-  print(object.size(df_all_percentage), units = "Gb")
-  print(object.size(df_all_percentage_tidy), units = "Gb")
+  print(object.size(df_all_percentage_tidy_merged), units = "Gb")
   
-  saveRDS(object = df_all_percentage_tidy,
+  saveRDS(object = df_all_percentage_tidy_merged,
           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_105_biotype.rds")
   
   
@@ -802,7 +858,10 @@ generate_protein_percentage <- function() {
   ## FREE UP SOME MEMORY 
   ##########################################
   
+  rm(df_all)
+  rm(df_all_introns)
   rm(homo_sapiens_v105)
   rm(transcripts_v105)
   print(paste0(Sys.time(), " - file saved!"))
 }
+
