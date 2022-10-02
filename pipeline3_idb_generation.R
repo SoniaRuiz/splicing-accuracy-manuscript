@@ -64,7 +64,7 @@ get_distances <- function(cluster,
         index <- runif(n = 1, 1, split_reads_details_97_sample %>% nrow()) %>% as.integer()
         data <- split_reads_details_97_sample[index, c(1, split_reads_details_97_sample %>% ncol())]
         data_col <- split_read_counts_sample %>%
-          filter(junID == data$junID)
+          dplyr::filter(junID == data$junID)
         if (data_col[, colnames(data_col) == sample] != data$counts) {
           print("Error: QC failed!")
           break;
@@ -155,8 +155,8 @@ get_distances <- function(cluster,
           
           df_nd_f <- df_nd_f %>% 
             group_by(novel_junID) %>%
-            filter(ref_counts == max(ref_counts)) %>%
-            filter(abs(distance) == min(abs(distance))) %>%
+            dplyr::filter(ref_counts == max(ref_counts)) %>%
+            dplyr::filter(abs(distance) == min(abs(distance))) %>%
             ungroup() 
         
         } else {
@@ -175,7 +175,7 @@ get_distances <- function(cluster,
         # GenomicRanges::distance(x = novel, y = ref)
         
         # df_nd_f %>%
-        #   select(novel_strand, novel_start, novel_end, ref_strand, ref_start, ref_end, distance)
+        #   dplyr::select(novel_strand, novel_start, novel_end, ref_strand, ref_start, ref_end, distance)
         
         ####################################################
         ########  NOVEL-DONOR & REVERSE STRAND  ############
@@ -225,8 +225,8 @@ get_distances <- function(cluster,
           
           df_nd_r <- df_nd_r %>% 
             group_by(novel_junID) %>%
-            filter(ref_counts == max(ref_counts)) %>%
-            filter(abs(distance) == min(abs(distance))) %>%
+            dplyr::filter(ref_counts == max(ref_counts)) %>%
+            dplyr::filter(abs(distance) == min(abs(distance))) %>%
             ungroup() 
         } else {
           df_nd_r <- NULL
@@ -281,8 +281,8 @@ get_distances <- function(cluster,
           
           df_na_f <- df_na_f %>% 
             group_by(novel_junID) %>%
-            filter(ref_counts == max(ref_counts)) %>%
-            filter(abs(distance) == min(abs(distance))) %>%
+            dplyr::filter(ref_counts == max(ref_counts)) %>%
+            dplyr::filter(abs(distance) == min(abs(distance))) %>%
             ungroup() 
           
         } else {
@@ -338,8 +338,8 @@ get_distances <- function(cluster,
           
           df_na_r <- df_na_r %>% 
             group_by(novel_junID) %>%
-            filter(ref_counts == max(ref_counts)) %>%
-            filter(abs(distance) == min(abs(distance))) %>%
+            dplyr::filter(ref_counts == max(ref_counts)) %>%
+            dplyr::filter(abs(distance) == min(abs(distance))) %>%
             ungroup() 
         } else {
           df_na_r <- NULL
@@ -357,7 +357,7 @@ get_distances <- function(cluster,
         
   
         distances <- distances %>% 
-          select(-novel_width, -ref_width, -sample)
+          dplyr::select(-novel_width, -ref_width, -sample)
         
         
         saveRDS(object = distances,
@@ -436,33 +436,22 @@ extract_distances <- function(cluster,
   
   print("Samples loaded!")
   
-  # if (df_all %>% nrow() == 0) {
-  #   
-  #   df_all <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
-  #   
-  # } else {
-  #   
-  #   saveRDS(object = df_all %>% data.table::as.data.table(),
-  #           file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
-  #   print(stringr::str_c(Sys.time(), " - raw 'distances' file saved!")) 
-  #   
-  # }
   
   # df_all <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_raw.rds"))
   print(paste0(Sys.time(), " --> ", df_all$ref_junID %>% unique() %>% length(), " unique reference introns"))
   print(paste0(Sys.time(), " --> ", df_all$novel_junID %>% unique() %>% length(), " unique novel junctions"))
   
   # SNCA David's novel exon:
-  # df %>% filter(novel_junID == "67198600")
-  # df %>% filter(novel_junID == "67199298")
+  # df %>% dplyr::filter(novel_junID == "67198600")
+  # df %>% dplyr::filter(novel_junID == "67199298")
   
   # df_all %>%
-  #   filter(novel_seq == "4",
+  #   dplyr::filter(novel_seq == "4",
   #          novel_start == "89729278",
   #          novel_end == "89771396",
   #          novel_strand == "-")
   # df_all %>%
-  #   filter(ref_seq == "4",
+  #   dplyr::filter(ref_seq == "4",
   #          ref_start == "89729278",
   #          ref_end == "89771396",
   #          ref_strand == "-")
@@ -472,10 +461,10 @@ extract_distances <- function(cluster,
   
   ## STATS OF THE RAW DISTANCES
   any(df_all$distance == 0)
-  print(paste0("Novel donor (+) mode: ", get_mode(df_all %>% filter(type == "novel_donor") %>% filter(distance > 0) %>% pull(distance))))
-  print(paste0("Novel donor (-) mode: ", get_mode(df_all %>% filter(type == "novel_donor") %>% filter(distance < 0) %>% pull(distance))))
-  print(paste0("Novel acceptor (+) mode: ", get_mode(df_all %>% filter(type == "novel_acceptor") %>% filter(distance > 0) %>% pull(distance))))
-  print(paste0("Novel acceptor (-) mode: ", get_mode(df_all %>% filter(type == "novel_acceptor") %>% filter(distance < 0) %>% pull(distance))))
+  print(paste0("Novel donor (+) mode: ", get_mode(df_all %>% dplyr::filter(type == "novel_donor") %>% dplyr::filter(distance > 0) %>% pull(distance))))
+  print(paste0("Novel donor (-) mode: ", get_mode(df_all %>% dplyr::filter(type == "novel_donor") %>% dplyr::filter(distance < 0) %>% pull(distance))))
+  print(paste0("Novel acceptor (+) mode: ", get_mode(df_all %>% dplyr::filter(type == "novel_acceptor") %>% dplyr::filter(distance > 0) %>% pull(distance))))
+  print(paste0("Novel acceptor (-) mode: ", get_mode(df_all %>% dplyr::filter(type == "novel_acceptor") %>% dplyr::filter(distance < 0) %>% pull(distance))))
   
   ## Introns shouldn't be obtained from sex or MT chromosomes
   if (any((df_all$ref_seq %>% unique()) == "MT") ||
@@ -502,13 +491,13 @@ extract_distances <- function(cluster,
   
   ## Novel donor junctions cannot also be targeted as novel acceptor
   if (intersect(df_all %>%
-                filter(type == "novel_donor") %>%
+                dplyr::filter(type == "novel_donor") %>%
                 rowwise() %>%
                 distinct(novel_junID) %>%
                 pull(novel_junID),
                 
                 df_all %>%
-                filter(type == "novel_acceptor") %>%
+                dplyr::filter(type == "novel_acceptor") %>%
                 rowwise() %>%
                 distinct(novel_junID) %>%
                 pull(novel_junID)) %>% length() > 0) {
@@ -534,21 +523,21 @@ extract_distances <- function(cluster,
   ## There are multiple novel junctions associated to different introns (we call them AMBIGUOUS JUNCTIONS)
   ## We get their percentage
   print(paste0(Sys.time(), " --> ", ((df_tidy %>%
-                                        filter(distances_sd > 0) %>%
+                                        dplyr::filter(distances_sd > 0) %>%
                                         distinct(novel_junID) %>%
                                         nrow() * 100) / (df_tidy %>%
-                                                           filter(distances_sd == 0) %>%
+                                                           dplyr::filter(distances_sd == 0) %>%
                                                            distinct(novel_junID) %>%
                                                            nrow())) %>% round(digits = 2), "% of ambiguous junctions"))
   
   
   ## Ambiguous junctions shouldn't overlap with unambiguous junctions
   if (intersect(df_tidy %>%
-                filter(distances_sd > 0) %>%
+                dplyr::filter(distances_sd > 0) %>%
                 distinct(novel_junID) %>%
                 pull(novel_junID),
                 df_tidy %>%
-                filter(distances_sd == 0) %>%
+                dplyr::filter(distances_sd == 0) %>%
                 distinct(novel_junID) %>%
                 pull(novel_junID)) %>% length() > 0) {
     print("Error: there are novel junctions classified as both ambiguous and unambiguous junctions.")
@@ -560,19 +549,24 @@ extract_distances <- function(cluster,
   print(stringr::str_c(Sys.time(), " --> removing ambiguous novel junctions...: "))
   
   df_notambig <- df_tidy %>%
-    filter(distances_sd == 0) # %>%
+    dplyr::filter(distances_sd == 0) # %>%
+  
+  df_ambig <- df_tidy %>%
+    dplyr::filter(distances_sd != 0)
+  saveRDS(object = df_ambig,
+          file = paste0(folder_name, "/", cluster, "_ambiguous_junc.rds"))
   #group_by(novel_junID) %>%
   #summarise(ambiguous = n_distinct(ref_junID)) %>%
-  #filter(ambiguous == 1)
+  #dplyr::filter(ambiguous == 1)
   
   # df_notambig <- df_notambig %>%
   #   group_by(novel_junID) %>%
   #   summarise(ambiguous = n_distinct(ref_junID)) %>%
-  #   filter(ambiguous == 1)
+  #   dplyr::filter(ambiguous == 1)
   
   df_tidy %>% nrow()
   df_tidy <- df_tidy %>%
-    filter(novel_junID %in% df_notambig$novel_junID)
+    dplyr::filter(novel_junID %in% df_notambig$novel_junID)
   df_tidy %>% nrow()
   df_tidy$ref_junID %>% unique() %>% length()
   df_tidy$novel_junID %>% unique() %>% length()
@@ -611,23 +605,23 @@ extract_distances <- function(cluster,
   ## GET STATS AFTER REMOVING DUPLICATES
   print(paste0("Novel donor (+) mode: ", get_mode(df_tidy %>%
                                                     distinct(novel_junID, .keep_all = TRUE) %>%
-                                                    filter(type == "novel_donor") %>%
-                                                    filter(distance > 0) %>%
+                                                    dplyr::filter(type == "novel_donor") %>%
+                                                    dplyr::filter(distance > 0) %>%
                                                     pull(distance))))
   print(paste0("Novel donor (-) mode: ", get_mode(df_tidy %>%
                                                     distinct(novel_junID, .keep_all = TRUE) %>%
-                                                    filter(type == "novel_donor") %>%
-                                                    filter(distance < 0) %>%
+                                                    dplyr::filter(type == "novel_donor") %>%
+                                                    dplyr::filter(distance < 0) %>%
                                                     pull(distance))))
   print(paste0("Novel acceptor (+) mode: ", get_mode(df_tidy %>%
                                                        distinct(novel_junID, .keep_all = TRUE) %>%
-                                                       filter(type == "novel_acceptor") %>%
-                                                       filter(distance > 0) %>%
+                                                       dplyr::filter(type == "novel_acceptor") %>%
+                                                       dplyr::filter(distance > 0) %>%
                                                        pull(distance))))
   print(paste0("Novel acceptor (-) mode: ", get_mode(df_tidy %>%
                                                        distinct(novel_junID, .keep_all = TRUE) %>%
-                                                       filter(type == "novel_acceptor") %>%
-                                                       filter(distance < 0) %>%
+                                                       dplyr::filter(type == "novel_acceptor") %>%
+                                                       dplyr::filter(distance < 0) %>%
                                                        pull(distance))))
   
   
@@ -655,7 +649,7 @@ extract_distances <- function(cluster,
   
   ## Get the count data in the current cluster for the current NOVEL junction
   split_read_counts_novel <- split_read_counts %>%
-    filter(junID %in% df_tidy$novel_junID) %>%
+    dplyr::filter(junID %in% df_tidy$novel_junID) %>%
     dplyr::select(junID, all_of(samples %>% as.character())) 
 
   
@@ -705,7 +699,7 @@ extract_distances <- function(cluster,
   ## Get the count data in the current cluster for the current REFERENCE junction
   
   split_read_counts_ref <- split_read_counts %>%
-    filter(junID %in% df_merged$ref_junID) %>%
+    dplyr::filter(junID %in% df_merged$ref_junID) %>%
     dplyr::select(junID, all_of(samples %>% as.character()))
   
   
@@ -787,6 +781,14 @@ extract_distances <- function(cluster,
 ## NEVER MIS-SPLICED --------------------------------
 
 
+# gtf_version <- 105
+# project_id <- "BRAIN"
+# cluster <- "Brain - Frontal Cortex (BA9)"
+# folder_root <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/"
+# samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster,  "/", project_id, "_", cluster,  "_samples.rds"))
+# folder_name <- paste0(folder_root, "/results/pipeline3/distances/", cluster, "/v105/")
+# split_read_counts <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_split_read_counts_", gtf_version, ".rds"))
+# all_split_reads_details <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
 get_never_misspliced <- function(cluster, 
                                  samples,
                                  split_read_counts,
@@ -801,14 +803,57 @@ get_never_misspliced <- function(cluster,
     
     print(paste0(Sys.time(), " - filtering junctions that are potentially not mis-spliced..."))
     
-    if (file.exists(paste0(folder_name, "/", cluster, "_distances_tidy.rds"))) {
+    if (file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))) {
       
-      df_all_misspliced <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_tidy.rds")) %>%
+      ## This should be zero
+      if (setdiff(all_split_reads_details$junID,split_read_counts$junID) %>% length() > 0) {
+        print("ERROR")
+        break;
+      }
+      
+      
+      ## Remove all '*' from split_read_counts
+      all_split_reads_details$junID %>% length()
+      split_read_counts <- split_read_counts %>%
+        inner_join(y = all_split_reads_details  %>% dplyr::select(seqnames, start, end, width, strand, junID),
+                   by=c("junID" = "junID")) %>%
+        dplyr::select(-junID) %>%
+        mutate(junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) %>%
+        dplyr::relocate(junID) %>%
+        dplyr::select(-seqnames, -start, -end, -width, -strand)
+      
+      
+      ## QC - 1
+      all_split_reads_details <- all_split_reads_details %>%
+        mutate(strand = strand %>% as.character())
+      ind <- which(str_detect(string = all_split_reads_details$junID,
+                              pattern = "\\*"))
+      all_split_reads_details[ind, "junID"] <- str_replace(string = all_split_reads_details[ind, "junID"]$junID, 
+                                                             pattern = "\\*", 
+                                                             replacement = all_split_reads_details[ind, "strand"]$strand  )
+      
+      ## QC - 2: this should be zero
+      ind <- which(str_detect(string = split_read_counts$junID, pattern = "\\*"))
+      if (ind %>% length() > 0) {
+        print("ERROR")
+        break;
+      }
+      
+      ## QC - 3
+      ## This should be zero
+      if (setdiff(all_split_reads_details$junID,split_read_counts$junID) %>% length() > 0) {
+        print("ERROR")
+        break;
+      }
+      
+      ## Get mis-spliced and junctions that were not mis-spliced in the first round
+      df_all_misspliced <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) %>%
+        data.table::as.data.table() %>%
         dplyr::distinct(ref_junID, .keep_all = T)
       
       all_not_misspliced <- all_split_reads_details %>%
-        dplyr::filter(!(junID %in% df_all_misspliced$ref_junID)) %>%
-        data.table::as.data.table()
+        data.table::as.data.table() %>%
+        dplyr::filter(!(junID %in% df_all_misspliced$ref_junID))
       
       if (intersect(all_not_misspliced$junID, df_all_misspliced$ref_junID) %>% length() > 0){
         print("Error: some of the never misspliced introns appear within the 'distances' file!")
@@ -858,7 +903,7 @@ get_never_misspliced <- function(cluster,
       index <- runif(n = 1, 1, split_reads_details_97_sample %>% nrow()) %>% as.integer()
       data <- split_reads_details_97_sample[index, c(1, split_reads_details_97_sample %>% ncol())]
       data_col <- split_read_counts_sample %>%
-        filter(junID == data$junID)
+        dplyr::filter(junID == data$junID)
       if (data_col[[2]] != data$counts) {
         print("Error: QC failed!")
         break;
@@ -991,8 +1036,14 @@ get_never_misspliced <- function(cluster,
       
       
       
-      print(paste0(Sys.time(), " --> '", num_sample, "' samples processed. Total numbers: ", junc_not_misspliced %>% length(), 
-                   " junctions not mis-spliced - ", junc_ignore %>% length(), " mis-spliced junctions."))
+      print(paste0(Sys.time(), " --> Sample '", num_sample, "' processed // ", c(ref_annotated_d_forward, 
+                                                                                               ref_annotated_d_reverse,
+                                                                                               ref_annotated_a_forward, 
+                                                                                               ref_annotated_a_reverse) %>% unique() %>% length(), 
+                   " junctions not mis-spliced // ", c(ignore_af,
+                                                      ignore_ar,
+                                                      ignore_df,
+                                                      ignore_dr) %>% unique %>% length(), " mis-spliced junctions."))
       
       
       if (!save_results) {
@@ -1095,7 +1146,14 @@ get_never_misspliced <- function(cluster,
   
 }
 
-
+# gtf_version <- 105
+# project_id <- "BRAIN"
+# cluster <- "Brain - Frontal Cortex (BA9)"
+# folder_root <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN/"
+# samples <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster,  "/", project_id, "_", cluster,  "_samples.rds"))
+# folder_name <- paste0(folder_root, "/results/pipeline3/distances/", cluster, "/v105/")
+# split_read_counts <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_split_read_counts_", gtf_version, ".rds"))
+# all_split_reads_details <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
 extract_never_misspliced <- function(cluster,
                                      samples,
                                      split_read_counts,
@@ -1108,13 +1166,16 @@ extract_never_misspliced <- function(cluster,
   
   print(paste0(Sys.time(), " - obtaining reads from never mis-spliced junctions."))
   
+  samples %>% length()
+  names(split_read_counts) %>% length()
   
   split_read_counts_never <- split_read_counts %>%
     as.data.frame() %>%
     dplyr::select(junID, all_of(samples %>% as.character())) %>%
-    filter(junID %in% df_never$junID)
+    dplyr::filter(junID %in% df_never$junID)
   
-  
+  df_never$junID %>% unique %>% length()
+  split_read_counts_never %>% nrow()
   
   split_read_counts_never[, "ref_n_individuals"] <- matrixStats::rowCounts(split_read_counts_never[, -1] > 0, na.rm = T)
   split_read_counts_never[, "ref_sum_counts"] <-  Matrix::rowSums(split_read_counts_never[,-c(split_read_counts_never %>% ncol(), 1)], na.rm = T)
@@ -1147,40 +1208,6 @@ extract_never_misspliced <- function(cluster,
   rm(df_never)
   gc()
   
-  
-  #################################################
-  #################################################
-  ## FINDING THE ORIGIN OF GENE 'ENSG00000188603'
-  
-  # df_tidy <- readRDS(file = paste0(folder_name, "/", cluster, "_distances_tidy.rds"))
-  # df_tidy %>% head()
-  # df_tidy %>% nrow()
-  # 
-  # 
-  # df_stats <- merge(df_tidy, 
-  #                   all_split_reads_details_97[,c("junID", "gene_id_start", "gene_id_end", "seqnames", "start", "end")], 
-  #                   by.x = "ref_junID", 
-  #                   by.y = "junID" )
-  # 
-  # df_stats %>% nrow()
-  # df_stats %>% head()
-  # 
-  # df_stats <- df_stats %>%
-  #   unnest(gene_id_end) %>%
-  #   unnest(gene_id_start)
-  # 
-  # 
-  # df_filtered <- df_stats %>%
-  #   filter(gene_id_start == "ENSG00000188603" | gene_id_end == "ENSG00000188603") %>%
-  #   as.data.frame()
-  # 
-  # 
-  # library(xlsx)
-  # ## Save the .xlsx object
-  # write.xlsx(df_filtered, 
-  #            file="/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/CLN3_missplicing_summary_FCTX.xlsx", 
-  #            sheetName="CLN3", 
-  #            row.names=T)
 }
 
 
@@ -1204,12 +1231,10 @@ add_never_misspliced_to_df <- function(cluster,
   
   ## Add features to never mis-spliced junctions
   print(paste0(Sys.time(), " - ", cluster, " adding features to never mis-spliced junctions..."))
-  df_never <- merge(df_never %>% data.table::as.data.table(), 
-                    all_split_reads_details %>%
-                      dplyr::select(contains("junID"),
-                                    contains("ss5score"),
-                                    contains("ss3score"), "seqnames", "start", "end", "strand"),
-                      #mutate(junID = junID %>% as.integer()) %>% data.table::as.data.table(), 
+  df_never <- merge(x = df_never %>% data.table::as.data.table(), 
+                    y = all_split_reads_details %>%
+                      dplyr::select(contains("junID"), contains("ss5score"), contains("ss3score"), 
+                                    "seqnames", "start", "end", "strand"),
                     by.x = "junID",
                     by.y = "junID", 
                     sort = TRUE,
@@ -1259,7 +1284,7 @@ add_never_misspliced_to_df <- function(cluster,
   
   ## Junctions that are never misspliced shouldn't appear to be mis-spliced df
   if (df_misspliced %>%
-      filter(ref_junID %in% (df_never %>% 
+      dplyr::filter(ref_junID %in% (df_never %>% 
                              distinct(ref_junID, .keep_all = T) %>%
                              pull(ref_junID))) %>% nrow() != 0) {
     print("Error: some junctions considered as never mis-spliced have been found to be mis-spliced.")
@@ -1290,9 +1315,8 @@ add_never_misspliced_to_df <- function(cluster,
   
   ## Add the rest of the features to the joined data.frame
   print(paste0(Sys.time(), " - Adding the rest of the features to the joined dataframe..."))
-  df_all <- merge(df_all %>% data.table::as.data.table(), 
-                  all_split_reads_details[, c("junID", "gene_id_junction", "gene_name_junction", "tx_id_junction")] %>%
-                    #mutate(junID = junID %>% as.integer()) %>% 
+  df_all <- merge(x = df_all %>% data.table::as.data.table(), 
+                  y = all_split_reads_details[, c("junID", "gene_id_junction", "gene_name_junction", "tx_id_junction")] %>%
                     data.table::as.data.table(), 
                   by.x = "ref_junID",
                   by.y = "junID", 
@@ -1310,17 +1334,17 @@ add_never_misspliced_to_df <- function(cluster,
   
   
   ## Rename GENE columns
-  
   df_all <- df_all %>% 
     dplyr::rename(gene_id = gene_id_junction) %>%
     dplyr::rename(gene_name = gene_name_junction)
   
   df_all %>% 
-    filter(gene_name %in% c("RBM5","RBM6")) %>% 
-    select(gene_name,gene_id) %>%
+    dplyr::filter(gene_name %in% c("RBM5","RBM6")) %>% 
+    dplyr::select(gene_name,gene_id) %>%
     unnest(gene_id) %>%
     unnest(gene_name) %>%
     mutate_if(is.list, simplify_all)
+  
   ######################
   ## QC
   ###################### 
@@ -1330,7 +1354,7 @@ add_never_misspliced_to_df <- function(cluster,
   
   
   df_all %>%
-    filter(ref_junID %in% df_never$ref_junID)
+    dplyr::filter(ref_junID %in% df_never$ref_junID)
   
   
   all_misspliced_not_paired <- readRDS(file = paste0(folder_name, "/not-misspliced/", cluster, "_all_misspliced_not_paired.rds"))
@@ -1361,6 +1385,11 @@ add_never_misspliced_to_df <- function(cluster,
 ## MIS-SPLICING RATIO   --------------------------------
 
 
+# cluster <- "Brain - Frontal Cortex (BA9)"
+# folder_name <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN//results/pipeline3/distances/Brain - Frontal Cortex (BA9)/v105/"
+# split_read_counts <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN//results/base_data/Brain - Frontal Cortex (BA9)/BRAIN_Brain - Frontal Cortex (BA9)_split_read_counts_105.rds")
+# folder_save_name <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/BRAIN//results/pipeline3/missplicing-ratio/Brain - Frontal Cortex (BA9)/v105/"
+# db = NULL
 get_missplicing_ratio <- function(cluster,
                                   split_read_counts,
                                   folder_name,
@@ -1381,6 +1410,7 @@ get_missplicing_ratio <- function(cluster,
   
   print(paste0(Sys.time(), " - Calulating MSR_Donor and MSR_Acceptor."))
   df_tidy %>% head()
+  df_tidy %>% as_tibble()
 
   
   print(paste0(Sys.time(), " --> ", cluster, ": ", df_tidy %>%
@@ -1390,7 +1420,7 @@ get_missplicing_ratio <- function(cluster,
   
   ## Get only mis-spliced reference introns and novel junctions
   df <- df_tidy %>%
-    dplyr::filter(!is.na(ref_counts), ref_counts > 0)
+    dplyr::filter(!is.na(ref_counts))
 
   
   ## Get novel junctions ---------------------------------------------------------------------------------------------------------------------------
@@ -1430,8 +1460,8 @@ get_missplicing_ratio <- function(cluster,
   
   ## The novel junction itself is not important anymore. 
   ## We calculate the mis-splicing ratio per novel event and reference intron
-  df %>%
-    filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-")
+  # df %>%
+  #   dplyr::filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-")
   
   df_ref <- df %>% 
     group_by(ref_junID, type) %>%
@@ -1443,8 +1473,8 @@ get_missplicing_ratio <- function(cluster,
     distinct(ref_missplicing_ratio_tissue, .keep_all = T) %>%
     ungroup()
   
-  df_ref %>%
-    filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-") %>% as.data.frame()
+  # df_ref %>%
+  #   filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-") %>% as.data.frame()
   
   df_ref_tidy <- df_ref %>% 
     spread(key = type, value = ref_missplicing_ratio_tissue) %>%
@@ -1454,10 +1484,10 @@ get_missplicing_ratio <- function(cluster,
     distinct(ref_junID, .keep_all = T)  %>%
     ungroup()
   
-  df_ref_tidy %>%
-    filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-") %>% as.data.frame()
-  #df_ref_tidy %>% filter(ref_junID == "10086104") %>% as.data.frame()
-  #df_ref %>% filter(ref_junID == "10086104") %>% as.data.frame()
+  # df_ref_tidy %>%
+  #   dplyr::dplyr::filter(ref_start == 100629987, ref_end == 100630758, ref_strand == "-") %>% as.data.frame()
+  #df_ref_tidy %>% dplyr::filter(ref_junID == "10086104") %>% as.data.frame()
+  #df_ref %>% dplyr::filter(ref_junID == "10086104") %>% as.data.frame()
   
   ## For the intron database, we only keep columns related to the intron
   db_ref <- df_ref_tidy %>%
@@ -1484,10 +1514,10 @@ get_missplicing_ratio <- function(cluster,
                   strand = ref_strand) %>%
     as.data.frame()
   
-  db_ref %>% nrow()
-  db_ref %>% distinct(ref_junID) %>% nrow()
+  # db_ref %>% nrow()
+  # db_ref %>% distinct(ref_junID) %>% nrow()
   
-  #db_ref %>% filter(ref_junID == "10086104") %>% as.data.frame()
+  #db_ref %>% dplyr::filter(ref_junID == "10086104") %>% as.data.frame()
   
   ## QC
   if (!identical(db_ref %>% distinct(ref_junID) %>% arrange(desc(ref_junID)) %>% pull(),
@@ -1530,10 +1560,11 @@ get_missplicing_ratio <- function(cluster,
   
   
   db_ref_joined <- plyr::rbind.fill(db_ref, db_never)
-  db_ref_joined %>% nrow()
   
-  db_ref_joined %>% distinct(ref_junID) %>% nrow()
-  db_ref_joined %>% head()
+  # db_ref_joined %>% nrow()
+  # 
+  # db_ref_joined %>% distinct(ref_junID) %>% nrow()
+  # db_ref_joined %>% head()
   
   
   
@@ -1544,7 +1575,7 @@ get_missplicing_ratio <- function(cluster,
                     is.na(ref_missplicing_ratio_tissue_NA)) %>%
       distinct(ref_junID) %>%
       nrow() != df_never %>%
-      #filter(is.na(novel_junID)) %>%
+      #dplyr::filter(is.na(novel_junID)) %>%
       distinct(ref_junID) %>%
       nrow()) {
     print("Error: disimilar number of never mis-spliced junctions")
@@ -1553,15 +1584,16 @@ get_missplicing_ratio <- function(cluster,
   
   db_ref_joined[is.na(db_ref_joined$ref_missplicing_ratio_tissue_ND),"ref_missplicing_ratio_tissue_ND"] <- 0
   db_ref_joined[is.na(db_ref_joined$ref_missplicing_ratio_tissue_NA),"ref_missplicing_ratio_tissue_NA"] <- 0
-  db_ref_joined %>% head()
   
-  
-  db_ref_joined %>% nrow()
-  db_ref_joined %>% distinct(ref_junID) %>% nrow()
-  
-  
-  db_ref_joined$ref_missplicing_ratio_tissue_ND %>% summary()
-  db_ref_joined$ref_missplicing_ratio_tissue_NA %>% summary()
+  # db_ref_joined %>% head()
+  # 
+  # 
+  # db_ref_joined %>% nrow()
+  # db_ref_joined %>% distinct(ref_junID) %>% nrow()
+  # 
+  # 
+  # db_ref_joined$ref_missplicing_ratio_tissue_ND %>% summary()
+  # db_ref_joined$ref_missplicing_ratio_tissue_NA %>% summary()
   
   
   print(paste0(Sys.time(), " - ", db_ref_joined %>% nrow(), " final number of introns."))
@@ -1589,24 +1621,23 @@ get_missplicing_ratio <- function(cluster,
 
 
 
-add_missplicing_class_to_df <- function(cluster,
-                                        folder_name) {
+add_missplicing_class_to_df <- function(df_missplicing = NULL,
+                                        cluster = NULL,
+                                        folder_name = NULL) {
   
   
-  df_missplicing <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-  df_missplicing %>% nrow()
-  df_missplicing %>% head()
+  if (!is.null(df_missplicing)) {
+    df_missplicing <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
+    df_missplicing %>% nrow()
+    df_missplicing %>% head()
+    
+    print(paste0(Sys.time(), " - ", cluster, ", starting junction classification!"))
+  }
   
   
   
   ## Intron classification --------------------------------------------------------------------------------
   
-  print(paste0(Sys.time(), " - ", cluster, ", starting junction classification!"))
-  
-  # print(paste0("All junctions: ", df_missplicing %>% nrow()))
-  # print(paste0("All genes: ", df_missplicing %>% 
-  #                dplyr::select(c(gene_id)) %>%
-  #                unname() %>% unlist() %>% unique() %>% length()))
   
   
   df_missplicing[, "ref_type"] <- ""
@@ -1664,10 +1695,10 @@ add_missplicing_class_to_df <- function(cluster,
   
   ## QC --------------------------------------------------------
   if (intersect(df_missplicing %>%
-                filter(ref_type == "never") %>%
+                dplyr::filter(ref_type == "never") %>%
                 distinct(ref_junID) %>%
                 pull(), df_missplicing %>%
-                filter(ref_type == "donor") %>%
+                dplyr::filter(ref_type == "donor") %>%
                 distinct(ref_junID) %>%
                 pull()) %>% length() > 0) {
     print("Error!")
@@ -1675,30 +1706,30 @@ add_missplicing_class_to_df <- function(cluster,
   
   
   if (intersect(df_missplicing %>%
-                filter(ref_type == "never") %>%
+                dplyr::filter(ref_type == "never") %>%
                 distinct(ref_junID) %>%
                 pull(), df_missplicing %>%
-                filter(ref_type == "aceptor") %>%
+                dplyr::filter(ref_type == "aceptor") %>%
                 distinct(ref_junID) %>%
                 pull()) %>% length() > 0) {
     print("Error!")
   }
   
   if (intersect(df_missplicing %>%
-                filter(ref_type == "never") %>%
+                dplyr::filter(ref_type == "never") %>%
                 distinct(ref_junID) %>%
                 pull(), df_missplicing %>%
-                filter(ref_type == "both") %>%
+                dplyr::filter(ref_type == "both") %>%
                 distinct(ref_junID) %>%
                 pull()) %>% length() > 0) {
     print("Error!")
   }
   
   if (intersect(df_missplicing %>%
-                filter(ref_type == "acceptor") %>%
+                dplyr::filter(ref_type == "acceptor") %>%
                 distinct(ref_junID) %>%
                 pull(), df_missplicing %>%
-                filter(ref_type == "donor") %>%
+                dplyr::filter(ref_type == "donor") %>%
                 distinct(ref_junID) %>%
                 pull()) %>% length() > 0) {
     print("Error!")
@@ -1775,16 +1806,16 @@ get_missplicing_QC <- function(cluster,
   
   ## Get the annotation details from the never mis-spliced introns
   all_not_misspliced <- all_split_reads_details %>%
-    filter(junID %in% (df_introns %>%
-                         filter(ref_type == "never") %>%
-                         distinct(ref_junID) %>%
-                         pull()))
+    dplyr::filter(junID %in% (df_introns %>%
+                                dplyr::filter(ref_type == "never") %>%
+                                distinct(ref_junID) %>%
+                                pull()))
   
   
   ## Add the rest of the novel donor and acceptor junctions
   all_not_misspliced <- rbind(all_not_misspliced,
                               all_split_reads_details %>%
-                                filter(type %in% c("novel_donor", "novel_acceptor")))
+                                dplyr::filter(type %in% c("novel_donor", "novel_acceptor")))
   
   
   
@@ -1823,7 +1854,7 @@ get_missplicing_QC <- function(cluster,
   ## All novel junctions should be attached to exact the same number of introns stored within the intron database
   
   if (df_introns %>%
-      filter(ref_type != "never") %>% 
+      dplyr::filter(ref_type != "never") %>% 
       distinct(ref_junID) %>%
       nrow() != df_novel %>%
       distinct(ref_junID) %>%
@@ -1836,18 +1867,19 @@ get_missplicing_QC <- function(cluster,
   
   if (intersect(df_novel %>%
                 distinct(ref_junID) %>%
-                pull(), df_introns %>%
-                filter(ref_type != "never") %>%
+                pull(), 
+                df_introns %>%
+                dplyr::filter(ref_type != "never") %>%
                 distinct(ref_junID) %>%
                 pull()) %>% length() != df_introns %>% 
-      filter(ref_type != "never") %>% nrow()){
+      dplyr::filter(ref_type != "never") %>% nrow()){
     print(paste0("Error: some ", cluster, " novel junctions are attached to introns that are not stored on the database!"))
   }
   
   if (intersect(df_novel %>%
                 distinct(novel_junID) %>%
                 pull() %>% sort(), all_split_reads_details %>%
-                filter(type %in% c("novel_donor", "novel_acceptor")) %>%
+                dplyr::filter(type %in% c("novel_donor", "novel_acceptor")) %>%
                 distinct(junID) %>%
                 pull() %>% sort()) %>% length() != df_novel %>% nrow()){
     
@@ -1855,16 +1887,16 @@ get_missplicing_QC <- function(cluster,
     diff <-setdiff(df_novel %>%
                      distinct(novel_junID) %>%
                      pull(), all_split_reads_details %>%
-                     filter(type %in% c("novel_donor", "novel_acceptor")) %>%
+                     dplyr::filter(type %in% c("novel_donor", "novel_acceptor")) %>%
                      distinct(junID) %>%
                      pull())
     
     all_split_reads_details %>%
-      filter(junID == diff[1])
+      dplyr::filter(junID == diff[1])
     
     
     all_split_reads_details %>%
-      filter(junID == "JUNC00006215")
+      dplyr::filter(junID == "JUNC00006215")
     
     print(paste0("Error: some ", cluster, " novel junctions have not been found within the original annotation!"))
   }
@@ -1915,7 +1947,7 @@ remove_MT_genes <- function(cluster,
     
     ## Remove MT genes
     df_introns <- df_introns %>%
-      filter(!(gene_id %in% MT_geneID)) 
+      dplyr::filter(!(gene_id %in% MT_geneID)) 
     
     print(paste0(Sys.time(), " - MT genes removed! ", df_introns %>% nrow(), " final number of junctions."))
     
@@ -1961,7 +1993,7 @@ add_intron_type <- function(cluster,
   #          transcript_id_end = transcript_id_end.x,
   #          protein_coding = protein_coding.x,
   #          gene_biotype = gene_biotype.x) %>%
-  #   select(-transcript_id_start.y,-transcript_id_end.y,-protein_coding.y,-gene_biotype.y)
+  #   dplyr::select(-transcript_id_start.y,-transcript_id_end.y,-protein_coding.y,-gene_biotype.y)
   # 
   # saveRDS(object = df_introns,
   #         file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
@@ -1971,9 +2003,9 @@ add_intron_type <- function(cluster,
     mutate(u12_intron = F) %>%
     mutate(u2_intron = F)
   
-  df_introns %>% head()
-  df_introns %>% nrow()
-  df_introns %>% distinct(ref_junID) %>% nrow()
+  # df_introns %>% head()
+  # df_introns %>% nrow()
+  # df_introns %>% distinct(ref_junID) %>% nrow()
   #df_introns %>% distinct(novel_junID) %>% nrow()
   
   ################
@@ -2031,18 +2063,18 @@ add_intron_type <- function(cluster,
   # 
   # ## Number of minor introns
   # df %>%
-  #   filter(u12_intron == T) %>%
+  #   dplyr::filter(u12_intron == T) %>%
   #   nrow()
   # 
   # ## Number of major introns
   # df %>%
-  #   filter(u2_intron == T) %>%
+  #   dplyr::filter(u2_intron == T) %>%
   #   nrow()
   # 
   # 
   # ## Number of introns from SNCA
   # df %>%
-  #   filter(gene_name_start == "SNCA" | gene_name_end == "SNCA") %>%
+  #   dplyr::filter(gene_name_start == "SNCA" | gene_name_end == "SNCA") %>%
   #   distinct(ref_junID) %>%
   #   nrow()
   # 
@@ -2051,18 +2083,18 @@ add_intron_type <- function(cluster,
   # # print(paste0(Sys.time(), " - removing uncatalogued junctions..."))
   # 
   # # if (df %>%
-  # #     filter(u2_intron == F, u12_intron == F) %>%
+  # #     dplyr::filter(u2_intron == F, u12_intron == F) %>%
   # #     nrow() > 0) {
   # # 
   # #   ## Remove uncatalogued junctions
   # #   df <- df %>%
-  # #     filter(u12_intron == T | u2_intron == T)
+  # #     dplyr::filter(u12_intron == T | u2_intron == T)
   # # }
   # 
   # 
   # ## Number of introns from SNCA
   # df %>%
-  #   filter(gene_name_start == "SNCA" | gene_name_end == "SNCA") %>%
+  #   dplyr::filter(gene_name_start == "SNCA" | gene_name_end == "SNCA") %>%
   #   distinct(ref_junID) %>%
   #   nrow()
   # 
@@ -2070,12 +2102,11 @@ add_intron_type <- function(cluster,
   # df %>% nrow()
   
   
-  df_introns <- df_introns %>%
-    filter(u2_intron == T)
-  
-  ## Matching results with novel introns
-  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))%>%
-    filter(ref_junID %in% df_introns$ref_junID)
+  # df_introns <- df_introns %>%
+  #   dplyr::filter(u2_intron == T)
+  # 
+  # ## Matching results with novel introns
+  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
   
   
   # df_introns %>% head()
@@ -2083,8 +2114,13 @@ add_intron_type <- function(cluster,
   # df_novel %>% nrow()
   
   if (!identical(df_novel$ref_junID %>% unique(), 
-                 df_introns %>% filter(ref_type != "never") %>% select(ref_junID) %>% pull()%>% unique())) {
+                 df_introns %>% 
+                 dplyr::filter(ref_type != "never") %>% 
+                 dplyr::select(ref_junID) %>% 
+                 pull()%>% 
+                 unique())) {
     print("ERROR!")
+    break;
   }
   
   ################
@@ -2097,8 +2133,8 @@ add_intron_type <- function(cluster,
   saveRDS(object = df_introns,
           file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
   
-  saveRDS(object = df_novel,
-          file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
+  # saveRDS(object = df_novel,
+  #         file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
   
   
   print(paste0(Sys.time(), " - results saved!"))
@@ -2155,7 +2191,7 @@ clinvar_analysis <- function(cluster,
   
   df_introns %>%
     as.data.frame() %>%
-    filter(clinvar_type != "-")
+    dplyr::filter(clinvar_type != "-")
   
   # df_introns[subjectHits(overlaps),] %>% head()
   # 
@@ -2190,11 +2226,11 @@ clinvar_analysis <- function(cluster,
     
     df_not_clinvar <- df_introns %>%
       as.data.frame() %>%
-      filter(clinvar_type == "none")
+      dplyr::filter(clinvar_type == "none")
     
     df_clinvar <- df_introns %>%
       as.data.frame() %>%
-      filter(clinvar_type != "none")
+      dplyr::filter(clinvar_type != "none")
     
     if ((intersect(df_not_clinvar$ref_junID, df_clinvar$ref_junID) %>% length()) > 0) {
       print("Error: some introns are classified as both having and non-having clinvar mutations.")
@@ -2204,7 +2240,7 @@ clinvar_analysis <- function(cluster,
     
     ## Wilcoxon test
     
-    wilcox.test(x = df_clinvar %>% filter(clinvar_type == "donor") %>% pull(ref_missplicing_ratio_tissue_ND),
+    wilcox.test(x = df_clinvar %>% dplyr::filter(clinvar_type == "donor") %>% pull(ref_missplicing_ratio_tissue_ND),
                 y = df_not_clinvar$ref_missplicing_ratio_tissue_ND,
                 paired = F,
                 correct = T,
@@ -2214,7 +2250,7 @@ clinvar_analysis <- function(cluster,
     ## Plot results
     
     ggplot() +
-      geom_density(aes(x = df_clinvar %>% filter(clinvar_type == "donor") %>% pull(ref_missplicing_ratio_tissue_ND), fill = "#440154FF"),
+      geom_density(aes(x = df_clinvar %>% dplyr::filter(clinvar_type == "donor") %>% pull(ref_missplicing_ratio_tissue_ND), fill = "#440154FF"),
                    alpha = 0.8) +
       geom_density(aes(x = df_not_clinvar %>% pull(ref_missplicing_ratio_tissue_ND), fill = "#35B779FF"),
                    alpha = 0.8) +
@@ -2250,7 +2286,7 @@ clinvar_analysis <- function(cluster,
     
     ## TEST NOVEL ACCEPTOR
     
-    wilcox.test(x = df_clinvar %>% filter(clinvar == "acceptor") %>% pull(ref_missplicing_ratio_tissue_NA),
+    wilcox.test(x = df_clinvar %>% dplyr::filter(clinvar == "acceptor") %>% pull(ref_missplicing_ratio_tissue_NA),
                 y = df_not_clinvar$ref_missplicing_ratio_tissue_NA,
                 paired = F,
                 correct = T,
@@ -2259,7 +2295,7 @@ clinvar_analysis <- function(cluster,
     
     
     ggplot() + 
-      geom_density(aes(x = df_clinvar %>% filter(type == "acceptor") %>% pull(ref_missplicing_ratio_tissue_NA), fill = "#440154FF"), 
+      geom_density(aes(x = df_clinvar %>% dplyr::filter(type == "acceptor") %>% pull(ref_missplicing_ratio_tissue_NA), fill = "#440154FF"), 
                    alpha = 0.8) +
       geom_density(aes(x = df_not_clinvar$ref_missplicing_ratio_tissue_NA, fill = "#35B779FF"), 
                    alpha = 0.8) +
@@ -2320,7 +2356,7 @@ add_MANE_info <- function(cluster,
   ## Import MANE annotation
   mane_transcripts <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf") %>% 
     as_tibble() %>%
-    filter(tag == "MANE_Select" | tag == "MANE_Plus_Clinical") %>%
+    dplyr::filter(tag == "MANE_Select" | tag == "MANE_Plus_Clinical") %>%
     mutate(transcript_id = str_remove(string = transcript_id, pattern = "\\..*") )# %>%
     #distinct(transcript_id)
   
@@ -2360,18 +2396,22 @@ add_MANE_info <- function(cluster,
 
 ## CDTS - CONSERVATION ----------------------------
 
-add_cdts_cons_scores <- function(cluster,
-                                 folder_name) {
+add_cdts_cons_scores <- function(cluster = NULL,
+                                 db_introns = NULL,
+                                 folder_name = NULL) {
   
   
   
   
-  ## Load the IDB ---------------------------------------------------------
+ 
   
-  print(paste0(Sys.time(), " - loading the intron database..."))
+  if (is.null(db_introns) && !is.null(cluster)) {
+    ## Load the IDB 
+    db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
+      distinct(ref_junID, .keep_all = T)
+  }
   
-  db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
-    distinct(ref_junID, .keep_all = T) %>%
+  db_introns <- db_introns %>%
     mutate(CDTS_5ss_mean = 0.0,
            CDTS_3ss_mean = 0.0,
            phastCons20way_5ss_mean = 0.0,
@@ -2379,17 +2419,17 @@ add_cdts_cons_scores <- function(cluster,
     GRanges()
   
   
-  print(paste0(Sys.time(), " - getting scores assigned to introns from the IDB ..."))
+  print(paste0(Sys.time(), " - getting 5' scores assigned to introns from IntroVerse ..."))
   
   ## https://www.nature.com/articles/nature09000
   ## Scores from the 5'ss ---------------------------------------------------------
   overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
                                           subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                                                           ranges = IRanges(start = db_introns %>% start() - 10,
+                                                                           ranges = IRanges(start = db_introns %>% start() - 5,
                                                                                             end = db_introns %>% start() + 35),
                                                                            strand = db_introns %>% strand()),
                                           ignore.strand = FALSE,
-                                          type = "within")
+                                          type = "any")
   
   overlaps_tidy <- overlaps %>%
     as.data.frame() %>%
@@ -2403,20 +2443,24 @@ add_cdts_cons_scores <- function(cluster,
   db_introns[subjectHits(overlaps),]$phastCons20way_5ss_mean <- overlaps_tidy$mean_phastCons20way_mean
   
   
+  
+  print(paste0(Sys.time(), " - getting 3' scores assigned to introns from IntroVerse ..."))
+  
   ## Scores from the 3'ss ---------------------------------------------------------
   overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
                                           subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
                                                                            ranges = IRanges(start = db_introns %>% end() - 35,
-                                                                                            end = db_introns %>% end() + 10),
+                                                                                            end = db_introns %>% end() + 5),
                                                                            strand = db_introns %>% strand()),
                                           
                                           ignore.strand = FALSE,
-                                          type = "within")
+                                          type = "any")
   
-  overlaps_tidy <- overlaps %>%
+  overlaps_tidy <- overlaps %>% 
     as.data.frame() %>%
     mutate(CDTS = CNC_CDTS_CONS_gr[queryHits(overlaps),]$CDTS,
            mean_phastCons20way = CNC_CDTS_CONS_gr[queryHits(overlaps),]$mean_phastCons20way) %>%
+    as_tibble() %>%
     group_by(subjectHits) %>%
     mutate(CDTS_mean = CDTS %>% mean(),
            mean_phastCons20way_mean = mean_phastCons20way %>% mean())
@@ -2428,17 +2472,25 @@ add_cdts_cons_scores <- function(cluster,
   ## SAVE RESULTS
   #####################
   
-  file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds") 
-  saveRDS(object = db_introns %>% data.table::as.data.table(), 
-          file = file_name)
+  if (!is.null(cluster)) {
+    file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
+    saveRDS(object = db_introns %>% data.table::as.data.table(),
+            file = file_name)
+    
+    print(paste0(Sys.time(), " - CDTS and Conservation scores added! IDB updated!"))
+    
+    
+    rm(overlaps_tidy)
+    rm(db_introns)
+    rm(file_name)
+    rm(overlaps)
+    
+  } else {
+    return(db_introns)
+  }
   
-  print(paste0(Sys.time(), " - CDTS and Conservation scores added! IDB updated!"))
   
   
-  rm(overlaps_tidy)
-  rm(db_introns)
-  rm(file_name)
-  rm(overlaps)
   
   #gc()
 }
@@ -2565,7 +2617,7 @@ add_gene_tpm_length <- function(cluster,
   
   ## The matching is going to be donr
   hsv105_genes <- homo_sapiens_v105 %>%
-    filter(type == "gene") %>%
+    dplyr::filter(type == "gene") %>%
     dplyr::select(gene_id, gene_width = width)
   
   
@@ -2592,7 +2644,7 @@ add_gene_tpm_length <- function(cluster,
     df_merged %>% nrow()
     
     df_merged <- df_merged %>%
-      filter(width < gene_width)
+      dplyr::filter(width < gene_width)
     
     df_merged %>% nrow()
   }
@@ -2609,10 +2661,10 @@ add_gene_tpm_length <- function(cluster,
   ## Matching results with novel introns ---------------------------------------
   
   df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))%>%
-    filter(ref_junID %in% df_merged$ref_junID)
+    dplyr::filter(ref_junID %in% df_merged$ref_junID)
   
   if (!identical(df_novel$ref_junID %>% unique() %>% sort(), 
-                 df_merged %>% filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
+                 df_merged %>% dplyr::filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
     print("ERROR!")
   }
   
@@ -2654,7 +2706,7 @@ QC_IDB_junctions <- function() {
     
     ## Compare
     if (!identical(df_novel$ref_junID %>% unique() %>% sort(), 
-                   df_introns %>% filter(ref_type != "never") %>% select(ref_junID) %>% pull()%>% unique() %>% sort())) {
+                   df_introns %>% dplyr::filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
       print("ERROR!")
       break;
     } else {
@@ -2688,8 +2740,19 @@ QC_IDB_junctions <- function() {
 
 
 
-add_protein_percentage_to_database <- function(cluster,
-                                               folder_root) {
+#' Title
+#'
+#' @param df_introns 
+#' @param cluster 
+#' @param folder_root 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+add_protein_percentage_to_database <- function(db_introns = NULL,
+                                               cluster = NULL,
+                                               folder_root = NULL) {
   
   
   ## Import HUMAN REFERENCE transcriptome
@@ -2698,102 +2761,115 @@ add_protein_percentage_to_database <- function(cluster,
   
   print(paste0(Sys.time(), " - adding biotypes percentage to junctions..."))
   
-  df_protein <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds")
+  df_protein <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds") %>%
+    as_tibble()
   df_protein %>% head()
   df_protein %>% nrow()
   
   
   
   ## Load mis-splicing data for the current cluster
-  print(paste0(Sys.time(), " - Adding biotype percentage to '", cluster, "' junctions..."))
   
-  if (cluster == "case" || cluster == "control") {
-    folder_name <- paste0(folder_root, "/", cluster, "/pipeline3/missplicing-ratio/")
-    df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-  } else {
-    folder_name <- folder_root #paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v105")
-    df_introns <- readRDS(file = paste0(folder_root, "/", cluster, "_db_introns.rds")) %>%
-      filter(u12_intron == T | u2_intron == T)
+  
+  if (!is.null(cluster)) {
+    
+    print(paste0(Sys.time(), " - Adding biotype percentage to '", cluster, "' junctions..."))
+    
+    if (cluster == "case" || cluster == "control") {
+      folder_name <- paste0(folder_root, "/", cluster, "/pipeline3/missplicing-ratio/")
+      db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
+    } else {
+      folder_name <- folder_root #paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v105")
+      db_introns <- readRDS(file = paste0(folder_root, "/", cluster, "_db_introns.rds")) %>%
+        dplyr::filter(u12_intron == T | u2_intron == T)
+    }
+    
+    ## Load database of novel junctions
+    df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))  %>%
+      dplyr::filter(ref_junID %in% db_introns$ref_junID)
+    
+    df_novel %>% head()
+    df_novel %>% distinct(ref_junID) %>% nrow()
+    
+    ## QC - novel junctions must be attached to the same introns stored on the intron database
+    if ((db_introns %>% dplyr::filter(ref_type != "never") %>% distinct(ref_junID) %>% nrow()) != 
+        (df_novel %>% distinct(ref_junID) %>% nrow())) {
+      print("Error: some novel junctions are attached to introns that are not stored on the intron database!")
+    }
+    
   }
   
   
-  df_introns %>% head()
-  df_introns %>% nrow()
-  df_introns %>% distinct(ref_junID) %>% nrow()
+  # db_introns %>% head()
+  # db_introns %>% nrow()
+  # db_introns %>% distinct(ref_junID) %>% nrow()
   
   df_protein_local <- df_protein %>%
-    filter(junID %in% df_introns$ref_junID) 
+    dplyr::filter(junID %in% db_introns$ref_junID) 
   
-  df_protein_local %>% head()
-  df_protein_local %>% nrow()
-  df_introns %>% distinct(ref_junID) %>% nrow()
-  
-  
-  ## Load database of novel junctions
-  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))  %>%
-    filter(ref_junID %in% df_introns$ref_junID)
-  
-  df_novel %>% head()
-  df_novel %>% distinct(ref_junID) %>% nrow()
+  # df_protein_local %>% head()
+  # df_protein_local %>% nrow()
+  # db_introns %>% distinct(ref_junID) %>% nrow()
   
   
-  ## QC - novel junctions must be attached to the same introns stored on the intron database
-  if ((df_introns %>% filter(ref_type != "never") %>% distinct(ref_junID) %>% nrow()) != 
-      (df_novel %>% distinct(ref_junID) %>% nrow())) {
-    print("Error: some novel junctions are attached to introns that are not stored on the intron database!")
-  }
   
-  
-  if ((df_introns %>% distinct(ref_junID) %>% nrow()) == (df_protein_local %>% distinct(junID) %>% nrow())) {
+  if ((db_introns %>% distinct(ref_junID) %>% nrow()) == 
+      (df_protein_local %>% distinct(junID) %>% nrow())) {
     
-    df_introns %>% nrow()
+    #db_introns %>% nrow()
     
     ## Add protein-coding to the IDB
     
-    df_introns <- merge(x = df_introns %>% data.table::as.data.table(),
+    db_introns <- merge(x = db_introns %>% data.table::as.data.table(),
                         y = df_protein_local %>% data.table::as.data.table(),
                         by.x = "ref_junID",
                         by.y = "junID",
                         all.x = T)
-    df_introns %>% head()
+    #db_introns %>% head()
     
     
     
     
     ## Add protein-coding info to the novel junction database
-    
-    df_novel <- merge(x = df_novel %>% data.table::as.data.table(),
-                      y = df_protein_local %>% data.table::as.data.table(),
-                      by.x = "ref_junID",
-                      by.y = "junID",
-                      all.x = T)
-    df_novel %>% head()
-    
-    
-    
-    
-    if(identical(df_introns %>% filter(ref_type != "never") %>% distinct(ref_junID) %>% pull %>% sort(), 
-                 df_novel %>% distinct(ref_junID) %>% pull %>% sort())) {
+    if (!is.null(cluster)) {
+      df_novel <- merge(x = df_novel %>% data.table::as.data.table(),
+                        y = df_protein_local %>% data.table::as.data.table(),
+                        by.x = "ref_junID",
+                        by.y = "junID",
+                        all.x = T)
+      df_novel %>% head()
       
-      saveRDS(object = df_introns %>% data.table::as.data.table(),
-              file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-      
-      saveRDS(object = df_novel,
-              file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
-      
-      print(paste0(Sys.time(), " - ", cluster, " finished!"))
+      if(identical(db_introns %>% dplyr::filter(ref_type != "never") %>% distinct(ref_junID) %>% pull %>% sort(), 
+                   df_novel %>% distinct(ref_junID) %>% pull %>% sort())) {
+        
+        saveRDS(object = db_introns %>% data.table::as.data.table(),
+                file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
+        
+        saveRDS(object = df_novel,
+                file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
+        
+        print(paste0(Sys.time(), " - ", cluster, " finished!"))
+        
+      } else {
+        print(paste0(Sys.time(), " - ", cluster, " error - the two datasets present different refIDs of rows!"))
+      }
       
     } else {
-      print(paste0(Sys.time(), " - ", cluster, " error - the two datasets present different refIDs of rows!"))
+      return(db_introns)
     }
     
     
+    
+    
+    
+    
+    
   } else {
-    print(paste0(Sys.time(), " - ", cluster, " error - the two datasets present different number of rows!"))
+    return(NULL)
   }
   
   rm(df_protein_local)
-  rm(df_introns)
+  rm(db_introns)
   rm(df_novel)
   
   gc()
@@ -2808,7 +2884,7 @@ add_protein_percentage_to_database_QC <- function(tissues = gtex_tissues,
   cluster <- tissues[11]
   folder_name <- paste0(folder_root, "/", cluster, "/v104")
   df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
-    filter(u12_intron == T | u2_intron == T)
+    dplyr::filter(u12_intron == T | u2_intron == T)
   
   df_protein <- readRDS(file = protein_folder)
   df_protein %>% head()
@@ -2826,10 +2902,10 @@ add_protein_percentage_to_database_QC <- function(tissues = gtex_tissues,
     pull(tx_id_junction)
   
   df_protein %>%
-    filter(junID == df_introns[row_number,]$ref_junID)
+    dplyr::filter(junID == df_introns[row_number,]$ref_junID)
   
   homo_sapiens_v104_gtf %>%
-    filter(type == "transcript",
+    dplyr::filter(type == "transcript",
            transcript_id %in% tx)
   
   

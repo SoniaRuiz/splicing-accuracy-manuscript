@@ -18,8 +18,7 @@ prepare_data_from_rse <- function(rse,
   samples <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
-    filter(# gtex.smrin >= 6.0, 
-           gtex.smafrze != "EXCLUDE") %>%
+    filter(gtex.smafrze != "EXCLUDE") %>%
     pull(external_id)
   saveRDS(object = samples, file = paste0(folder_path, "/samples.rds"))
   

@@ -3,12 +3,13 @@ library(SummarizedExperiment)
 library(data.table)
 library(GenomicRanges)
 library(DBI)
+library(dplyr)
 
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
 
 .libPaths( c( "/home/sruiz/R/x86_64-pc-linux-gnu-library/4.1", .libPaths()) )
-Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIH7PS3Z7V",
-           "AWS_SECRET_ACCESS_KEY"="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",
+Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIETDHJZOI",
+           "AWS_SECRET_ACCESS_KEY"="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",
            "AWS_DEFAULT_REGION"="eu-west-2")
 
 
@@ -183,9 +184,23 @@ annotate_from_recount <- function(project_id,
       
       all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
                                                            cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
-  
+      
+      ## Remove split reads annotated to multiple genes
+      all_split_reads_details_tidy <- all_split_reads_details_105 %>%
+        distinct(junID, .keep_all = T) %>% 
+        rowwise() %>%
+        mutate(ambiguous = ifelse(gene_id_junction %>% unlist() %>% length() > 1, T, F))
+      all_split_reads_details_tidy <- all_split_reads_details_tidy %>%
+        filter(ambiguous == F)
+      saveRDS(object = all_split_reads_details_tidy %>% dplyr::select(-ambiguous),
+              file = paste0(folder_root, "/results/base_data/", cluster, "/",
+                            cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
+      print(paste0(all_split_reads_details_105 %>% nrow, " - ", all_split_reads_details_tidy %>% nrow()))
+      
+      
+      ## Update the split reads counts file to match the discarded junctions
       split_read_counts <- split_read_counts %>%
-        filter(junID %in% all_split_reads_details_105$junID)
+        filter(junID %in% all_split_reads_details_tidy$junID)
       
       split_read_counts <- split_read_counts[rowSums(split_read_counts[, c(2:ncol(split_read_counts))])>0,]
       
@@ -193,6 +208,7 @@ annotate_from_recount <- function(project_id,
                                                         project_id, "_", cluster, "_split_read_counts_", gtf_version, ".rds"))
       
       rm(all_split_reads_details_105)
+      rm(all_split_reads_details_tidy)
       rm(split_read_counts)
       rm(cluster_samples)
       rm(folder_source)
@@ -255,9 +271,12 @@ idb_generation <- function(project_id,
       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
 
 
-      # # ## Load split read data
+      ## Load split read data
       all_split_reads_details <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
                                                            cluster, "_annotated_SR_details_length_", gtf_version, ".rds"))
+      
+      
+      
       ## Load split read counts
       split_read_counts <- readRDS(file = paste0(folder_root, "/results/base_data/", cluster, "/",
                                                  project_id, "_", cluster, "_split_read_counts_", gtf_version, ".rds"))
@@ -267,93 +286,93 @@ idb_generation <- function(project_id,
       ## DISTANCES SUITE OF FUNCTIONS
       ############################################
 
-      get_distances(cluster = cluster,
-                    samples = samples,
-                    split_read_counts = split_read_counts,
-                    all_split_reads_details = all_split_reads_details,
-                    folder_name)
+      # get_distances(cluster = cluster,
+      #               samples = samples,
+      #               split_read_counts = split_read_counts,
+      #               all_split_reads_details = all_split_reads_details,
+      #               folder_name)
 
 
-      extract_distances(cluster = cluster,
-                        samples,
-                        split_read_counts = split_read_counts,
-                        folder_name = folder_name)
-
-
+      # extract_distances(cluster = cluster,
+      #                   samples,
+      #                   split_read_counts = split_read_counts,
+      #                   folder_name = folder_name)
+      # 
+      # 
       get_never_misspliced(cluster = cluster,
                            samples = samples,
                            split_read_counts = split_read_counts,
                            all_split_reads_details = all_split_reads_details,
                            folder_name = folder_name,
                            save_results = T)
-
-
-      extract_never_misspliced(cluster = cluster,
-                               samples = samples,
-                               split_read_counts = split_read_counts,
-                               folder_name = folder_name)
-
-      add_never_misspliced_to_df(cluster = cluster,
-                                 samples = samples,
-                                 all_split_reads_details = all_split_reads_details,
-                                 folder_name = folder_name)
-  
-      ############################################
-      ## MIS-SPLICING RATIO SUITE OF FUNCTIONS
-      ############################################
-  
-      folder_idb_name <-paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v", gtf_version, "/")
-      dir.create(file.path(folder_idb_name), recursive = T, showWarnings = F)
-  
-      get_missplicing_ratio(cluster = cluster,
-                            split_read_counts = split_read_counts,
-                            folder_name = folder_name,
-                            folder_save_name = folder_idb_name)
-
-      add_missplicing_class_to_df(cluster = cluster,
-                                  folder_name = folder_idb_name)
-
-      # get_missplicing_QC(cluster = cluster,
-      #                    samples = samples,
-      #                    split_read_counts = split_read_counts,
-      #                    all_split_reads_details = all_split_reads_details,
-      #                    folder_name = folder_idb_name)
-  
-  
-      ############################################
-      ## ADD FEATURES TO THE IDB
-      ############################################
-  
-      remove_MT_genes(cluster = cluster,
-                      folder_name = folder_idb_name)
-
-      add_intron_type(cluster = cluster,
-                      folder_name = folder_idb_name)
-
-      clinvar_analysis(cluster = cluster,
-                       folder_name = folder_idb_name)
+      # 
+      # 
+      # extract_never_misspliced(cluster = cluster,
+      #                          samples = samples,
+      #                          split_read_counts = split_read_counts,
+      #                          folder_name = folder_name)
+      # 
+      # add_never_misspliced_to_df(cluster = cluster,
+      #                            samples = samples,
+      #                            all_split_reads_details = all_split_reads_details,
+      #                            folder_name = folder_name)
+      # 
+      # ############################################
+      # ## MIS-SPLICING RATIO SUITE OF FUNCTIONS
+      # ############################################
+      # 
+      # folder_idb_name <-paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v", gtf_version, "/")
+      # dir.create(file.path(folder_idb_name), recursive = T, showWarnings = F)
+      # 
+      # get_missplicing_ratio(cluster = cluster,
+      #                       split_read_counts = split_read_counts,
+      #                       folder_name = folder_name,
+      #                       folder_save_name = folder_idb_name)
+      # 
+      # add_missplicing_class_to_df(cluster = cluster,
+      #                             folder_name = folder_idb_name)
+      # 
+      # # get_missplicing_QC(cluster = cluster,
+      # #                    samples = samples,
+      # #                    split_read_counts = split_read_counts,
+      # #                    all_split_reads_details = all_split_reads_details,
+      # #                    folder_name = folder_idb_name)
+      # 
+      # 
+      # ############################################
+      # ## ADD FEATURES TO THE IDB
+      # ############################################
+      # 
+      # remove_MT_genes(cluster = cluster,
+      #                 folder_name = folder_idb_name)
+      # 
+      # add_intron_type(cluster = cluster,
+      #                 folder_name = folder_idb_name)
+      # 
+      # clinvar_analysis(cluster = cluster,
+      #                  folder_name = folder_idb_name)
 
       # add_MANE_info(cluster = cluster,
       #               folder_name = folder_idb_name)
-      
-      
-      
-      #################################
-      ## CONFIGURE TO ADD THESE PROPERTIES TO THE IDB
-      ## Note: is the Shiny app the portal in which I
-      ## restrict the info that I show there.
-      #################################
-      
-      add_gene_tpm_length(cluster = cluster,
-                          tpm_file = paste0(folder_root, "/results/base_data/", cluster, 
-                                            "/", project_id, "_", cluster, "_tpm.rds"),
-                          folder_name = folder_idb_name)
-      
-      add_cdts_cons_scores(cluster = cluster,
-                           folder_name = folder_idb_name)
 
-      add_protein_percentage_to_database(cluster = cluster,
-                                         folder_root = folder_idb_name)
+
+
+      # #################################
+      # ## CONFIGURE TO ADD THESE PROPERTIES TO THE IDB
+      # ## Note: is the Shiny app the portal in which I
+      # ## restrict the info that I show there.
+      # #################################
+      # 
+      # add_gene_tpm_length(cluster = cluster,
+      #                     tpm_file = paste0(folder_root, "/results/base_data/", cluster, 
+      #                                       "/", project_id, "_", cluster, "_tpm.rds"),
+      #                     folder_name = folder_idb_name)
+      # 
+      # add_cdts_cons_scores(cluster = cluster,
+      #                      folder_name = folder_idb_name)
+      # 
+      # add_protein_percentage_to_database(cluster = cluster,
+      #                                    folder_root = folder_idb_name)
     
     }
   }
@@ -368,7 +387,7 @@ idb_generation <- function(project_id,
 ## CALLS 
 ############################
 
-# ## Load the dependency needed for the conservation/constraint scores        
+## Load the dependency needed for the conservation/constraint scores
 # if (!exists("CNC_CDTS_CONS_gr")) {
 #   print("Loading the 'CNC_CDTS_CONS_gr' file...")
 #   aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
@@ -378,53 +397,53 @@ idb_generation <- function(project_id,
 #   aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
 #   print("'CNC_CDTS_CONS_gr' file already loaded!")
 # }
-# 
-# 
-# ## Loop through each project
-# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-# # all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-# gtf_version <- 105
-# 
-# for (project_id in all_projects[-c(1:7)]) {
-# 
-#   # project_id <- all_projects[31]
-#   
-#   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
-#   
-#   print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
-# 
-#   rse <- recount3::create_rse_manual(
-#     project = project_id,
-#     project_home = "data_sources/gtex",
-#     organism = "human",
-#     annotation = "gencode_v29",
-#     type = "jxn"
-#   )
-# 
-#   download_from_recount(project_id = project_id,
-#                         recount_version = 3,
-#                         clusters_ID = rse$gtex.smtsd %>% unique(),
-#                         rse = rse,
-#                         folder_root = folder_root)
-# 
-#   rm(rse)
-#   gc()
-#     
-#   clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters.rds"))
-#     
-#   annotate_from_recount(project_id = project_id,
-#                         gtf_version = gtf_version,
-#                         clusters_ID = clusters_ID,
-#                         folder_root = folder_root)
-#   gc()
-# 
-#   idb_generation(project_id = project_id,
-#                  gtf_version = gtf_version,
-#                  clusters_ID = clusters_ID,
-#                  folder_root = folder_root)
-#   gc()
-#   
-# }
+
+
+## Loop through each project
+all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+gtf_version <- 105
+
+for (project_id in all_projects[9]) {
+
+  # project_id <- all_projects[31]
+
+  folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
+
+  print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
+
+  # rse <- recount3::create_rse_manual(
+  #   project = project_id,
+  #   project_home = "data_sources/gtex",
+  #   organism = "human",
+  #   annotation = "gencode_v29",
+  #   type = "jxn"
+  # )
+  # 
+  # download_from_recount(project_id = project_id,
+  #                       recount_version = 3,
+  #                       clusters_ID = rse$gtex.smtsd %>% unique(),
+  #                       rse = rse,
+  #                       folder_root = folder_root)
+  # 
+  # rm(rse)
+  # gc()
+
+  clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters.rds"))
+
+  # annotate_from_recount(project_id = project_id,
+  #                       gtf_version = gtf_version,
+  #                       clusters_ID = clusters_ID,
+  #                       folder_root = folder_root)
+  # gc()
+
+  idb_generation(project_id = project_id,
+                 gtf_version = gtf_version,
+                 clusters_ID = clusters_ID,
+                 folder_root = folder_root)
+  gc()
+
+}
 
 
 
@@ -432,48 +451,52 @@ idb_generation <- function(project_id,
 ## CALLS - SQL GENERATION
 ##################################
 
-## Connect to the database -----------------------------------------------------
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
-
-age <- F
-getwd()
-
-hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
-
-if (age) {
-  database_path <- "./database/age-stratification.sqlite"
-  SRA_projects <- c("BRAIN", "BLOOD", "MUSCLE") %>% sort()
-} else {
-  database_path <- "./database/splicing.sqlite"
-  SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-}
-
-SRA_projects %>% length() %>% print()
-
-con <- dbConnect(RSQLite::SQLite(), database_path)
-dbListTables(con)
-
-## Remove the tables -----------------------------------------------------------
-
-remove_tables(all = F)
-dbListTables(con)
-
-
-## Create the tables -----------------------------------------------------------
-
-# create_master_table()
+# ## Connect to the database -----------------------------------------------------
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
 # 
-# create_mane_table()
+# age <- F
+# getwd()
 # 
-# create_gene_table()
+# if (!exists("hg38")) {
+#   hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+# }
+# if (!exists("hg_MANE")) {
+#   hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
+# }
 # 
-# create_intron_table()
+# if (age) {
+#   database_path <- "/home/sruiz/PROJECTS/splicing-project-recount3/database/age-stratification.sqlite"
+#   SRA_projects <- c("BRAIN", "BLOOD", "MUSCLE") %>% sort()
+# } else {
+#   database_path <- "/home/sruiz/PROJECTS/splicing-project-recount3/database/splicing-intronextra.sqlite"
+#   SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+# }
 # 
-# create_novel_table()
-
-create_cluster_tables()
+# SRA_projects %>% length() %>% print()
+# 
+# con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database_path)
+# dbListTables(con)
+# 
+# ## Remove the tables -----------------------------------------------------------
+# 
+# remove_tables(database_path, all = T)
+# dbListTables(con)
+# 
+# 
+# ## Create the tables -----------------------------------------------------------
+# 
+# # create_master_table(database_path)
+# # 
+# # create_mane_table(database_path)
+# # 
+# # create_gene_table(database_path)
+# # 
+# # create_intron_table(database_path)
+# # 
+# # create_novel_table(database_path)
+# 
+# create_cluster_tables(database_path)
 
 
 ## QC of the tables ------------------------------------------------------------

@@ -1,0 +1,214 @@
+---
+title: "NAR - reviewers' comments"
+author: "Sonia Garcia-Ruiz"
+date: "9/13/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE, echo = F}
+knitr::opts_chunk$set(echo = TRUE)
+
+
+########################################
+## CONNECT TO THE DATABASE
+########################################
+
+library(tidyverse)
+library(data.table)
+library(GenomicRanges)
+library(DBI)
+
+########################################
+## REVIEWERS' COMMENTS
+########################################
+
+
+## CONNECT TO THE DATABASE
+
+database_path <- "/home/sruiz/PROJECTS/splicing-project-recount3/database/splicing.sqlite"
+
+getwd()
+setwd("~/PROJECTS/splicing-project-recount3/")
+con <- dbConnect(RSQLite::SQLite(), database_path)
+dbListTables(con)
+
+query <- paste0("SELECT * FROM 'master'")
+df_metadata <- dbGetQuery(con, query)
+
+
+query <- "SELECT * FROM 'intron'"
+df_intron <- dbGetQuery(conn = con, 
+                        statement = query) %>% as_tibble()
+
+df_clinvar <- df_intron %>%
+  filter(clinvar != "-") %>%
+  dplyr::select(ref_junID, ref_coordinates)
+
+
+df_not_clinvar <- df_intron %>%
+  filter(clinvar == "-") %>%
+  dplyr::select(ref_junID, ref_coordinates)
+
+
+tables <- dbListTables(con)
+
+df_cv_result <- map_df(c("clinvar", "not_clinvar"), function(type) {
+  
+  if (type == "clinvar") {
+    df_data <- df_clinvar
+  } else {
+    df_data <- df_not_clinvar
+  }
+  
+  map_df(tables, function(table) {
+    
+    if (!(table %in% c("intron", "novel", "gene", "mane", "master"))) {
+      
+      print(paste0("Table: '", table, "'!"))
+      
+      query <- paste0("SELECT ref_junID, ref_sum_counts, ref_n_individuals from '", 
+                      table, "' WHERE ref_junID IN (", 
+                      paste(df_data$ref_junID, collapse = ","),")")
+      
+      dbGetQuery(con, query) %>% 
+        mutate(tissue = table, clinvar = type) %>% 
+        as_tibble() %>%
+        return()
+      
+    }
+  })
+})
+
+
+## TIDY DATAFRAME
+df_cv_result_tidy <- df_cv_result %>%
+  distinct(ref_junID, tissue, .keep_all = T) %>%
+  group_by(ref_junID) %>%
+  mutate(total_ref_sum_counts = sum(ref_sum_counts),
+         total_ref_n_individuals = sum(ref_n_individuals)) %>%
+  mutate(total_ref_mean_counts = total_ref_sum_counts/total_ref_n_individuals)
+
+
+
+```
+
+
+## ClinVar vs not-ClinVar MSR
+
+This analysis aims to demonstrate that introns with ClinVar mutations are less mis-spliced than introns not containing ClinVar mutations, and that it does not depend on the read coverage of the gene studied.
+
+### Methods and Results
+
+Obtain all introns with clinvar mutations and check their minimum and max mean coverage. 
+
+```{r get_clinvar, echo=T}
+
+## Clinvar
+df_clinvar_tidy <- df_cv_result_tidy %>% 
+  distinct(ref_junID, .keep_all = T) %>%
+  filter(clinvar  == "clinvar")
+
+df_clinvar_tidy$total_ref_mean_counts %>% summary
+
+```
+
+Take 3525 random introns that do not contain ClinVar mutations. These introns must present similar mean read coverage values to the introns with clinvar mutations, so the comparison between both datasets is the fairest possible.
+
+```{r subsampling}
+set.seed(3)
+## Not clinvar
+df_not_clinvar_tidy <- df_cv_result_tidy %>% 
+  distinct(ref_junID, .keep_all = T) %>%
+  filter(clinvar  == "not_clinvar")
+
+
+df_not_clinvar_tidy_sub <- (df_not_clinvar_tidy %>%
+  filter(round(total_ref_mean_counts) %in% 
+           (round(df_clinvar_tidy$total_ref_mean_counts))))
+
+df_not_clinvar_tidy_sub <- df_not_clinvar_tidy_sub[1:nrow(df_clinvar_tidy),]
+
+df_not_clinvar_tidy_sub$total_ref_mean_counts %>% summary() %>% print()
+```
+
+Compare the distributions of MSR_D and MSR_A of both datasets.
+
+```{r plot}
+
+
+## PLOT
+ggplot(data = rbind(df_not_clinvar_tidy_sub, df_clinvar_tidy) %>% distinct(ref_junID, .keep_all = T)) +
+  geom_density(mapping = aes(x = total_ref_mean_counts, fill = clinvar), 
+               alpha = 0.6) +
+  ggforce::facet_zoom(xlim = c(0:1000)) +
+  ggtitle("Mean read coverage per intron across samples - all tissues") +
+  theme(legend.title = element_blank(),
+        legend.position = "top") +
+  xlab("Mean read coverage")
+
+
+
+```
+
+Demonstrate that introns with clinvar mutations are less mis-spliced by comparing their MSR_D and MSR_A values.
+
+
+```{r MSR_comparison, echo=FALSE, results=F }
+
+
+MSR_D_clinvar <- NULL
+MSR_D_notclinvar <- NULL
+MSR_A_clinvar <- NULL
+MSR_A_notclinvar <- NULL
+
+for (table in tables) {
+  
+  if (!(table %in% c("intron", "novel", "gene", "mane", "master"))) {
+    
+    print(paste0("Table: '", table, "'!"))
+    
+    ## CLINVAR MSR_D AND MSR_A
+    query <- paste0("SELECT * from '", table,"' WHERE ref_junID IN (", 
+                    paste(df_clinvar_tidy$ref_junID, collapse=","), ")")
+    db <- dbGetQuery(con, query) %>% as_tibble()
+    
+    MSR_D_clinvar <- c(MSR_D_clinvar, db$MSR_D)
+    MSR_A_clinvar <- c(MSR_A_clinvar, db$MSR_A)
+    
+    
+    ## NOT CLINVAR MSR_D AND MSR_A
+    query <- paste0("SELECT * from '", table,"' WHERE ref_junID IN (", 
+                    paste(df_not_clinvar_tidy_sub$ref_junID, collapse=","), ")")
+    db <- dbGetQuery(con, query) %>% as_tibble()
+    
+    MSR_D_notclinvar <- c(MSR_D_notclinvar, db$MSR_D)
+    MSR_A_notclinvar <- c(MSR_A_notclinvar, db$MSR_A)
+  }
+}
+
+```
+
+
+1. MSR measures of the introns containig ClinVar mutations:
+
+```{r MSR_clinvar}
+
+## MSR_DONOR - INTRONS WITH CLINVAR MUTATIONS
+MSR_D_clinvar %>% summary()
+
+## MSR_ACCEPTOR - INTRONS WITH CLINVAR MUTATIONS
+MSR_A_clinvar %>% summary()
+
+```
+
+
+2. MSR measures of the introns NOT containig ClinVar mutations:
+
+```{r MSR_not_clinvar}
+
+## MSR_DONOR - INTRONS WITHOUT CLINVAR MUTATIONS
+MSR_D_notclinvar %>% summary()
+
+## MSR_ACCEPTOR - INTRONS WITHOUT CLINVAR MUTATIONS
+MSR_A_notclinvar %>% summary()
+```

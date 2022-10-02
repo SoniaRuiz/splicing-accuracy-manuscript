@@ -4,6 +4,7 @@
 ## Sonia García-Ruiz - s.ruiz@ucl.ac.uk - 2020
 ######################################################################
 library(GenomicRanges)
+library(ensembldb)
 # library(lintr)
 # lintr::lint("/home/sruiz/PROJECTS/splicing-project/pipeline1_QC_split_reads.R")
 
@@ -243,6 +244,7 @@ remove_encode_blacklist_regions <- function(GRdata,
   
   overlaped_junctions <- GenomicRanges::findOverlaps(query = encode_blacklist_hg38, 
                                                      subject = GRdata %>% diffloop::rmchr(),
+                                                     #type = "any",
                                                      ignore.strand = F)
   
   ## JuncID indexes to be removed: they overlap with a black region
@@ -307,50 +309,50 @@ apply_split_reads_length_filter <- function(all_split_reads_details,
 #' @export
 #'
 #' @examples
-get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ensembl/gtf_gff3/v104/",
-                                                gtf_file_name = "/v104/Homo_sapiens.GRCh38.104.gtf",
-                                                version = "v104") {
+get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ensembl/gtf_gff3/v105/",
+                                                gtf_file_name = "/v105/Homo_sapiens.GRCh38.105.gtf",
+                                                version = "v105") {
   
   
   
   
-  homo_sapiens <- ensemblGenome()
-  basedir(homo_sapiens) <- dirname(dirname)
-  read.gtf(object = homo_sapiens, filename = gtf_file_name)
+  homo_sapiens <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
   print(paste0("'homo_sapiens' ", version," file loaded!"))
   
   
-  
-  ## Obtaining the splicing table from the reference transcriptome
-  # splice_table <- refGenome::getSpliceTable(homo_sapiens) %>% 
-  #   refGenome::getGtf()
-  # saveRDS(object = splice_table,
-  #         file = paste0("/home/sruiz/PROJECTS/splicing-project/results/base_data/homosapiens_",version,"_splicetable.rds"))
-  
-  
-  intron_lengths <- (splice_table$rstart) - (splice_table$lend) - 1
-  
-  df <- data.frame(length = intron_lengths)
-  
-  
+  splice_table <- ggtranscript::to_intron(exons = homo_sapiens %>%
+                                            as_tibble() %>%
+                                            dplyr::filter(type == "exon"))
   
   ## Plot the splicing data within a 'ggplot' histogram plot
-  ggplot() + 
-    geom_histogram(aes(x = length), dplyr::mutate(df, z = FALSE), bins = 40) + 
-    geom_histogram(aes(x = length), dplyr::mutate(df %>% filter(length < 100), z = TRUE), binwidth = 5) +
-    facet_zoom(xlim = c(0, 100), ylim = c(0, 12000), zoom.data = z, horizontal = FALSE) + 
+  ggplot(data = splice_table ) + 
+    geom_histogram(aes(x = width), 
+                   dplyr::mutate(splice_table, z = FALSE), 
+                   bins = 40) + 
+    geom_histogram(aes(x = width),
+                   dplyr::mutate(splice_table %>% dplyr::filter(width < 100), z = TRUE),
+                   binwidth = 5) +
+    # geom_vline(aes(xintercept = 10), 
+    #            dplyr::mutate(splice_table, z = TRUE), 
+    #            linetype = "dashed", colour = "red") +
+    # geom_text(aes(x = 28, label = "28 bp", y = 5000), 
+    #           dplyr::mutate(splice_table, z = TRUE), 
+    #           colour = "black", check_overlap = T) +
+    ggforce::facet_zoom(xlim = c(0, 100), 
+                        ylim = c(0, 50000),
+                        zoom.data = z, horizontal = FALSE) + 
     theme(zoom.y = element_blank(), validate = FALSE) +
-    ggtitle(paste0("Length of the introns obtained from the raw data of the reference transcriptome",
-                   "- version ", version))  +
+    # ggtitle(paste0("Length of the introns obtained from the raw data of the reference transcriptome",
+    #                "- version ", version))  +
     xlab("Intron length (in base pairs)") +
     ylab("Intron count (in number of introns)") + 
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.title = element_text(colour = "black", size = "11"))
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"))
   
   ## Save the plot
-  ggplot2::ggsave("/home/sruiz/PROJECTS/splicing-project/results/pipeline1/images/intron_length_raw_ensembl_v104.png",
+  ggplot2::ggsave("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/intron_length_raw_ensembl_v105.png",
                   width = 183, height = 183, units = "mm", dpi = 300)
   
   
@@ -362,7 +364,8 @@ get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ense
   
   ## Load the blacklist regions
   if (!exists("encode_blacklist_hg38")) {
-    encode_blacklist_hg38 <- rtracklayer::import("/data/references/ENCODE_blacklist_v2/hg38-blacklist.v2.bed") %>% rmchr()
+    encode_blacklist_hg38 <- rtracklayer::import("/data/references/ENCODE_blacklist_v2/hg38-blacklist.v2.bed") %>% 
+      diffloop::rmchr()
   } else {
     print("'encode_blacklist_hg38' file already loaded!")
   }
@@ -370,7 +373,7 @@ get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ense
   
   ## Remove all genomic data from a low-supported transcript
   homo_sapiens_tidy <- homo_sapiens %>% 
-    getGtf() %>%
+    as_tibble() %>%
     dplyr::filter(substr(transcript_support_level, 1, 1) %in% c("1", "2", "3")) %>%
     GenomicRanges::GRanges() 
   
@@ -391,45 +394,35 @@ get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ense
   
   # Convert to refGenome format
   homo_sapiens_tidy <- homo_sapiens_tidy_GR %>%
-    as.data.frame() %>%
-    dplyr::rename(seqid = seqnames)
-  
-  # refGenome::setGtf(object = homo_sapiens,
-  #                   value = homo_sapiens_tidy)
-  # 
-  # ## Getting the splice table
-  # splice_table <- refGenome::getSpliceTable(homo_sapiens) %>% 
-  #   refGenome::getGtf()
-  
-  saveRDS(object = splice_table,
-          file = paste0("/home/sruiz/PROJECTS/splicing-project/results/base_data/homosapiens_",version,"_splicetable_v104.rds"))
-  
-  intron_lengths <- (splice_table$rstart) - (splice_table$lend) - 1
-  
+    as_tibble() 
+
   
   
   ## Removing the frameshift introns (all introns with shorter or equal than 5 nucleotides)
-  ind <- which(intron_lengths <= 5)
-  if (ind %>% length > 0) {
-    intron_lengths <- intron_lengths[-ind]
+  if (homo_sapiens_tidy %>%
+      dplyr::filter(width <= 5) %>% nrow() > 0) {
+    print(paste0( homo_sapiens_tidy %>%
+                    dplyr::filter(width <= 5) %>% nrow(), " frameshift introns removed!"))
+   
+    homo_sapiens_tidy <- homo_sapiens_tidy %>%
+      dplyr::filter(width > 5)
   }
-  print(paste0(length(ind), " frameshift introns removed!"))
-  
-  
-  ## Store the info in a dataframe
-  df <- data.frame(length = intron_lengths)
-  
+
   # df$length %>% min
   # df$length %>% max
   
+  print("Ensembl-v105 statistics (after pre-processing it):")
+  print(paste0("Maximum junction length: ", max(homo_sapiens_tidy$width), " bp"))
+  print(paste0("Minimum junction length: ", min(homo_sapiens_tidy$width), " bp"))
+  
   
   ## Plot the splicing data within a 'ggplot' histogram plot
-  ggplot() + 
-    geom_histogram(aes(x = length), dplyr::mutate(df, z = FALSE), bins = 40) + 
-    geom_histogram(aes(x = length), dplyr::mutate(df %>% filter(length <= 100), z = TRUE), binwidth = 5) +
-    geom_vline(aes(xintercept = 28), dplyr::mutate(df, z = TRUE), linetype = "dashed", colour = "red") +
-    geom_text(aes(x = 28, label = "28 bp", y = 5000), dplyr::mutate(df, z = TRUE), colour = "black", check_overlap = T) +
-    facet_zoom(xlim = c(0, 100), ylim = c(0, 8000), zoom.data = z, horizontal = FALSE) + 
+  ggplot(data = homo_sapiens_tidy) + 
+    geom_histogram(aes(x = width), dplyr::mutate(homo_sapiens_tidy, z = FALSE), bins = 40) + 
+    geom_histogram(aes(x = width), dplyr::mutate(homo_sapiens_tidy %>% dplyr::filter(width <= 100), z = TRUE), binwidth = 5) +
+    geom_vline(aes(xintercept = 28), dplyr::mutate(homo_sapiens_tidy, z = TRUE), linetype = "dashed", colour = "red") +
+    geom_text(aes(x = 28, label = "28 bp", y = 5000), dplyr::mutate(homo_sapiens_tidy, z = TRUE), colour = "black", check_overlap = T) +
+    ggforce::facet_zoom(xlim = c(0, 100), ylim = c(0, 8000), zoom.data = z, horizontal = FALSE) + 
     theme(zoom.y = element_blank(), validate = FALSE) +
     #ggtitle("Length of the introns obtained from the pre-processed data of Ensembl-v97")  +
     xlab("Intron length (in base pairs)") +
@@ -440,12 +433,10 @@ get_intron_length_ref_transcriptome <- function(dirname = "/data/references/ense
           axis.title = element_text(colour = "black", size = "12"))
   
   ## Save the plot
-  ggsave("/home/sruiz/PROJECTS/splicing-project/results/pipeline1/images/intron_length_ensembl_v104_processed.png",
+  ggsave("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/intron_length_ensembl_v105_processed.png",
          width = 183, height = 183, units = "mm", dpi = 300)
   
-  print("Ensembl-v97 statistics (after pre-processing it):")
-  print(paste0("Maximum junction length: ", max(intron_lengths), " bp"))
-  print(paste0("Minimum junction length: ", min(intron_lengths), " bp"))
+
   
   
 }
