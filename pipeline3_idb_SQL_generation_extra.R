@@ -6,9 +6,8 @@ library(DBI)
 library(tidyverse)
 library(data.table)
 
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_generation.R")
-source("/home/sruiz/PROJECTS/splicing-project-recount3/database/NAR_reviews/helper.R")
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline1_download_from_recount.R")
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_generation.R")
 
 Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIETDHJZOI",
            "AWS_SECRET_ACCESS_KEY"="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",
@@ -29,41 +28,41 @@ dbListTables(con)
 ## LOAD REFERNCES
 ##########################################
 
-# if (!exists("CNC_CDTS_CONS_gr")) {
-#   print("Loading the 'CNC_CDTS_CONS_gr' file...")
-#   aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
-#   print("'CNC_CDTS_CONS_gr' file loaded!")
-# } else {
-#   print("'CNC_CDTS_CONS_gr' file already loaded!")
-# }
-# 
-# ## GET INFO FROM MANE
-# if (!exists("hg_mane_transcripts")) {
-#   print("Loading the 'hg_MANE' file...")
-#   hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
-#   hg_MANE_tidy <- hg_MANE %>%
-#     as_tibble() %>%
-#     dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id, 
-#                   -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
-#     mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
-#     drop_na()
-#   hg_mane_transcripts <- hg_MANE_tidy %>% 
-#     dplyr::filter(type == "transcript") %>%
-#     distinct(transcript_id) %>% pull()
-# }
-# 
-# # GET INFO FROM THE HG38
-# if (!exists("hg38_transcripts")) {
-#   print("Loading the 'hg38' file...")
-#   hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-#   hg38_transcripts <- hg38 %>%
-#     as_tibble() %>%
-#     dplyr::filter(type == "transcript") %>%
-#     dplyr::select(transcript_id, transcript_support_level) %>%
-#     mutate(transcript_support_level = str_sub(string = transcript_support_level,
-#                                               start = 1,
-#                                               end = 1))
-# }
+if (!exists("CNC_CDTS_CONS_gr")) {
+  print("Loading the 'CNC_CDTS_CONS_gr' file...")
+  aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
+  print("'CNC_CDTS_CONS_gr' file loaded!")
+} else {
+  print("'CNC_CDTS_CONS_gr' file already loaded!")
+}
+
+## GET INFO FROM MANE
+if (!exists("hg_mane_transcripts")) {
+  print("Loading the 'hg_MANE' file...")
+  hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
+  hg_MANE_tidy <- hg_MANE %>%
+    as_tibble() %>%
+    dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
+                  -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+    mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
+    drop_na()
+  hg_mane_transcripts <- hg_MANE_tidy %>%
+    dplyr::filter(type == "transcript") %>%
+    distinct(transcript_id) %>% pull()
+}
+
+# GET INFO FROM THE HG38
+if (!exists("hg38_transcripts")) {
+  print("Loading the 'hg38' file...")
+  hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+  hg38_transcripts <- hg38 %>%
+    as_tibble() %>%
+    dplyr::filter(type == "transcript") %>%
+    dplyr::select(transcript_id, transcript_support_level) %>%
+    mutate(transcript_support_level = str_sub(string = transcript_support_level,
+                                              start = 1,
+                                              end = 1))
+}
 
 
 ## Remove the tables -----------------------------------------------------------
@@ -95,6 +94,8 @@ remove_tables <- function(database_path,
 ## METADATA table --------------------------------------------------------------
 
 create_metadata_table <- function(database_path,
+                                  SRA_projects,
+                                  main_project = "splicing",
                                   age = F, QC = F)  {
   
   
@@ -121,8 +122,22 @@ create_metadata_table <- function(database_path,
       # project <- SRA_projects[2]
       # project <- SRA_projects[6]
       metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                        project, "/raw_data/samples_metadata.rds"))
-      if (metadata %>% nrow() >= 1) {
+                                        project, "/", 
+                                        main_project, "_project/raw_data/samples_metadata.rds"))
+      
+      if (main_project == "splicing") {
+        metadata <- metadata %>% 
+          as_tibble() %>%
+          filter(gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(external_id, .keep_all = T) 
+        if (metadata %>% nrow() < 70) {
+          metadata <- NULL
+        }
+      }
+      
+      if (!is.null(metadata) && metadata %>% nrow() >= 70) {
+        
         
         print(metadata$gtex.smtsd %>% unique())
         print(metadata %>% distinct(gtex.sampid) %>% nrow())
@@ -177,12 +192,27 @@ create_metadata_table <- function(database_path,
 
 
 
-
+create_mane_table <- function(database_path,
+                              age = F) {
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  
+  DBI::dbWriteTable(conn = con,
+                    name = "mane",
+                    value = hg_MANE_tidy,
+                    overwrite = T)
+  
+  # dbRemoveTable(conn = con, "mane")
+  DBI::dbDisconnect(conn = con)
+  
+  print(paste0("Table: 'mane' created!"))
+}
 
 
 ## Create the master tables ----------------------------------------------------
 
 create_master_tables <- function(database_path,
+                                 distances_file,
                                  age = F) {
 
   
@@ -192,11 +222,11 @@ create_master_tables <- function(database_path,
   
   
   
-  if (file.exists("/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")) {
+  if (file.exists(distances_file)) {
     
     print(paste0(Sys.time(), " - loading the pre-generated pair-wise distances data..."))
     
-    df_all_distances_pairings_raw <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")
+    df_all_distances_pairings_raw <- readRDS(file = distances_file) #"/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")
     df_ambiguous_novel <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/df_all_tissues_raw_distances_ambiguous.rds")
     df_introns_never <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/database/df_all_nevermisspliced_introns.rds")
     
@@ -1478,7 +1508,7 @@ create_cluster_tables <- function(database_path,
 ## CALLS
 ###################################################
 
-remove_tables(database_path, all = F)
+#remove_tables(database_path, all = F)
 #create_metadata_table(database_path)
 #create_master_tables(database_path)
-create_cluster_tables(database_path)
+#create_cluster_tables(database_path)

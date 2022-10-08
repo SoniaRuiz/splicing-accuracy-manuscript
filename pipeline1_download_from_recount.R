@@ -26,8 +26,8 @@ prepare_data_from_rse <- function(rse,
   metadata.info <- rse %>% 
     SummarizedExperiment::colData() %>%
     as_tibble() %>%
-    filter(# gtex.smrin >= 6.0,
-      gtex.smafrze != "EXCLUDE")
+    filter(gtex.smrin >= 6.0,
+           gtex.smafrze != "EXCLUDE")
   saveRDS(object = metadata.info, file = paste0(folder_path, "/samples_metadata.rds"))
   
   ## Save junctions metadata info
@@ -139,7 +139,7 @@ separate_samples <- function(clusters_ID,
       cluster_samples <- metadata.info %>% 
         as_tibble() %>%
         filter(gtex.smtsd == cluster,
-               #gtex.smrin >= 6.0,
+               gtex.smrin >= 6.0,
                gtex.smafrze != "EXCLUDE") %>%
         distinct(external_id) %>% 
         pull()

@@ -56,7 +56,8 @@ get_distances <- function(cluster,
                                                split_read_counts_sample, 
                                                by = "junID", 
                                                sort = TRUE)  %>%
-          dplyr::rename(counts = all_of(sample %>% as.character()))
+          dplyr::rename(counts = all_of(sample %>% as.character())) %>%
+          as_tibble()
         
         split_reads_details_97_sample %>% head()
         
