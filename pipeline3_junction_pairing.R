@@ -973,6 +973,105 @@ get_missplicing_QC <- function(cluster,
 
 
 
+add_cdts_cons_scores <- function(cluster = NULL,
+                                 db_introns = NULL,
+                                 folder_name = NULL) {
+  
+  
+  
+  
+  
+  
+  if (is.null(db_introns) && !is.null(cluster)) {
+    ## Load the IDB 
+    db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
+      distinct(ref_junID, .keep_all = T)
+  }
+  
+  db_introns <- db_introns %>%
+    mutate(CDTS_5ss_mean = 0.0,
+           CDTS_3ss_mean = 0.0,
+           phastCons20way_5ss_mean = 0.0,
+           phastCons20way_3ss_mean = 0.0) %>%
+    GRanges()
+  
+  
+  print(paste0(Sys.time(), " - getting 5' scores assigned to introns from IntroVerse ..."))
+  
+  ## https://www.nature.com/articles/nature09000
+  ## Scores from the 5'ss ---------------------------------------------------------
+  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
+                                          subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
+                                                                           ranges = IRanges(start = db_introns %>% start() - 5,
+                                                                                            end = db_introns %>% start() + 35),
+                                                                           strand = db_introns %>% strand()),
+                                          ignore.strand = FALSE,
+                                          type = "any")
+  
+  overlaps_tidy <- overlaps %>%
+    as.data.frame() %>%
+    mutate(CDTS = CNC_CDTS_CONS_gr[queryHits(overlaps),]$CDTS,
+           mean_phastCons20way = CNC_CDTS_CONS_gr[queryHits(overlaps),]$mean_phastCons20way) %>%
+    group_by(subjectHits) %>%
+    mutate(CDTS_mean = CDTS %>% mean(),
+           mean_phastCons20way_mean = mean_phastCons20way %>% mean())
+  
+  db_introns[subjectHits(overlaps),]$CDTS_5ss_mean <- overlaps_tidy$CDTS_mean
+  db_introns[subjectHits(overlaps),]$phastCons20way_5ss_mean <- overlaps_tidy$mean_phastCons20way_mean
+  
+  
+  
+  print(paste0(Sys.time(), " - getting 3' scores assigned to introns from IntroVerse ..."))
+  
+  ## Scores from the 3'ss ---------------------------------------------------------
+  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
+                                          subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
+                                                                           ranges = IRanges(start = db_introns %>% end() - 35,
+                                                                                            end = db_introns %>% end() + 5),
+                                                                           strand = db_introns %>% strand()),
+                                          
+                                          ignore.strand = FALSE,
+                                          type = "any")
+  
+  overlaps_tidy <- overlaps %>% 
+    as.data.frame() %>%
+    mutate(CDTS = CNC_CDTS_CONS_gr[queryHits(overlaps),]$CDTS,
+           mean_phastCons20way = CNC_CDTS_CONS_gr[queryHits(overlaps),]$mean_phastCons20way) %>%
+    as_tibble() %>%
+    group_by(subjectHits) %>%
+    mutate(CDTS_mean = CDTS %>% mean(),
+           mean_phastCons20way_mean = mean_phastCons20way %>% mean())
+  
+  db_introns[subjectHits(overlaps),]$CDTS_3ss_mean <- overlaps_tidy$CDTS_mean
+  db_introns[subjectHits(overlaps),]$phastCons20way_3ss_mean <- overlaps_tidy$mean_phastCons20way_mean
+  
+  #####################
+  ## SAVE RESULTS
+  #####################
+  
+  if (!is.null(cluster)) {
+    file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
+    saveRDS(object = db_introns %>% data.table::as.data.table(),
+            file = file_name)
+    
+    print(paste0(Sys.time(), " - CDTS and Conservation scores added! IDB updated!"))
+    
+    
+    rm(overlaps_tidy)
+    rm(db_introns)
+    rm(file_name)
+    rm(overlaps)
+    
+  } else {
+    return(db_introns)
+  }
+  
+  
+  
+  
+  #gc()
+}
+
 ####################################################
 ## ADDING FEATURES TO THE INTRON DATABASE ##########
 ####################################################

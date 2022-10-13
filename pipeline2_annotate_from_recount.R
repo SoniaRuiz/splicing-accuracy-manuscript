@@ -4,7 +4,7 @@
 ## Sonia García-Ruiz - s.ruiz@ucl.ac.uk - 2020
 ######################################################################
 library(GenomicRanges)
-library(ensembldb)
+#library(ensembldb)
 # library(lintr)
 # lintr::lint("/home/sruiz/PROJECTS/splicing-project/pipeline1_QC_split_reads.R")
 

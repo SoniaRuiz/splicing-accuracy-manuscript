@@ -22,7 +22,7 @@ Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIETDHJZOI",
 # con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database_path)
 # dbListTables(con)
 
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_junction_pairing.R")
+
 ##########################################
 ## LOAD REFERNCES
 ##########################################
@@ -95,25 +95,22 @@ remove_tables <- function(database_path,
 
 create_metadata_table <- function(database_path,
                                   SRA_projects,
-                                  gtf_version,
                                   main_project = "splicing",
-                                  QC = F)  {
+                                  age = F, QC = F)  {
   
   print(paste0(Sys.time(), " - creating metadata table ... "))
+  con <- dbConnect(RSQLite::SQLite(), database_path)
   
-  
-  if (main_project == "age") {
+  if (age) {
     
     df_metadata <- map_df(SRA_projects, function(project) { 
       
       print(paste0(Sys.time(), " - getting info from ", project))
       
-      project_init <- age_stratification_init_data(project)
-      
-      project_init %>%
-        dplyr::rename(cluster = age_group,
-                      SRA_project = project) %>%
+      df_project_metadata <- data.frame(cluster = c("60-79", "40-59", "20-39"),
+                                        SRA_project = project) %>%
         return()
+      
     })
     
   } else {
@@ -124,12 +121,8 @@ create_metadata_table <- function(database_path,
       # project <- SRA_projects[1]
       # project <- SRA_projects[2]
       # project <- SRA_projects[6]
-      
-      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                             project, "/v", gtf_version, "/",
-                             main_project, "_project/raw_data/samples_metadata.rds"))) {
       metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                        project, "/v", gtf_version, "/",
+                                        project, "/", 
                                         main_project, "_project/raw_data/samples_metadata.rds"))
       
       if (main_project == "splicing") {
@@ -164,10 +157,6 @@ create_metadata_table <- function(database_path,
                                           SRA_project = metadata$recount_project.project) %>% 
           arrange(SRA_project, cluster) %>% 
           return()
-      }else {
-        
-        return(NULL)
-      }
         
       } else {
         
@@ -191,7 +180,6 @@ create_metadata_table <- function(database_path,
   #         file = "./dependencies/df_all_projects_metadata.rds")
   
   
-  con <- dbConnect(RSQLite::SQLite(), database_path)
   DBI::dbWriteTable(conn = con,
                     name = "master",
                     value = df_metadata,
@@ -204,7 +192,8 @@ create_metadata_table <- function(database_path,
 
 
 
-create_mane_table <- function(database_path) {
+create_mane_table <- function(database_path,
+                              age = F) {
   
   print(paste0(Sys.time(), " - creating master table ... "))
   
@@ -226,7 +215,7 @@ create_mane_table <- function(database_path) {
 
 create_master_tables <- function(database_path,
                                  main_project,
-                                 gtf_version) {
+                                 age = F) {
 
   
   
@@ -237,16 +226,16 @@ create_master_tables <- function(database_path,
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
   
-  if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+  if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/",
                             main_project, "/all_paired_intron_novel_tidy.rds"))) {
     
     print(paste0(Sys.time(), " - loading the pre-generated pair-wise distances data..."))
     
-    df_all_distances_pairings_raw <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+    df_all_distances_pairings_raw <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/",
                                                            main_project, "/all_paired_intron_novel_tidy.rds")) #"/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")
-    df_ambiguous_novel <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+    df_ambiguous_novel <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/",
                                                 main_project, "/df_all_tissues_raw_distances_ambiguous.rds"))
-    df_introns_never <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+    df_introns_never <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/",
                                               main_project, "/df_all_nevermisspliced_introns.rds"))
     
   } else {
@@ -401,7 +390,7 @@ create_master_tables <- function(database_path,
   }
 
   saveRDS(object = df_introns_introverse,
-          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/",
                         main_project, "/df_all_introns_introverse.rds"))
   
   
@@ -431,14 +420,14 @@ create_master_tables <- function(database_path,
   }
   
   saveRDS(object = df_introns_introverse_tidy,
-          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/",
                         main_project, "/df_all_introns_introverse_tidy.rds"))
   
   ######################################
   ## GENES - CREATE GENE TABLE
   ######################################
   
-  # df_introns_introverse_tidy <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/df_all_introns_introverse_tidy.rds"))
+  # df_introns_introverse_tidy <- readRDS( file = "/home/sruiz/PROJECTS/splicing-project-recount3/database/df_all_introns_introverse_tidy.rds")
   create_gene_table(database_path = database_path,
                     gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id))
   
@@ -926,11 +915,12 @@ create_gene_table <- function(database_path,
 
 create_cluster_tables <- function(database_path,
                                   main_project,
-                                  gtf_version) {
+                                  age = F) {
   
-  all_split_reads_details_105 <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+  all_split_reads_details_105 <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/",
                                                        main_project, "/all_split_reads_105_length_all_tissues.rds"))
   
+  gtf_version <- 105
   con <- dbConnect(RSQLite::SQLite(), database_path)
   DBI::dbListTables(conn = con)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
@@ -966,7 +956,7 @@ create_cluster_tables <- function(database_path,
     
     print(paste0(Sys.time(), " --> Working with '", db, "' DataBase..."))
     base_folder <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                          db, "/v", gtf_version, "/", main_project, "_project/")
+                          db, "/", main_project, "_project/")
     
     clusters <- df_metadata %>%
       dplyr::filter(SRA_project == db) %>%
@@ -983,18 +973,15 @@ create_cluster_tables <- function(database_path,
       ###############################
       
       if ( file.exists(paste0(base_folder, "results/", 
-                              cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) ) {
+                             cluster, "/distances/v", gtf_version, "/", cluster, "_raw_distances_tidy.rds")) ) {
         
         
         ## BASE DATA -----------------------------------------------------------
         
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(base_folder, "/raw_data/", 
-                                                   db, "_", cluster, "_split_read_counts_sample_tidy.rds")) 
-        if (!any(names(split_read_counts) == "junID")) {
-          split_read_counts <- split_read_counts %>%
-            as_tibble(rownames = "junID")
-        }
+                                                   db, "_", cluster, "_split_read_counts_sample_tidy.rds")) %>% 
+          as_tibble(rownames = "junID")
         
         ## Load samples
         samples <- readRDS(file = paste0(base_folder, "/raw_data/", 
@@ -1003,8 +990,9 @@ create_cluster_tables <- function(database_path,
         
         
         ## LOAD INTRONS AND NOVEL JUNCTIONS ------------------------------------
-        df_cluster_distances <- readRDS(file = paste0(base_folder, "results/", 
-                                                      cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
+        df_cluster_distances <- readRDS(file = paste0(base_folder, "/results/", 
+                                                      cluster, "/distances/v", gtf_version, 
+                                                      "/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
         
         
        
@@ -1163,7 +1151,6 @@ create_cluster_tables <- function(database_path,
           df_all_misspliced <- df_all_misspliced %>%
             dplyr::select(-novel_coordinates)
           
-          
           ## CHECK PARENT INTEGRITY
           
           df <- df_novel %>%
@@ -1216,42 +1203,11 @@ create_cluster_tables <- function(database_path,
           ## GET THE GENE TPM
           #####################################
           
-          
-          
-          if (main_project == "age") {
-            
-            body_sites <- df_metadata %>%
-              filter(SRA_project == db) %>%
-              distinct(region) %>%
-              pull()
-            
-            tpm <- map_df(body_sites, function(site) {
-              # site <- body_sites[1]
-              tpm <- readRDS(file = 
-                               paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", db, 
-                                      "/v", gtf_version, "/splicing_project/results/tpm/",
-                                      db, "_", site, "_tpm.rds")) %>% 
-                dplyr::select(gene_id = gene, 
-                              any_of(samples))
-              
-            })
-            if (!identical(names(tpm)[-1] , samples)){
-              print("ERROR! Samples obtained for the TPM analysis are not identical")
-            }
-            tpm[is.na(tpm)] <- 0
-            
-          } else {
-            
-            tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
-                                         "/", db, "_", cluster, "_tpm.rds")) %>% 
-              dplyr::select(gene_id = gene, 
-                            all_of(samples))
-          }
-          
-          tpm <- tpm  %>%
-            dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-            dplyr::select(gene_id,tpm_median) 
-          
+          tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
+                                       "/", db, "_", cluster, "_tpm.rds")) %>% 
+            dplyr::select(gene_id = gene, 
+                          tpm_median = TPM_median,
+                          tpm_mean = TPM_mean) 
           
           ## In case there are any duplicates, take the genes with the maximum tpms
           tpm <- tpm %>% 
@@ -1267,7 +1223,7 @@ create_cluster_tables <- function(database_path,
             left_join(y = tpm,
                       by = c("gene_id" = "id")) %>% 
             dplyr::rename(gene_tpm = tpm_median) %>%
-            dplyr::select(-gene_id.y, 
+            dplyr::select(-tpm_mean, -gene_id.y, 
                           -gene_name, -n_transcripts, 
                           -gene_width)
           
@@ -1361,7 +1317,7 @@ create_cluster_tables <- function(database_path,
           
           ## TYPE 'NONE'
           introns_never <- readRDS(file = paste0(base_folder, "results/", 
-                                                cluster, "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds"))
+                                                cluster, "/distances/v", gtf_version, "/not-misspliced/", cluster, "_all_notmisspliced.rds"))
           ## The introns not misspliced in this tissue, should have not been detected as spliced.
           ## Thus, this should be zero
           if (intersect(introns_never, df_intron %>%
@@ -1462,7 +1418,7 @@ create_cluster_tables <- function(database_path,
             left_join(y = tpm,
                       by = c("gene_id" = "id")) %>% 
             dplyr::rename(gene_tpm = tpm_median) %>%
-            dplyr::select(-gene_id.y, 
+            dplyr::select(-tpm_mean, -gene_id.y, 
                           -gene_name, -n_transcripts, 
                           -gene_width)
           

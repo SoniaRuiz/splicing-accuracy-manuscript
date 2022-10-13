@@ -118,7 +118,6 @@ generate_all_split_reads <- function(folder_path,
   gc()
 }
 
-
 separate_samples <- function(clusters_ID,
                              project_id,
                              folder_origin,
@@ -559,13 +558,15 @@ generate_recount2_median_tpm <- function() {
   
 }
 
-generate_recount3_median_tpm <- function() {
+generate_recount3_median_tpm <- function(gtf_version,
+                                         main_project = "splicing") {
   
   all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
   
   for (project_id in all_projects) {
     
-    # project_id <- all_projects[7]
+    # project_id <- all_projects[1]
+    # project_id <- "KIDNEY"
     
     rse <- recount3::create_rse_manual(
       project = project_id,
@@ -588,38 +589,58 @@ generate_recount3_median_tpm <- function() {
     ## 1. For each tissue within the current project, filter the RSE by its samples
     ## 2. Calculate median TPM value of each gene across samples of the current tissue
     
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, "/")
-    clusters_ID <- readRDS(file = paste0(folder_root, "/raw_data/all_clusters_used.rds"))
+    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+                          project_id, "/v", gtf_version, "/", main_project, "_project/")
     
-    for (cluster in clusters_ID) {
+    if (file.exists(paste0(folder_root, "/raw_data/samples_metadata.rds"))) {
       
-      # cluster <- clusters_ID[6]
+      metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
       
-      cluster_samples <- readRDS(file = paste0(folder_root, "/results/base_data/", 
-                                               cluster, "/", project_id, "_", cluster, "_samples.rds"))
+      clusters_ID <- metadata.info$gtex.smtsd %>% unique()
       
-      if (length(cluster_samples) > 0) {
+      for (cluster in clusters_ID) {
         
-        n_cols <- length(cluster_samples) # length(names(recount_tpm))-1
+        # cluster <- clusters_ID[1]
         
-        recount_tpm_local <- recount_tpm %>%
-          dplyr::select(c("gene", all_of(cluster_samples))) %>%
-          dplyr::mutate(TPM_median = matrixStats::rowMedians(x = as.matrix(.[2:n_cols]))) %>%
-          dplyr::mutate(TPM_mean = matrixStats::rowMeans2(x = as.matrix(.[2:n_cols]))) %>%
-          dplyr::select(gene, TPM_median, TPM_mean)
-        
-        # recount_tpm_local$TPM_median %>% unique()
-        
-        saveRDS(object = recount_tpm_local,
-                file = paste0(folder_root, "/results/base_data/", cluster, "/", project_id, "_", cluster, "_tpm.rds"))
+        samples <- metadata.info %>% 
+          as_tibble() %>%
+          filter(gtex.smtsd == cluster,
+                 gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(external_id) %>% 
+          pull()
         
         
-        rm(recount_tpm_local)
-        rm(cluster_samples)
-        gc()
-      
+        if (length(samples) >= 70) {
+          
+          cluster_samples <- readRDS(file = paste0(folder_root, "/raw_data/", 
+                                                   project_id, "_", cluster, "_samples_used.rds"))
+          
+          if (!identical(samples, cluster_samples)) {
+            print("ERROR - samples are not identical")  
+          }
+          
+          n_cols <- length(cluster_samples) # length(names(recount_tpm))-1
+          
+          recount_tpm_local <- recount_tpm %>%
+            dplyr::select(c("gene", all_of(cluster_samples))) 
+          
+          # recount_tpm_local$TPM_median %>% unique()
+          
+          folder_name <- paste0(folder_root, "/results/tpm/")
+          dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
+          saveRDS(object = recount_tpm_local,
+                  file = paste0(folder_name, 
+                                project_id, "_", cluster, "_tpm.rds"))
+          
+          
+          rm(recount_tpm_local)
+          rm(cluster_samples)
+          gc()
+        
+        }
+        
       }
-      
     }
     
     print(paste0(Sys.time(), " - ", project_id, " finished!"))
@@ -864,3 +885,9 @@ generate_biotype_percentage <- function() {
   print(paste0(Sys.time(), " - file saved!"))
 }
 
+
+############################################
+## CALLS
+############################################
+
+generate_recount3_median_tpm(gtf_version = 105)
