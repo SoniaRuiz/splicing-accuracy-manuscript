@@ -15,14 +15,14 @@ Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIETDHJZOI",
            "AWS_DEFAULT_REGION"="eu-west-2")
 
 
-projects_used <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-clusters_used <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_clusters_used.rds")
-
-
 source("/home/sruiz/PROJECTS/splicing-project-recount3/sql_helper.R")
 source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline2_annotate_from_recount.R")
-#source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_sql_generation.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_junction_pairing.R")
 source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation_extra.R")
+
+
+
+
 
 #####################################
 ## FUNCTIONS - PREPARE RECOUNT3 DATA
@@ -256,8 +256,7 @@ tidy_recount3_data_per_tissue <- function(projects_used,
                                           main_project,
                                           gtf_version) {
   
-  folder_main <- paste0("~/PROJECTS/splicing-project-recount3/database/v", 
-                        gtf_version, "/")
+  folder_main <- paste0("~/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/")
   all_split_reads_details_w_symbol_reduced_keep_gr <- readRDS(file = paste0(folder_main, "/all_split_reads_details_",
                                                                             gtf_version, "_w_symbol_reduced_keep.rds"))
   
@@ -265,6 +264,7 @@ tidy_recount3_data_per_tissue <- function(projects_used,
   for (project_id in projects_used) {
     
     # project_id <- projects_used[10]
+    # project_id <- projects_used[13]
     
     folder_root <- paste0("~/PROJECTS/splicing-project/splicing-recount3-projects/",
                           project_id, "/v", gtf_version, "/", main_project, "_project/")
@@ -290,10 +290,11 @@ tidy_recount3_data_per_tissue <- function(projects_used,
     saveRDS(object = metadata.info, file = paste0(folder_path, "/samples_metadata.rds"))
     
     clusters_ID <- rse$gtex.smtsd %>% unique()
+    clusters_used <- NULL
     
     for (cluster_id in clusters_ID) {
       
-      # cluster_id <- clusters_ID[2]
+      # cluster_id <- clusters_ID[1]
       print(paste0(Sys.time(), " - filtering junction data by cluster - '", cluster_id, "' tissue..."))
       
       cluster_samples <- metadata.info %>% 
@@ -304,10 +305,12 @@ tidy_recount3_data_per_tissue <- function(projects_used,
         distinct(external_id) %>% 
         pull()
       
-      if (cluster_samples %>% length() >= 70) {
+      #if (main_project == "introverse" || cluster_samples %>% length() >= 70) {
+      if ( !file.exists(paste0(folder_path, "/", project_id, "_", cluster_id, "_samples_used.rds")) ) {
         
         saveRDS(object = cluster_samples, 
                 file = paste0(folder_path, "/", project_id, "_", cluster_id, "_samples_used.rds"))
+        clusters_used <- c(clusters_used, cluster_id)
         
         local_rse <- rse[, rse$external_id %in% cluster_samples]
         
@@ -352,72 +355,84 @@ tidy_recount3_data_per_tissue <- function(projects_used,
         saveRDS(object = all_split_reads_tidy %>% data.table::as.data.table(),
                 file = paste0(folder_path, "/", project_id, "_", cluster_id, "_all_split_reads_sample_tidy.rds"))
         
+      #}
       }
     } 
     
+    if ( !is.null(clusters_used) ) {
+      saveRDS(object = clusters_used, 
+              file = paste0(folder_path, "/", project_id, "_clusters_used.rds"))
+    }
+     
     rm(rse)
+    rm(local_rse)
+    rm(all_split_reads_tidy)
+    rm(counts)
+    gc()
   }
   
-  ## Save clusters_used, as it will be part of the database
-  clusters_used <- data.frame(project_id = as.character(),
-                              cluster_id = as.character(),
-                              sample_id = as.character())
-  
-  for (project_id in projects_used) {
-    
-    # project_id <- projects_used[10]
-    
-    folder_root <- paste0("~/PROJECTS/splicing-project/splicing-recount3-projects/",
-                          project_id, "/v", gtf_version, "/", main_project, "_project/")
-    folder_path <- paste0(folder_root, "/raw_data/")
-    
-    print(paste0(Sys.time(), " - getting junction data from recount3 - '", project_id, "' tissue..."))
-    
-    metadata.info <- readRDS(file = paste0(folder_path, "/samples_metadata.rds"))
-    
-    for (cluster_id in (metadata.info$gtex.smtsd %>% unique())) {
-      
-      # cluster_id <- clusters_ID[1]
-      print(paste0(Sys.time(), " - filtering junction data by cluster - '", cluster_id, "' tissue..."))
-      
-      cluster_samples <- metadata.info %>% 
-        as_tibble() %>%
-        filter(gtex.smtsd == cluster_id,
-               gtex.smrin >= 6.0,
-               gtex.smafrze != "EXCLUDE") %>%
-        distinct(external_id) %>% 
-        pull()
-      
-      if (cluster_samples %>% length() >= 70) {
-        
-        clusters_used <- rbind(clusters_used,
-                               data.frame(project = project_id,
-                                          cluster = cluster_id,
-                                          sample_id = cluster_samples))
-        
-        
-      }
-    }  
-  }
-  
-  dir.create(file.path(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
-                              gtf_version, "/", main_project)), recursive = TRUE, showWarnings = T)
-  saveRDS(clusters_used,
-          file =  paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
-                         gtf_version, "/", main_project, "/metadata.rds"))
+  # ## Save clusters_used, as it will be part of the database
+  # clusters_used <- data.frame(project_id = as.character(),
+  #                             cluster_id = as.character(),
+  #                             sample_id = as.character())
+  # 
+  # for (project_id in projects_used) {
+  #   
+  #   # project_id <- projects_used[10]
+  #   
+  #   folder_root <- paste0("~/PROJECTS/splicing-project/splicing-recount3-projects/",
+  #                         project_id, "/v", gtf_version, "/", main_project, "_project/")
+  #   folder_path <- paste0(folder_root, "/raw_data/")
+  #   
+  #   print(paste0(Sys.time(), " - getting junction data from recount3 - '", project_id, "' tissue..."))
+  #   
+  #   metadata.info <- readRDS(file = paste0(folder_path, "/samples_metadata.rds"))
+  #   
+  #   for (cluster_id in (metadata.info$gtex.smtsd %>% unique())) {
+  #     
+  #     # cluster_id <- clusters_ID[1]
+  #     print(paste0(Sys.time(), " - filtering junction data by cluster - '", cluster_id, "' tissue..."))
+  #     
+  #     cluster_samples <- metadata.info %>% 
+  #       as_tibble() %>%
+  #       filter(gtex.smtsd == cluster_id,
+  #              gtex.smrin >= 6.0,
+  #              gtex.smafrze != "EXCLUDE") %>%
+  #       distinct(external_id) %>% 
+  #       pull()
+  #     
+  #     if (cluster_samples %>% length() >= 70) {
+  #       
+  #       clusters_used <- rbind(clusters_used,
+  #                              data.frame(project = project_id,
+  #                                         cluster = cluster_id,
+  #                                         sample_id = cluster_samples))
+  #       
+  #       
+  #     }
+  #   }  
+  # }
+  # 
+  # dir.create(file.path(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+  #                             gtf_version, "/", main_project)), recursive = TRUE, showWarnings = T)
+  # saveRDS(clusters_used,
+  #         file =  paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+  #                        gtf_version, "/", main_project, "/metadata.rds"))
 }
 
 
 junction_pairing <- function(projects_used, 
+                             gtf_version,
                              main_project) {
-  source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_junction_pairing.R")
+  
+  
   
   for (project_id in projects_used) {
     
-    # project_id <- projects_used[9]
+    # project_id <- projects_used[1]
     
     folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                          project_id, "/", main_project, "_project/")
+                          project_id, "/v", gtf_version, "/", main_project, "_project/")
     folder_path <- paste0(folder_root, "/raw_data/")
     
     print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
@@ -439,15 +454,25 @@ junction_pairing <- function(projects_used,
       ############################################
       
       ## Load samples
-      samples <- metadata.info %>% 
-        as_tibble() %>%
-        filter(gtex.smtsd == cluster_id,
-               gtex.smrin >= 6.0,
-               gtex.smafrze != "EXCLUDE") %>%
-        distinct(external_id) %>% 
-        pull()
+      if (main_project != "introverse") {
+        samples <- metadata.info %>% 
+          as_tibble() %>%
+          filter(gtex.smtsd == cluster_id,
+                 gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(external_id) %>% 
+          pull()
+      } else {
+        samples <- metadata.info %>% 
+          as_tibble() %>%
+          filter(gtex.smtsd == cluster_id,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(external_id) %>% 
+          pull()
+      }
       
-      if (samples %>% length() >= 70) {
+      
+      #if (samples %>% length() >= 70) {
         
         samples_used <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, "_samples_used.rds"))
         
@@ -456,7 +481,7 @@ junction_pairing <- function(projects_used,
           break;
         }
       
-        folder_name <- paste0(folder_root, "/results/", cluster_id, "/distances/v", gtf_version, "/")
+        folder_name <- paste0(folder_root, "/results/", cluster_id, "/distances/")
         dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
         
         
@@ -468,8 +493,12 @@ junction_pairing <- function(projects_used,
         
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, "_",
-                                                   "split_read_counts_sample_tidy.rds")) %>% 
-          as_tibble(rownames = "junID")
+                                                   "split_read_counts_sample_tidy.rds"))
+        
+        if ( !any(names(split_read_counts) == "junID") ) {
+          split_read_counts <- split_read_counts %>% 
+            as_tibble(rownames = "junID")
+        }
        
         
         ############################################
@@ -499,7 +528,7 @@ junction_pairing <- function(projects_used,
         rm(all_split_reads_details)
         rm(split_read_counts)
         gc()
-      }
+      #}
     }
   }
 }
@@ -507,7 +536,6 @@ junction_pairing <- function(projects_used,
 
 tidy_data_pior_sql <- function (projects_used, 
                                 gtf_version,
-                                all_clusters,
                                 main_project) {
   
   ## Load main object
@@ -573,7 +601,6 @@ tidy_data_pior_sql <- function (projects_used,
                                                          main_project, "/df_all_distances_pairings_raw.rds"))
   
   ## QC
-  
   ## Remove potential * in the junID of the reference introns
   ind <- which(str_detect(string = df_all_distances_pairings_raw$ref_junID, pattern = "\\*"))
   if (ind %>% length() > 0) {
@@ -597,8 +624,7 @@ tidy_data_pior_sql <- function (projects_used,
   #########################################
   
   df_never_misspliced <- get_intron_never_misspliced(all_projects = projects_used,
-                                                     all_clusters = all_clusters,
-                                                     main_project)
+                                                     main_project = main_project)
   
   ## Remove the introns paired with novel junctions
   df_never_misspliced_tidy <- df_never_misspliced %>%
@@ -777,27 +803,32 @@ tidy_data_pior_sql <- function (projects_used,
 sql_database_generation <- function(database_path,
                                     projects_used, 
                                     main_project,
-                                    gtf_version = gtf_version,
-                                    remove_all) {
+                                    gtf_version,
+                                    remove_all = NULL) {
   
 
-  remove_tables(database_path, remove_all)
-  
-  if (remove_all) {
-    create_metadata_table(database_path,
-                          main_project = main_project,
-                          gtf_version = gtf_version,
-                          SRA_projects = projects_used)
+  if (!is.null(remove_all)) {
     
-    create_mane_table(database_path)
-  
-    create_master_tables(database_path,
-                         main_project = main_project,
-                         gtf_version = gtf_version)
+    remove_tables(database_path, remove_all)
+    
+    if (remove_all) {
+      create_metadata_table(database_path,
+                            main_project = main_project,
+                            gtf_version = gtf_version,
+                            SRA_projects = projects_used)
+      
+      create_mane_table(database_path)
+    
+      create_master_tables(database_path,
+                           main_project = main_project,
+                           gtf_version = gtf_version)
+    }
+    
   } 
   
   create_cluster_tables(database_path,
                         gtf_version = gtf_version,
+                        SRA_projects = projects_used,
                         main_project = main_project)
 
 }
@@ -806,16 +837,33 @@ sql_database_generation <- function(database_path,
 ## CALLS - PREPARE RECOUNT3 DATA
 #####################################
 
+
 gtf_version <- 105
 main_project <- "splicing"
 database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
+all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
 
-sql_database_generation(database_path,
-                        projects_used,
-                        main_project,
-                        gtf_version,
-                        remove_all = T)
 
-# tidy_recount3_data_per_tissue(projects_used,
-#                               gtf_version = 97)
+# all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+
+
+# tidy_recount3_data_per_tissue(projects_used = all_projects,
+#                               main_project,
+#                               gtf_version = gtf_version)
+# junction_pairing(projects_used = all_projects,
+#                  main_project,
+#                  gtf_version = gtf_version)
+                 
+
+
+
+# tidy_data_pior_sql(projects_used = all_projects,
+#                    gtf_version = gtf_version,
+#                    main_project = main_project)
+
+
+# sql_database_generation(database_path = database_path,
+#                         projects_used = all_projects[13:21],
+#                         gtf_version = gtf_version,
+#                         main_project = main_project)

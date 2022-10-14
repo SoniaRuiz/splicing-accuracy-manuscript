@@ -48,6 +48,8 @@ if (!exists("hg_mane_transcripts")) {
   hg_mane_transcripts <- hg_MANE_tidy %>%
     dplyr::filter(type == "transcript") %>%
     distinct(transcript_id) %>% pull()
+} else {
+  print("'hg_mane_transcripts' file already loaded!")
 }
 
 # GET INFO FROM THE HG38
@@ -61,6 +63,8 @@ if (!exists("hg38_transcripts")) {
     mutate(transcript_support_level = str_sub(string = transcript_support_level,
                                               start = 1,
                                               end = 1))
+} else {
+  print("'hg38_transcripts' file already loaded!")
 }
 
 
@@ -96,7 +100,7 @@ remove_tables <- function(database_path,
 create_metadata_table <- function(database_path,
                                   SRA_projects,
                                   gtf_version,
-                                  main_project = "splicing",
+                                  main_project,
                                   QC = F)  {
   
   print(paste0(Sys.time(), " - creating metadata table ... "))
@@ -926,6 +930,7 @@ create_gene_table <- function(database_path,
 
 create_cluster_tables <- function(database_path,
                                   main_project,
+                                  SRA_projects = NULL,
                                   gtf_version) {
   
   all_split_reads_details_105 <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
@@ -958,7 +963,10 @@ create_cluster_tables <- function(database_path,
   df_gene <- dbGetQuery(con, query)
   df_gene %>% nrow()
   
-  SRA_projects <- (df_metadata$SRA_project %>% unique())
+  if (is.null(SRA_projects)) {
+    SRA_projects <- (df_metadata$SRA_project %>% unique())
+  }
+  
   
   for (db in SRA_projects) {
     
@@ -1250,7 +1258,7 @@ create_cluster_tables <- function(database_path,
           
           tpm <- tpm  %>%
             dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-            dplyr::select(gene_id,tpm_median) 
+            dplyr::select(gene_id, tpm_median) 
           
           
           ## In case there are any duplicates, take the genes with the maximum tpms

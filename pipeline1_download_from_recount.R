@@ -558,10 +558,11 @@ generate_recount2_median_tpm <- function() {
   
 }
 
-generate_recount3_median_tpm <- function(gtf_version,
+generate_recount3_median_tpm <- function(gtf_version = 105,
                                          main_project = "splicing") {
   
   all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  #all_projects <- "NERVE"
   
   for (project_id in all_projects) {
     

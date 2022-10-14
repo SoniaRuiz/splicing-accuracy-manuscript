@@ -12,6 +12,7 @@ database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
 ##################################
 
 age_stratification_plot_distances <- function(df = NULL,
+                                              project_id = "BRAIN",
                                               age_groups = c("60-79", "40-59", "20-39"),
                                               distance_limit = 30,
                                               QC = F) {
@@ -728,7 +729,6 @@ age_stratification_Wilcoxon <- function(age_groups,
 
 age_stratification_plot_MSR <- function(df = NULL,
                                         age_groups = c("60-79", "40-59", "20-39"),
-                                        age_levels = c("60-79", "40-59", "20-39"),
                                         common = T,
                                         QC = F) {
   
@@ -738,7 +738,10 @@ age_stratification_plot_MSR <- function(df = NULL,
   #######################################
   
 
-  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
   
   
   df_age_groups <- map_df((df_metadata$SRA_project %>% unique())[3], function(project_id) {
@@ -794,10 +797,9 @@ age_stratification_plot_MSR <- function(df = NULL,
   common_introns %>% length()
   
   ## Filter the INTRONS table by the common mis-spliced introns
-  df_age_groups_tidy <- merge(x = df_age_groups %>% data.table::as.data.table(),
-                              y = data.table::data.table(ref_junID = common_introns),
-                              by = "ref_junID",
-                              all.y = T) %>%
+  df_age_groups_tidy <- df_age_groups %>%
+    inner_join(y = data.table::data.table(ref_junID = common_introns),
+               by = "ref_junID") %>%
     distinct(ref_junID, sample_type, .keep_all = T)
   
   
@@ -811,9 +813,9 @@ age_stratification_plot_MSR <- function(df = NULL,
     distinct(ref_junID, sample_type, .keep_all = T) %>%
     dplyr::select(ref_junID,
                   sample_type,
-                  MSR_A) %>%
-    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_A)
+                  MSR_D) %>%
+    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_D)
   
   df_MSRD %>%
     filter(`20-39` < `40-59`,
@@ -839,18 +841,18 @@ age_stratification_plot_MSR <- function(df = NULL,
   df_age_groups_tidy <- df_age_groups_tidy %>%
     distinct(ref_junID, sample_type, .keep_all = T) %>%
     # mutate(ref_type = factor(ref_type, levels = c("novel_donor", "novel_acceptor"))) %>%
-    mutate(sample_type = factor(sample_type, levels = age_levels)) %>%
+    mutate(sample_type = factor(sample_type, levels = c( "20-39","40-59" ,"60-79"))) %>%
     as_tibble()
   
   
   ggplot(data = df_age_groups_tidy %>% 
-           dplyr::select(MSR_A, sample_type) %>%
+           dplyr::select(MSR_D, sample_type) %>%
            gather(key = "MSR_type", value = "MSR", -sample_type) %>%
-           mutate(MSR_type = factor(MSR_type, levels = c("MSR_A")))) + 
+           mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
     geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
     #ggtitle(title) +
     xlab("MSR") +
-    facet_grid(vars(MSR_type)) +
+    facet_wrap(vars(MSR_type)) +
     ggforce::facet_zoom(xlim = c(0,0.2)) +
     theme_light() +
     scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
@@ -864,8 +866,40 @@ age_stratification_plot_MSR <- function(df = NULL,
           legend.text = element_text(size = "9"),
           legend.title = element_text(size = "9"),
           legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) %>% return()
+    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
   
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
+                      main_project, "/figures/panel4_MSR_D_brain.svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  ggplot(data = df_age_groups_tidy %>% 
+                    dplyr::select(MSR_A, sample_type) %>%
+                    gather(key = "MSR_type", value = "MSR", -sample_type) %>%
+                    mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
+    geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
+    #ggtitle(title) +
+    xlab("MSR") +
+    facet_wrap(vars(MSR_type)) +
+    ggforce::facet_zoom(xlim = c(0,0.2)) +
+    theme_light() +
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "9"),
+          axis.title = element_text(colour = "black", size = "9"),
+          strip.text =  element_text(colour = "black", size = "9"),
+          plot.title = element_text(colour = "black", size = "9"),
+          legend.text = element_text(size = "9"),
+          legend.title = element_text(size = "9"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
+                      main_project, "/figures/panel4_MSR_A_brain.svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
   
   ########################################
   ## STATISTICAL TEST - MSR_DONOR
@@ -911,7 +945,9 @@ age_stratification_plot_MSR <- function(df = NULL,
 # MSR CHANGING WITH AGE
 ####################################
 
-age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN") {
+age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN",
+                                                     age_groups = c("60-79", "40-59", "20-39"),
+                                                     gtf_version = 105) {
   
   
   #######################################
@@ -919,7 +955,15 @@ age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN") {
   #######################################
 
   
+  gtf_version <- 105
+  main_project <- "age"
+  database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
+                          gtf_version, "/", main_project, "/", main_project, ".sqlite")
   
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
   df_age_groups <- map_df((df_metadata$SRA_project %>% unique())[3], function(project_id) {
     
     # project_id <- (df_metadata$SRA_project %>% unique())[1]
@@ -974,9 +1018,21 @@ age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN") {
     group_by(sample_type) %>%
     distinct(ref_junID, .keep_all = T) %>%
     ungroup() %>%
-    dplyr::count(ref_junID) %>%
+    dplyr::group_by(ref_junID) %>%
+    mutate(n = n()) %>%
     filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
+    distinct(ref_junID) %>%
+    pull()
+  
+  saveRDS(object = df_age_groups %>%
+            group_by(sample_type) %>%
+            distinct(ref_junID, .keep_all = T) %>%
+            ungroup() %>%
+            dplyr::group_by(ref_junID) %>%
+            mutate(n = n()) %>%
+            filter(n == age_groups %>% length()),
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                        gtf_version, "/age/results/common_introns_brain.rds"))
   
   common_introns %>% length()
   
@@ -987,7 +1043,9 @@ age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN") {
                               all.y = T) %>%
     distinct(ref_junID, sample_type, .keep_all = T)
   
-  
+  saveRDS(object = df_age_groups_tidy,
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                        gtf_version, "/age/results/df_age_groups_common_introns_brain.rds"))
   
   ## MSR_D -------------------------------------------------
   df_MSRD <- df_age_groups_tidy %>%
@@ -1007,18 +1065,18 @@ age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN") {
   
   genes_MSRD_increasing <- df_MSRD %>%
     filter((`20-39` < `40-59` &
-              `40-59` < `60-79`) | (`20-39` < `40-59` &
-                                      `20-39` < `60-79`))
+              `40-59` < `60-79`))
   genes_MSRD_decreasing <- df_MSRD %>%
     filter((`20-39` > `40-59` & 
-              `40-59` > `60-79`) | (`20-39` > `40-59` & 
-                                      `20-39` > `60-79`))
+              `40-59` > `60-79`) )
   
   
   saveRDS(object = genes_MSRD_increasing %>% distinct(ref_junID, .keep_all = T),
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                        gtf_version, "/age/results/genes_increase_MSRD.rds"))
   saveRDS(object = genes_MSRD_decreasing %>% distinct(ref_junID, .keep_all = T),
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_decrease_MSRD.rds")
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                        gtf_version, "/age/results/genes_decrease_MSRD.rds"))
   
   ## MSR_A -------------------------------------------------
   df_MSRA <- df_age_groups_tidy %>%
@@ -1033,18 +1091,18 @@ age_stratification_MSR_changing_with_age <- function(project_id = "BRAIN") {
   
   genes_MSRA_increasing <- df_MSRA %>%
     filter((`20-39` < `40-59` & 
-              `40-59` < `60-79`) | (`20-39` < `40-59` & 
-                                      `20-39` < `60-79`))
+              `40-59` < `60-79`))
   genes_MSRA_decreasing <- df_MSRA %>%
     filter((`20-39` > `40-59` &
-              `40-59` > `60-79`) | (`20-39` > `40-59` &
-                                      `20-39` > `60-79`))
+              `40-59` > `60-79`))
   
   
   saveRDS(object = genes_MSRA_increasing %>% distinct(ref_junID, .keep_all = T),
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                        gtf_version, "/age/results/genes_increase_MSRA.rds"))
   saveRDS(object = genes_MSRA_decreasing %>% distinct(ref_junID, .keep_all = T),
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_decrease_MSRA.rds")
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                        gtf_version, "/age/results/genes_decrease_MSRA.rds"))
   
   
   

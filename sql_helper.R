@@ -248,13 +248,16 @@ get_intron_never_misspliced <- function (all_projects,
     
     if (is.null(all_clusters)) {
       
-      metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
-      all_clusters <-  metadata.info %>% 
-        as_tibble() %>%
-        filter(gtex.smrin >= 6.0,
-               gtex.smafrze != "EXCLUDE") %>%
-        distinct(gtex.smtsd) %>% 
-        pull()
+      if (file.exists(paste0(base_folder, "/raw_data/samples_metadata.rds"))) {
+        metadata.info <- readRDS(file = paste0(base_folder, "/raw_data/samples_metadata.rds"))
+        all_clusters <-  metadata.info %>% 
+          as_tibble() %>%
+          filter(gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(gtex.smtsd) %>% 
+          pull()  
+      }
+      
     }
     
     map_df(all_clusters, function(cluster) { 
