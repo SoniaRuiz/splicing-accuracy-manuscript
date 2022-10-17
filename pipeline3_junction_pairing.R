@@ -563,7 +563,7 @@ get_never_misspliced <- function(cluster,
   
   
   if ( !file.exists(paste0(folder_name, "/not-misspliced/", cluster, "_all_notmisspliced.rds")) || 
-       !file.exists(paste0(folder_name, "/not-misspliced/", cluster, "_all_misspliced_not_paired.rds"))) {
+       !file.exists(paste0(folder_name, "/not-misspliced/", cluster, "_all_misspliced_not_paired.rds")) ) {
  
     ## Per each sample from the current cluster, we obtain all junctions, counts and ratios
     for (sample in samples) { 
@@ -575,10 +575,13 @@ get_never_misspliced <- function(cluster,
         
         #distances <- list()
         split_read_counts_sample <- split_read_counts %>%
-          dplyr::select(junID, all_of(sample %>% as.character())) %>%
-          drop_na() 
-        split_read_counts_sample <- split_read_counts_sample[split_read_counts_sample[,sample] > 0,] %>%
-          data.table::as.data.table()
+          as_tibble()%>%
+          dplyr::select(junID, all_of(sample %>% as.character())) 
+        
+        split_read_counts_sample[split_read_counts_sample==0] <- NA
+        
+        split_read_counts_sample <- split_read_counts_sample %>%
+          drop_na()
         
         split_reads_details_97_sample <- merge(all_not_misspliced, 
                                                split_read_counts_sample, 

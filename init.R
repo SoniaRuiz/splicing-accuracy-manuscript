@@ -495,7 +495,7 @@ junction_pairing <- function(projects_used,
         split_read_counts <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, "_",
                                                    "split_read_counts_sample_tidy.rds"))
         
-        if ( !any(names(split_read_counts) == "junID") ) {
+        if ( is.null(names(split_read_counts)) ) {
           split_read_counts <- split_read_counts %>% 
             as_tibble(rownames = "junID")
         }
@@ -536,6 +536,7 @@ junction_pairing <- function(projects_used,
 
 tidy_data_pior_sql <- function (projects_used, 
                                 gtf_version,
+                                all_clusters = NULL,
                                 main_project) {
   
   ## Load main object
@@ -557,7 +558,9 @@ tidy_data_pior_sql <- function (projects_used,
   
   
   ## This should be zero
-  setdiff(all_split_reads_details$junID, all_split_reads_details_w_symbol_reduced_keep_gr$junID)
+  if ( setdiff(all_split_reads_details$junID, all_split_reads_details_w_symbol_reduced_keep_gr$junID) ) {
+    print("ERROR")
+  }
   
   ## These are the junctions from EXCLUDE ME samples, sex-related tissues, and tissues with less than 70 samples
   setdiff(all_split_reads_details_w_symbol_reduced_keep_gr$junID, all_split_reads_details$junID) %>% unique %>% length()
@@ -623,7 +626,8 @@ tidy_data_pior_sql <- function (projects_used,
   ## Get never mis-spliced
   #########################################
   
-  df_never_misspliced <- get_intron_never_misspliced(all_projects = projects_used,
+  df_never_misspliced <- get_intron_never_misspliced(projects_used = projects_used,
+                                                     all_clusters = all_clusters,
                                                      main_project = main_project)
   
   ## Remove the introns paired with novel junctions
@@ -759,11 +763,9 @@ tidy_data_pior_sql <- function (projects_used,
       any(str_detect(string = df_all_distances_pairings_raw_tidy$novel_junID, pattern = "\\*")) ) {
     print("ERROR! Some junctions still have a * in their IDs!")
   }
-  
   df_all_distances_pairings_raw_tidy <- df_all_distances_pairings_raw_tidy %>%
     inner_join(y = all_split_reads_details %>% dplyr::select(junID, gene_id, tx_id_junction),
                by = c("ref_junID" = "junID"))
-  
   saveRDS(object = df_all_distances_pairings_raw_tidy,
           file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
                         gtf_version, "/",
@@ -811,22 +813,32 @@ sql_database_generation <- function(database_path,
     
     remove_tables(database_path, remove_all)
     
-    if (remove_all) {
-      create_metadata_table(database_path,
-                            main_project = main_project,
-                            gtf_version = gtf_version,
-                            SRA_projects = projects_used)
-      
-      create_mane_table(database_path)
-    
-      create_master_tables(database_path,
-                           main_project = main_project,
-                           gtf_version = gtf_version)
-    }
-    
   } 
   
-  create_cluster_tables(database_path,
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  tables <- DBI::dbListTables(conn = con)
+ 
+  
+  
+  if (!any(names(tables) == 'master')) {
+    create_metadata_table(database_path,
+                          main_project = main_project,
+                          gtf_version = gtf_version,
+                          SRA_projects = projects_used)
+  }
+  
+  if (!any(names(tables) == 'mane')) {
+    create_mane_table(database_path)
+  }
+  
+  
+  if (!any(names(tables) %in% c('intron', 'novel', 'gene'))) {
+    create_master_tables(database_path,
+                         main_project = main_project,
+                         gtf_version = gtf_version)
+  }
+  
+  create_cluster_tables(database_path = database_path,
                         gtf_version = gtf_version,
                         SRA_projects = projects_used,
                         main_project = main_project)

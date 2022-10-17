@@ -10,7 +10,7 @@ source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
 
 
 gtf_version <- 105
-main_project <- "age"
+main_project <- "age_subsampled"
 database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
 
@@ -21,15 +21,15 @@ database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
 
 
 age_stratification_init_data <- function (projects_id,
-                                          gtf_version = 105,
-                                          main_project = "age") {
+                                          gtf_version,
+                                          main_project) {
   
   # project_id <- "BRAIN"
   map_df(projects_id, function(project_id) {
     
     print(paste0(Sys.time(), " --> ", project_id, " - getting sample's metadata."))
     
-    if (!file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
+    if (!file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
                             "/v", gtf_version, "/",
                             main_project, "_project/raw_data/samples_metadata.rds"))) {
       
@@ -59,8 +59,8 @@ age_stratification_init_data <- function (projects_id,
       gc()
       
     } else {
-      
-      sample_metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
+
+      sample_metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
                                                "/v", gtf_version, "/",
                                                main_project, "_project/raw_data/samples_metadata.rds"))
     }
@@ -104,6 +104,38 @@ age_stratification_init_data <- function (projects_id,
              }
       )
     }
+    
+    
+    age_samples_clusters_tidy
+    
+    
+    df_subsampled <- map_df(c("40-59", "60-79"), function(group) {
+      
+      df_youngest <- age_samples_clusters_tidy %>%
+        filter(age_group == "20-39")
+      
+      df_samples <- age_samples_clusters_tidy %>%
+        filter(age_group == group)
+      
+      data_combined <- rbind(df_youngest, df_samples)
+      
+      m.out <- MatchIt::matchit(age_group ~ rin, 
+                                data = data_combined, 
+                                distance = data_combined$rin,
+                                method = "nearest", 
+                                caliper = c(rin = 0.05), 
+                                std.caliper = FALSE)
+      MatchIt::match.data(m.out) %>%
+        return()
+      
+    })
+    
+    age_samples_clusters_tidy <- df_subsampled %>%
+      distinct(individual, .keep_all = T) 
+    
+    # kruskal.test(mapped_read_count ~ age_group, data = age_samples_clusters_tidy) 
+    # kruskal.test(sex ~ age_group, data = age_samples_clusters_tidy) 
+    # kruskal.test(rin ~ age_group, data = age_samples_clusters_tidy) 
     
     return(age_samples_clusters_tidy)
   })
@@ -163,14 +195,15 @@ age_stratification_clustering <- function (sample_metadata, project_id) {
 ##################################
 
 age_stratification_annotate <- function (age_groups,
-                                         main_project = "age",
-                                         project_id = "BRAIN",
+                                         main_project,
+                                         project_id,
                                          age_samples_clusters) {
   
   ## Loop
   for (age_cluster in age_groups) {
     
     # age_cluster <- age_groups[1]
+    # age_cluster <- age_groups[2]
     
     ## SET RESULTS FOLDER
     folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
@@ -209,22 +242,23 @@ age_stratification_annotate <- function (age_groups,
         samples_age <- c(samples_age, samples)
         print(paste0(samples %>% length(), " samples... "))
         
-        
         ## Load the annotated split reads
         all_split_reads_details_105 <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                                              project_id, "/v", gtf_version, "/splicing_project/raw_data/",
-                                                             project_id,  "_", cluster, "_annotated_SR_details_length_105.rds"))
+                                                             project_id,  "_", cluster, "_all_split_reads_sample_tidy.rds"))
         
         # Load split read counts
         split_read_counts <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
                                                    project_id, "/v", gtf_version, "/splicing_project/raw_data/",
-                                                   project_id,  "_", cluster, "_split_read_counts_sample_tidy.rds")) 
-        if (!any(names(split_read_counts == "junID"))) {
+                                                   project_id,  "_", cluster, "_split_read_counts_sample_tidy.rds"))
+        
+        if ( is.null(names(split_read_counts)) ) {
           split_read_counts <- split_read_counts %>%
             as_tibble(rownames = "junID")
         }
+        
         split_read_counts <- split_read_counts %>%
-          dplyr::select(c("junID", all_of(samples)))
+          dplyr::select(c("junID", any_of(samples)))
         
         if (i == 1) {
           split_read_counts_age <- split_read_counts
@@ -271,9 +305,12 @@ age_stratification_annotate <- function (age_groups,
     saveRDS(object = samples_age, file = paste0(folder_root, "/raw_data/",
                                                 project_id, "_", age_cluster,
                                                 "_samples_used.rds"))
-    saveRDS(object = split_read_counts_age %>% data.table::as.data.table(), file = paste0(folder_root, "/raw_data/",
-                                                                                          project_id, "_", age_cluster, 
-                                                                                          "_split_read_counts_sample_tidy.rds"))
+    saveRDS(object = split_read_counts_age %>% 
+              data.table::as.data.table(), 
+            file = paste0(folder_root, "/raw_data/",
+                          project_id, "_", age_cluster, 
+                          "_split_read_counts_sample_tidy.rds"))
+    
     saveRDS(object = all_split_reads_details_105_age %>% data.table::as.data.table(), 
             file = paste0(folder_root, "/raw_data/",
                           project_id, "_", age_cluster, "_all_split_reads_sample_tidy.rds"))
@@ -335,10 +372,18 @@ age_stratification_junction_pairing <- function (age_groups,
                                          project_id, "_", age_cluster, "_samples_used.rds"))
     
     split_read_counts_age <- readRDS(file = paste0(folder_root, "/raw_data/",
-                                                   project_id, "_", age_cluster, "_split_read_counts_sample_tidy.rds")) %>% as_tibble()
+                                                   project_id, "_", age_cluster, 
+                                                   "_split_read_counts_sample_tidy.rds")) 
+    
+    if ( is.null(names(split_read_counts_age)) ) {
+      split_read_counts_age <- split_read_counts_age %>%
+        as_tibble("junID")
+    }
     
     all_split_reads_details_105_age <- readRDS(file = paste0(folder_root, "/raw_data/",
-                                                             project_id, "_", age_cluster, "_all_split_reads_sample_tidy.rds")) %>% as_tibble()
+                                                             project_id, "_", age_cluster, 
+                                                             "_all_split_reads_sample_tidy.rds")) %>% 
+      as_tibble()
     
     
     ## Call functions ----------------------------------------------------------------
@@ -452,34 +497,42 @@ age_stratification_junction_pairing <- function (age_groups,
 ##################################
 
 all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-age_projects <- all_projects[!(all_projects %in% c("BRAIN", "BLOOD", "MUSCLE"))]
+age_projects <- all_projects
 
-for (project_id in age_projects) {
+for (project_id in age_projects[-c(1:9)]) {
 
   # project_id <- "MUSCLE"
+  # project_id <- age_projects[1]
+  # project_id <- "BRAIN"
   print(paste0(Sys.time(), " --> ", project_id))
 
-  project_init <- age_stratification_init_data(project_id)
+  project_init <- age_stratification_init_data(projects_id = project_id,
+                                               gtf_version = gtf_version,
+                                               main_project = main_project)
 
   age_stratification_annotate(age_groups = project_init$age_group %>% unique(),
                               project_id = project_id,
+                              main_project = main_project,
                               age_samples_clusters = project_init)
-
+  
+  
   age_stratification_junction_pairing(age_groups = project_init$age_group %>% unique(),
                                       project_id = project_id,
                                       age_samples_clusters = project_init)
 
 }
 
-gc()
 
-project_init <- age_stratification_init_data(projects_id = age_projects)
+project_init <- age_stratification_init_data(projects_id = age_projects,
+                                             gtf_version = gtf_version,
+                                             main_project = main_project)
 
 
 get_all_annotated_split_reads(all_projects = age_projects,
                               gtf_version = gtf_version,
                               all_clusters = project_init$age_group %>% unique(),
                               main_project = main_project)
+
 get_all_raw_distances_pairings(all_projects = age_projects,
                                gtf_version = gtf_version,
                                all_clusters = project_init$age_group %>% unique(),

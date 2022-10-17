@@ -106,15 +106,21 @@ create_metadata_table <- function(database_path,
   print(paste0(Sys.time(), " - creating metadata table ... "))
   
   
-  if (main_project == "age") {
+  if (str_detect(string = main_project,
+                 pattern = "age")) {
     
     df_metadata <- map_df(SRA_projects, function(project) { 
       
+      # project <- SRA_projects[1]
+      
       print(paste0(Sys.time(), " - getting info from ", project))
       
-      project_init <- age_stratification_init_data(project)
+      project_init <- age_stratification_init_data(projects_id = project,
+                                                   gtf_version = gtf_version,
+                                                   main_project = main_project)
       
       project_init %>%
+        dplyr::select(-subclass,-weights) %>%
         dplyr::rename(cluster = age_group,
                       SRA_project = project) %>%
         return()
@@ -198,7 +204,7 @@ create_metadata_table <- function(database_path,
   con <- dbConnect(RSQLite::SQLite(), database_path)
   DBI::dbWriteTable(conn = con,
                     name = "master",
-                    value = df_metadata,
+                    value = df_metadata %>% as_tibble(),
                     overwrite = T)
   
   DBI::dbDisconnect(conn = con)
@@ -991,7 +997,7 @@ create_cluster_tables <- function(database_path,
       ###############################
       
       if ( file.exists(paste0(base_folder, "results/", 
-                              cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) ) {
+                              cluster, "/", cluster, "_raw_distances_tidy.rds")) ) {
         
         
         ## BASE DATA -----------------------------------------------------------
@@ -999,7 +1005,7 @@ create_cluster_tables <- function(database_path,
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(base_folder, "/raw_data/", 
                                                    db, "_", cluster, "_split_read_counts_sample_tidy.rds")) 
-        if (!any(names(split_read_counts) == "junID")) {
+        if ( is.null(names(split_read_counts)) ) {
           split_read_counts <- split_read_counts %>%
             as_tibble(rownames = "junID")
         }
@@ -1012,7 +1018,7 @@ create_cluster_tables <- function(database_path,
         
         ## LOAD INTRONS AND NOVEL JUNCTIONS ------------------------------------
         df_cluster_distances <- readRDS(file = paste0(base_folder, "results/", 
-                                                      cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
+                                                      cluster, "/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
         
         
        
@@ -1165,8 +1171,8 @@ create_cluster_tables <- function(database_path,
           }
         }
         
-        if (identical(df_all_misspliced$novel_coordinates %>% sort(), 
-                      master_novel$novel_coordinates %>% sort())) {
+        if ( identical(df_all_misspliced$novel_coordinates %>% sort(), 
+                       master_novel$novel_coordinates %>% sort()) ) {
           
           df_all_misspliced <- df_all_misspliced %>%
             dplyr::select(-novel_coordinates)
@@ -1226,7 +1232,8 @@ create_cluster_tables <- function(database_path,
           
           
           
-          if (main_project == "age") {
+          if ( str_detect(string = main_project,
+                          pattern = "age") ) {
             
             body_sites <- df_metadata %>%
               filter(SRA_project == db) %>%
@@ -1243,8 +1250,10 @@ create_cluster_tables <- function(database_path,
                               any_of(samples))
               
             })
+            
             if (!identical(names(tpm)[-1] , samples)){
               print("ERROR! Samples obtained for the TPM analysis are not identical")
+              break;
             }
             tpm[is.na(tpm)] <- 0
             
@@ -1369,7 +1378,7 @@ create_cluster_tables <- function(database_path,
           
           ## TYPE 'NONE'
           introns_never <- readRDS(file = paste0(base_folder, "results/", 
-                                                cluster, "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds"))
+                                                cluster, "/not-misspliced/", cluster, "_all_notmisspliced.rds"))
           ## The introns not misspliced in this tissue, should have not been detected as spliced.
           ## Thus, this should be zero
           if (intersect(introns_never, df_intron %>%
@@ -1403,6 +1412,7 @@ create_cluster_tables <- function(database_path,
           
           if (any(str_detect(split_read_counts_intron_never$junID,pattern = "\\*"))) {
             print("ERROR! some never mis-spliced junctions without the number of individuals")
+            break;
           }
           
           
@@ -1417,12 +1427,14 @@ create_cluster_tables <- function(database_path,
           
           if (any(df_never_merged$ref_n_individuals %>% is.na)) {
             print("ERROR! some never mis-spliced junctions without the number of individuals")
+            break;
           }
           
           
           ## QC
           if (any(str_detect(df_never_merged$ref_junID, pattern = "\\*"))) {
             print("ERROR! * in the IDs")
+            break;
           }
           
           

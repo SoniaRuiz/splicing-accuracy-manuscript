@@ -12,18 +12,15 @@ library(DBI)
 
 ## CONNECT TO THE DATABASE ------------------------------
 
-getwd()
+gtf_version <- 105
 main_project <- "splicing"
-database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v105/", main_project, "/splicing.sqlite")
+database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
+                        gtf_version, "/", main_project, "/", main_project, ".sqlite")
+
+
+getwd()
 con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
-
-age <- F
-
-hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
-
-
 
 ## GET FROM MASTER TABLE
 query = paste0("SELECT * FROM 'master'")
@@ -31,6 +28,9 @@ df_metadata <- dbGetQuery(con, query)
 
 all_projects <- df_metadata$SRA_project %>% unique
 all_projects %>% length() %>% print()
+
+
+
 
 ## Remove the tables -----------------------------------------------------------
 # 
@@ -346,10 +346,15 @@ get_contamination_rates <- function(all_projects,
   if (all_tissues) {
     
     if (exists("df_contamination")) {
+      
       saveRDS(object = df_contamination,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/contamination_rates_raw.rds"))
+              file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
+                            gtf_version, "/", main_project, "/results/contamination_rates_raw.rds") )
+      
     } else {
-      df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/contamination_rates_raw.rds"))
+      
+      df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
+                                                gtf_version, "/", main_project, "/results/contamination_rates_raw.rds"))
     }
     
     
@@ -365,7 +370,7 @@ get_contamination_rates <- function(all_projects,
       arrange(type , prop) %>%
       mutate(tissue = fct_inorder(tissue))
     
-    colours <- ifelse(str_detect(string = as.factor(df_contamination_tidy$tissue), pattern = "Brain"), "red", "black")
+    # colours <- ifelse(str_detect(string = as.factor(df_contamination_tidy$tissue), pattern = "Brain"), "red", "black")
     
     ## GETTING CONTAMINATION RATES - % OF INDIVIDUALS
     ggplot(data = df_contamination_tidy) +
@@ -390,7 +395,7 @@ get_contamination_rates <- function(all_projects,
             legend.title = element_text(size = "10"),
             axis.text.x = element_text(colour = "black", size = "10"),
             legend.position = "top",
-            axis.text.y = element_text(color = colours,
+            axis.text.y = element_text(#color = colours,
             #                          angle = 70, 
                                         vjust = 0.5,
                                         hjust = 1)
@@ -398,8 +403,8 @@ get_contamination_rates <- function(all_projects,
       guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) %>%
       return()
     
-    file_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/paper/",
-                        main_project, "/figures/contamination_rates_tissues.svg")
+    file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
+                        gtf_version, "/", main_project, "/figures/contamination_rates_tissues.svg")
     ggplot2::ggsave(file_name, width = 183, height = 183, units = "mm", dpi = 300)
     
     ## Stats
@@ -1472,159 +1477,6 @@ get_distances_PC <- function() {
   # ggplot2::ggsave(file_name, width = 183, height = 143, units = "mm", dpi = 300)
 
 
-}
-
-##IGNORE
-get_modulo_basic_single_tissue <- function() {
-  
-
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  ###############################
-  ## GET DATA FOR FRONTAL CORTEX
-  ###############################
-  
-  project_id <- "BRAIN"
-  cluster_id <- "Brain - Frontal Cortex (BA9)"
-  
-  query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
-  introns <- dbGetQuery(con, query) %>% as_tibble()
-  query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                  paste(introns$novel_junID, collapse = ","),")")
-  introns <- merge(x = introns,
-                   y = dbGetQuery(con, query) %>% as_tibble(),
-                   by = "novel_junID",
-                   all.x = T) %>% 
-    as_tibble() 
-  query <- paste0("SELECT ref_junID, protein_coding FROM 'intron' WHERE ref_junID IN (",
-                  paste(introns$ref_junID, collapse = ","),")")
-  introns <- merge(x = introns,
-                   y = dbGetQuery(con, query) %>% as_tibble(),
-                   by = "ref_junID",
-                   all.x = T) %>% 
-    as_tibble() 
-  
-  
-  df_novel_tidy <- introns %>%
-    filter(abs(distance) <= 100) %>%
-    mutate(novel_type = str_replace(string = novel_type,
-                                    pattern = "_",
-                                    replacement = " ")) %>%
-    mutate(type_p = ifelse(distance < 0, paste0(novel_type," intron"), paste0(novel_type," exon"))) %>% 
-    mutate(module = abs(distance) %% 3)
-  
-  df_novel_tidy <- df_novel_tidy %>% 
-    group_by(module) %>%
-    summarise(n = n()) %>%
-    mutate(freq = n / sum(n))
-  
-  
-  plot_single_tissue <- ggplot(data = df_novel_tidy, 
-         aes(x = factor(module), y = freq*100, fill = factor(module))) + 
-    geom_bar(stat = "identity", position = "dodge") +
-    #ggtitle(paste0(title)) +
-    geom_text(aes(label=round(freq*100, digits = 1)), size = 3, 
-              position=position_dodge(width=0.9), vjust=-0.2, colour = "red") +
-    #scale_x_continuous(breaks = c(0, 1, 2)) +
-    #scale_y_continuous(labels = scales::percent) +
-    scale_fill_viridis_d() +
-    ylab("% of novel junctions") +
-    xlab("Modulo 3") +
-    theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          #axis.text.x = element_text(angle = 50, 
-          #                           vjust = 1,
-          #                           hjust = 1),
-          legend.text = element_text(colour = "black",size = "9"),
-          strip.text = element_text(colour = "black", size = "9"), 
-          strip.text.y = element_blank(),
-          plot.caption = element_text(colour = "black",size = "9"),
-          legend.title = element_text(colour = "black", size = "9"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = "Modulo 3: ",
-                               ncol = 3, 
-                               nrow = 1))
-  
-  ### PLOT ALL TISSUES
-  
-  
-  df_novel_tidy <- introns %>%
-    filter(abs(distance) <= 100) %>%
-    mutate(novel_type = str_replace(string = novel_type,
-                                    pattern = "_",
-                                    replacement = " ")) %>%
-    mutate(type_p = ifelse(distance < 0, paste0(novel_type," intron"), paste0(novel_type," exon"))) %>% 
-    mutate(module = abs(distance) %% 3)
-  
-  df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
-                                    levels = c("novel donor", "novel acceptor"))
-  df_novel_tidy$type_p = factor(df_novel_tidy$type_p, 
-                                levels = c("novel acceptor intron", 
-                                           "novel acceptor exon",
-                                           "novel donor intron", 
-                                           "novel donor exon"))
-  title <- paste0("Modulo 3 - ", cluster_id)
-  
-  df_novel_tidy <- df_novel_tidy %>%
-    group_by(module, type_p) %>% 
-    summarise(count = n()) %>% 
-    mutate(perc = count/sum(count))
-  
-  plot_fctx <- ggplot(data = df_novel_tidy, 
-                 aes(x = factor(type_p), y = perc*100, fill = factor(module))) + 
-    geom_bar(stat = "identity", position = "dodge") +
-    #ggtitle(paste0(title)) +
-    ggplot2::geom_text(aes(label=round(perc*100, digits = 1)), 
-              size = 2,
-              position=position_dodge(width=0.9), vjust=-0.2, colour = "red") +
-    #scale_x_continuous(breaks = c(0, 1, 2)) +
-    #scale_y_continuous(labels = scales::percent) +
-    scale_fill_viridis_d() +
-    ylab("% of novel junctions") +
-    xlab("novel splice site location") +
-    theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-    
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          axis.text.x = element_text(angle = 50, 
-                                     vjust = 1,
-                                     hjust = 1),
-          legend.text = element_text(colour = "black",size = "9"),
-          strip.text = element_text(colour = "black", size = "9"), 
-          strip.text.y = element_blank(),
-          plot.caption = element_text(colour = "black",size = "9"),
-          legend.title = element_text(colour = "black", size = "9"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = "Modulo 3: ",
-                               ncol = 3, 
-                               nrow = 1))
-  
-  plot_fctx
-  
-  
-  ggpubr::ggarrange(plot_single_tissue,            
-                    plot_all_tissues,
-                    plot_fctx, 
-                    plot_all,
-                    common.legend = T,
-                    labels = c("a", "b", "c", "d"),
-                    ncol = 2, 
-                    nrow = 2,
-                    #widths = c(1,1,2,2),
-                    align = "v")
-  plot_single_tissue
-  plot_all_tissues
-  plot_fctx
-  plot_all
-  legend("a","b","c","d")
-  file_name <- "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel2.png"
-  ggplot2::ggsave(filename = file_name,
-                  width = 183, height = 183, units = "mm", dpi = 300)
 }
 
 ## NOT IGNORE

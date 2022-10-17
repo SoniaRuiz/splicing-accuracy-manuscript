@@ -233,16 +233,16 @@ get_all_raw_distances_pairings <- function(all_projects,
   
 }
 
-get_intron_never_misspliced <- function (all_projects,
+get_intron_never_misspliced <- function (projects_used,
                                          all_clusters = NULL,
                                          main_project) {
   
  
-  df_never <- map_df(all_projects, function(db) {
+  df_never <- map_df(projects_used, function(db) {
     
-    # db <- all_projects[1]
+    # db <- projects_used[1]
     
-    # print(paste0(Sys.time(), " --> Working with '", db, "' DataBase..."))
+    print(paste0(Sys.time(), " --> Working with '", db, "' DataBase..."))
     base_folder <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                           db, "/v", gtf_version, "/", main_project, "_project/")
     
@@ -265,10 +265,10 @@ get_intron_never_misspliced <- function (all_projects,
       # cluster <- all_clusters[1]
       
       # print(paste0(Sys.time(), " --> ", cluster))
-      if (file.exists(paste0(base_folder, "results/", 
-                             cluster, "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds"))) {
+      if ( file.exists(paste0(base_folder, "results/", 
+                              cluster, "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
         df_introns_never <- readRDS(file = paste0(base_folder, "results/", 
-                                                  cluster, "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds")) %>% as_tibble()
+                                                  cluster, "/not-misspliced/", cluster, "_all_notmisspliced.rds")) %>% as_tibble()
         return(data.frame(ref_junID = df_introns_never$value))
       } else {
         return(NULL)
