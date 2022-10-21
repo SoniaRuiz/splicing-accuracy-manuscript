@@ -7,11 +7,6 @@ library(tidyverse)
 library(data.table)
 
 
-
-Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIETDHJZOI",
-           "AWS_SECRET_ACCESS_KEY"="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",
-           "AWS_DEFAULT_REGION"="eu-west-2")
-
 # database_path <- "/home/sruiz/PROJECTS/splicing-project-recount3/database/splicing-intronextra-v2.sqlite"
 # SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
 # 
@@ -28,6 +23,10 @@ source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_junction_pairin
 ##########################################
 
 if (!exists("CNC_CDTS_CONS_gr")) {
+
+  Sys.setenv("AWS_ACCESS_KEY_ID"="AKIAUKEFAIIIAL7JUG3W",
+             "AWS_SECRET_ACCESS_KEY"="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",
+             "AWS_DEFAULT_REGION"="eu-west-2")
   print("Loading the 'CNC_CDTS_CONS_gr' file...")
   aws.s3::s3load(object = "CNC_CDTS_CONS_gr.rda", bucket = "data-references", region = "eu-west-2")
   print("'CNC_CDTS_CONS_gr' file loaded!")
@@ -138,22 +137,29 @@ create_metadata_table <- function(database_path,
       if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                              project, "/v", gtf_version, "/",
                              main_project, "_project/raw_data/samples_metadata.rds"))) {
+        
       metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
                                         project, "/v", gtf_version, "/",
                                         main_project, "_project/raw_data/samples_metadata.rds"))
       
-      if (main_project == "splicing") {
+      metadata <- metadata %>% 
+        as_tibble() %>%
+        filter(gtex.smafrze != "EXCLUDE") %>%
+        distinct(external_id, .keep_all = T) 
+      
+      if (main_project == "introverse") {
+        
+        min_samples <- 1
+        
+      } else {
+        
+        min_samples <- 70
         metadata <- metadata %>% 
-          as_tibble() %>%
-          filter(gtex.smrin >= 6.0,
-                 gtex.smafrze != "EXCLUDE") %>%
-          distinct(external_id, .keep_all = T) 
-        if (metadata %>% nrow() < 70) {
-          metadata <- NULL
-        }
+          filter(gtex.smrin >= 6.0) 
+        
       }
       
-      if (!is.null(metadata) && metadata %>% nrow() >= 70) {
+      if (metadata %>% nrow() >= min_samples) {
         
         
         print(metadata$gtex.smtsd %>% unique())
@@ -162,15 +168,12 @@ create_metadata_table <- function(database_path,
         df_project_metadata <- data.frame(age = metadata$gtex.age %>% as.character(),
                                           rin = metadata$gtex.smrin %>% as.character(),
                                           gender = metadata$gtex.sex %>% as.character(),
-                                          tissue = metadata$gtex.smtsd,
-                                          cluster = metadata$gtex.smtsd, #str_remove_all(metadata$gtex.smtsd, pattern = " ") %>% tolower(),
-                                          cluster_tidy = metadata$gtex.smtsd,
+                                          cluster = metadata$gtex.smtsd, 
                                           smnabtcht = metadata$gtex.smnabtcht, 
                                           sample_id = metadata %>% distinct(gtex.sampid) %>% nrow(),
                                           smafrze = metadata$gtex.smafrze,
                                           avg_read_length = metadata$recount_seq_qc.avg_len,
                                           mapped_read_count = metadata$recount_qc.star.all_mapped_reads,
-                                          SRA_project_tidy = metadata$recount_project.project,
                                           SRA_project = metadata$recount_project.project) %>% 
           arrange(SRA_project, cluster) %>% 
           return()
@@ -187,14 +190,16 @@ create_metadata_table <- function(database_path,
     })
   }
   
-  if (QC) {
-    sex_tissues <- c("BREAST", "CERVIX_UTERI", "FALLOPIAN_TUBE", "OVARY", "PROSTATE", "TESTIS", "UTERUS", "VAGINA")
-    
-    df_metadata <- df_metadata %>% 
-      dplyr::filter(!(SRA_project %in% sex_tissues),
-                    !(cluster %in% c("Brain - Cortex", "Brain - Cerebellum"))) %>%
-      dplyr::filter(cluster %in% (df_metadata %>% dplyr::count(cluster) %>% dplyr::filter(n >= 70) %>% pull(cluster)))
-  }
+  df_metadata %>% as_tibble() %>% dplyr::count(cluster)
+  
+  # if (QC) {
+  #   sex_tissues <- c("BREAST", "CERVIX_UTERI", "FALLOPIAN_TUBE", "OVARY", "PROSTATE", "TESTIS", "UTERUS", "VAGINA")
+  #   
+  #   df_metadata <- df_metadata %>% 
+  #     dplyr::filter(!(SRA_project %in% sex_tissues),
+  #                   !(cluster %in% c("Brain - Cortex", "Brain - Cerebellum"))) %>%
+  #     dplyr::filter(cluster %in% (df_metadata %>% dplyr::count(cluster) %>% dplyr::filter(n >= 70) %>% pull(cluster)))
+  # }
   
   
   # saveRDS(object = df_all_projects_metadata,
@@ -962,7 +967,8 @@ create_cluster_tables <- function(database_path,
   df_novel <- dbGetQuery(con, query) 
   df_novel %>% nrow()
   df_novel %>% 
-    dplyr::count(novel_type)
+    dplyr::count(novel_type) %>%
+    print()
   
   ## GET FROM GENE TABLE
   query = paste0("SELECT * FROM 'gene'")
@@ -997,7 +1003,7 @@ create_cluster_tables <- function(database_path,
       ###############################
       
       if ( file.exists(paste0(base_folder, "results/", 
-                              cluster, "/", cluster, "_raw_distances_tidy.rds")) ) {
+                              cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) ) {
         
         
         ## BASE DATA -----------------------------------------------------------
@@ -1018,7 +1024,7 @@ create_cluster_tables <- function(database_path,
         
         ## LOAD INTRONS AND NOVEL JUNCTIONS ------------------------------------
         df_cluster_distances <- readRDS(file = paste0(base_folder, "results/", 
-                                                      cluster, "/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
+                                                      cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
         
         
        
@@ -1232,8 +1238,7 @@ create_cluster_tables <- function(database_path,
           
           
           
-          if ( str_detect(string = main_project,
-                          pattern = "age") ) {
+          if ( str_detect(string = main_project, pattern = "age") ) {
             
             body_sites <- df_metadata %>%
               filter(SRA_project == db) %>%
@@ -1246,8 +1251,7 @@ create_cluster_tables <- function(database_path,
                                paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", db, 
                                       "/v", gtf_version, "/splicing_project/results/tpm/",
                                       db, "_", site, "_tpm.rds")) %>% 
-                dplyr::select(gene_id = gene, 
-                              any_of(samples))
+                dplyr::select(gene_id = gene, any_of(samples))
               
             })
             
@@ -1261,8 +1265,7 @@ create_cluster_tables <- function(database_path,
             
             tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
                                          "/", db, "_", cluster, "_tpm.rds")) %>% 
-              dplyr::select(gene_id = gene, 
-                            all_of(samples))
+              dplyr::select(gene_id = gene, all_of(samples))
           }
           
           tpm <- tpm  %>%
@@ -1378,7 +1381,7 @@ create_cluster_tables <- function(database_path,
           
           ## TYPE 'NONE'
           introns_never <- readRDS(file = paste0(base_folder, "results/", 
-                                                cluster, "/not-misspliced/", cluster, "_all_notmisspliced.rds"))
+                                                cluster, "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds"))
           ## The introns not misspliced in this tissue, should have not been detected as spliced.
           ## Thus, this should be zero
           if (intersect(introns_never, df_intron %>%

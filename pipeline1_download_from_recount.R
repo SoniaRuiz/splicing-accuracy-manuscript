@@ -558,11 +558,12 @@ generate_recount2_median_tpm <- function() {
   
 }
 
-generate_recount3_median_tpm <- function(gtf_version = 105,
-                                         main_project = "splicing") {
+generate_recount3_median_tpm <- function(all_projects,
+                                         gtf_version,
+                                         main_project) {
   
-  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-  #all_projects <- "NERVE"
+  
+  
   
   for (project_id in all_projects) {
     
@@ -603,16 +604,32 @@ generate_recount3_median_tpm <- function(gtf_version = 105,
         
         # cluster <- clusters_ID[1]
         
-        samples <- metadata.info %>% 
-          as_tibble() %>%
-          filter(gtex.smtsd == cluster,
-                 gtex.smrin >= 6.0,
-                 gtex.smafrze != "EXCLUDE") %>%
-          distinct(external_id) %>% 
-          pull()
         
         
-        if (length(samples) >= 70) {
+        if ( main_project == "introverse" ) {
+          samples <- metadata.info %>% 
+            as_tibble() %>%
+            filter(gtex.smtsd == cluster,
+                   #gtex.smrin >= 6.0,
+                   gtex.smafrze != "EXCLUDE") %>%
+            distinct(external_id) %>% 
+            pull()
+        } else {
+          samples <- metadata.info %>% 
+            as_tibble() %>%
+            filter(gtex.smtsd == cluster,
+                   gtex.smrin >= 6.0,
+                   gtex.smafrze != "EXCLUDE") %>%
+            distinct(external_id) %>% 
+            pull()
+        }
+        
+        
+        
+        
+        if (((main_project == "splicing" ||
+              str_detect(main_project, pattern = "age")) && length(samples) >= 70) || 
+            (main_project == "introverse" && length(samples) >= 1)) {
           
           cluster_samples <- readRDS(file = paste0(folder_root, "/raw_data/", 
                                                    project_id, "_", cluster, "_samples_used.rds"))
@@ -891,4 +908,16 @@ generate_biotype_percentage <- function() {
 ## CALLS
 ############################################
 
-generate_recount3_median_tpm(gtf_version = 105)
+gtf_version <- 105
+main_project <- "introverse"
+
+if ( main_project == "introverse" ) {
+  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+} else {
+  all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+  #all_projects <- "NERVE"
+}
+
+generate_recount3_median_tpm(all_projects = all_projects[7],
+                             gtf_version = gtf_version,
+                             main_project = main_project)

@@ -73,12 +73,23 @@ get_all_annotated_split_reads <- function(all_projects,
     if (is.null(all_clusters)) {
       
       metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
-      all_clusters <-  metadata.info %>% 
-        as_tibble() %>%
-        filter(gtex.smrin >= 6.0,
-               gtex.smafrze != "EXCLUDE") %>%
-        distinct(gtex.smtsd) %>% 
-        pull()
+      
+      if ( main_project == "introverse" ) {
+        all_clusters <-  metadata.info %>% 
+          as_tibble() %>%
+          filter(#gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(gtex.smtsd) %>% 
+          pull()
+      } else {
+        all_clusters <-  metadata.info %>% 
+          as_tibble() %>%
+          filter(gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(gtex.smtsd) %>% 
+          pull()
+      }
+      
     }
     
     
@@ -154,62 +165,77 @@ get_all_raw_distances_pairings <- function(all_projects,
   
   
   ## LOOP THROUGH PROJECTS
-  df_all_distances_pairings_raw <- map_df(all_projects, function(db) {
+  df_all_distances_pairings_raw <- map_df(all_projects, function(project_id) {
     
-    # db <- all_projects[1]
+    # project_id <- all_projects[1]
     
-    print(paste0(Sys.time(), " --> Working with '", db, "' DataBase..."))
+    print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                          db, "/v", gtf_version, "/", main_project, "_project/")
+                          project_id, "/v", gtf_version, "/", main_project, "_project/")
     
     if (is.null(all_clusters)) {
       
       metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
-      all_clusters <-  metadata.info %>% 
-        as_tibble() %>%
-        filter(gtex.smrin >= 6.0,
-               gtex.smafrze != "EXCLUDE") %>%
-        distinct(gtex.smtsd) %>% 
-        pull()
+      
+      
+      if ( main_project == "introverse" ) {
+        all_clusters <-  metadata.info %>% 
+          as_tibble() %>%
+          filter(#gtex.smrin >= 6.0,
+            gtex.smafrze != "EXCLUDE") %>%
+          distinct(gtex.smtsd) %>% 
+          pull()
+      } else {
+        all_clusters <-  metadata.info %>% 
+          as_tibble() %>%
+          filter(gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(gtex.smtsd) %>% 
+          pull()
+      }
       
     }
     
     map_df(all_clusters, function(cluster) {
       
-      # cluster <- all_clusters[2]
+      # cluster <- all_clusters[1]
       
       print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
       
       ## Load samples
-      samples <- readRDS(file = paste0(folder_root, "/raw_data/", db, "_", cluster,  "_samples_used.rds"))
+      samples <- readRDS(file = paste0(folder_root, "/raw_data/", project_id, "_", cluster,  "_samples_used.rds"))
       
       if (samples %>% length() > 0) {
         
-        folder_name <- paste0(folder_root, "/results/", cluster, "/")
+        folder_name <- paste0(folder_root, "/results/", cluster, "/distances/")
         
-        ## Obtain the distances across all samples
-        df_all <- map_df(samples, function(sample) { 
-          
-          # sample <- samples[1]
-          print(paste0(cluster, " - ", sample))
-          file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
-          
-          
-          if (file.exists(file_name)) {
-            
-            df <- readRDS(file = file_name)
-            
-            return(df)
-          } 
-          
-        })
         
-        if (!file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))) {
+        
+        if ( !file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) ) {
+          
+          ## Obtain the distances across all samples
+          df_all <- map_df(samples, function(sample) { 
+            
+            # sample <- samples[1]
+            print(paste0(cluster, " - ", sample))
+            file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
+            
+            
+            if (file.exists(file_name)) {
+              
+              df <- readRDS(file = file_name)
+              
+              return(df)
+            } 
+            
+          })
           
           saveRDS(object = df_all %>%
                     distinct(novel_junID, ref_junID, .keep_all = T) %>%
                     mutate(tissue = cluster),
                   file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+        } else {
+          df_all <- readRDS( file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds") )
         }
         
         
@@ -250,12 +276,23 @@ get_intron_never_misspliced <- function (projects_used,
       
       if (file.exists(paste0(base_folder, "/raw_data/samples_metadata.rds"))) {
         metadata.info <- readRDS(file = paste0(base_folder, "/raw_data/samples_metadata.rds"))
-        all_clusters <-  metadata.info %>% 
-          as_tibble() %>%
-          filter(gtex.smrin >= 6.0,
-                 gtex.smafrze != "EXCLUDE") %>%
-          distinct(gtex.smtsd) %>% 
-          pull()  
+        
+        if ( main_project == "introverse" ) {
+          all_clusters <-  metadata.info %>% 
+            as_tibble() %>%
+            filter(#gtex.smrin >= 6.0,
+              gtex.smafrze != "EXCLUDE") %>%
+            distinct(gtex.smtsd) %>% 
+            pull()
+        } else {
+          all_clusters <-  metadata.info %>% 
+            as_tibble() %>%
+            filter(gtex.smrin >= 6.0,
+                   gtex.smafrze != "EXCLUDE") %>%
+            distinct(gtex.smtsd) %>% 
+            pull()
+        }
+        
       }
       
     }
@@ -265,10 +302,10 @@ get_intron_never_misspliced <- function (projects_used,
       # cluster <- all_clusters[1]
       
       # print(paste0(Sys.time(), " --> ", cluster))
-      if ( file.exists(paste0(base_folder, "results/", 
-                              cluster, "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
-        df_introns_never <- readRDS(file = paste0(base_folder, "results/", 
-                                                  cluster, "/not-misspliced/", cluster, "_all_notmisspliced.rds")) %>% as_tibble()
+      if ( file.exists(paste0(base_folder, "results/", cluster, 
+                              "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
+        df_introns_never <- readRDS(file = paste0(base_folder, "results/", cluster, 
+                                                  "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds")) %>% as_tibble()
         return(data.frame(ref_junID = df_introns_never$value))
       } else {
         return(NULL)
