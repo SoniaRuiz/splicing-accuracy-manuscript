@@ -844,716 +844,571 @@ get_never_misspliced <- function(cluster,
 
 
 
-get_missplicing_QC <- function(cluster,
-                               samples,
-                               split_read_counts,
-                               all_split_reads_details,
-                               folder_name) {
-  
-  # cluster = "PD"
-  # cluster = "control"
-  #folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount2-projects/", project_id, "/results/pipeline3/missplicing-ratio/", cluster, "/")
-  
-  ################################################################################################################
-  ## Load the intron database
-  
-  df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>% as_tibble()
-  df_introns %>% head()
-  df_introns %>% nrow()
-  
-  
-  
-  
-  
-  ################################################################################################################
-  ## Double-check again that the never mis-spliced junctions can't actually be paired with any novel donor or 
-  ## novel acceptor from the current tissue
-  
-  
-  ## Get the annotation details from the never mis-spliced introns
-  all_not_misspliced <- all_split_reads_details %>%
-    dplyr::filter(junID %in% (df_introns %>%
-                                dplyr::filter(ref_type == "never") %>%
-                                distinct(ref_junID) %>%
-                                pull()))
-  
-  
-  ## Add the rest of the novel donor and acceptor junctions
-  all_not_misspliced <- rbind(all_not_misspliced,
-                              all_split_reads_details %>%
-                                dplyr::filter(type %in% c("novel_donor", "novel_acceptor")))
-  
-  
-  
-  ## Call the function. The result returned should be of length zero
-  never_misspliced_pairings <- get_never_misspliced(cluster = cluster,
-                                                    samples = samples,
-                                                    split_read_counts = split_read_counts,
-                                                    all_not_misspliced = all_not_misspliced,
-                                                    folder_name = folder_name,
-                                                    save_results = F)
-  
-  
-  if (never_misspliced_pairings %>% length() > 0) {
-    print("Error: some introns catalogued as 'never mis-spliced' have been found to be mis-spliced.")
-    break;
-  }
-  
-  
-  
-  ################################################################################################################
-  ## Load novel junctions
-  
-  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds")) %>% as_tibble()
-  df_novel %>% head()
-  df_novel %>% nrow()
-  
-  
-  ## Novel junctions from the novel database are only novel donor or novel acceptor
-  if (any(!(df_novel$novel_type %>% unique()) %in% c("novel_acceptor", "novel_donor"))) {
-    print("Error: some novel junctions from the novel database are not classified as 'novel donor' or 'novel acceptor'.")
-    break;
-  }
-  
-  
-  ################################################################################################################
-  ## All novel junctions should be attached to exact the same number of introns stored within the intron database
-  
-  if (df_introns %>%
-      dplyr::filter(ref_type != "never") %>% 
-      distinct(ref_junID) %>%
-      nrow() != df_novel %>%
-      distinct(ref_junID) %>%
-      nrow()) {
-    print("Error: some novel junctions aren't attached to the same introns stored within the intron database.")
-    break;
-  }
-  
-  
-  
-  if (intersect(df_novel %>%
-                distinct(ref_junID) %>%
-                pull(), 
-                df_introns %>%
-                dplyr::filter(ref_type != "never") %>%
-                distinct(ref_junID) %>%
-                pull()) %>% length() != df_introns %>% 
-      dplyr::filter(ref_type != "never") %>% nrow()){
-    print(paste0("Error: some ", cluster, " novel junctions are attached to introns that are not stored on the database!"))
-  }
-  
-  if (intersect(df_novel %>%
-                distinct(novel_junID) %>%
-                pull() %>% sort(), all_split_reads_details %>%
-                dplyr::filter(type %in% c("novel_donor", "novel_acceptor")) %>%
-                distinct(junID) %>%
-                pull() %>% sort()) %>% length() != df_novel %>% nrow()){
-    
-    
-    diff <-setdiff(df_novel %>%
-                     distinct(novel_junID) %>%
-                     pull(), all_split_reads_details %>%
-                     dplyr::filter(type %in% c("novel_donor", "novel_acceptor")) %>%
-                     distinct(junID) %>%
-                     pull())
-    
-    all_split_reads_details %>%
-      dplyr::filter(junID == diff[1])
-    
-    
-    all_split_reads_details %>%
-      dplyr::filter(junID == "JUNC00006215")
-    
-    print(paste0("Error: some ", cluster, " novel junctions have not been found within the original annotation!"))
-  }
-  
-  
-  
-  
-  ## FREE SOME MEMORY
-  
-  rm(never_misspliced_pairings)
-  rm(all_not_misspliced)
-  rm(df_introns)
-  rm(df_novel)
-  gc()
-  
-}
-
-
-
-
-add_cdts_cons_scores <- function(cluster = NULL,
-                                 db_introns = NULL,
-                                 folder_name = NULL) {
-  
-  
-  
-  
-  
-  
-  if (is.null(db_introns) && !is.null(cluster)) {
-    ## Load the IDB 
-    db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
-      distinct(ref_junID, .keep_all = T)
-  }
-  
-  db_introns <- db_introns %>%
-    mutate(CDTS_5ss_mean = 0.0,
-           CDTS_3ss_mean = 0.0,
-           phastCons20way_5ss_mean = 0.0,
-           phastCons20way_3ss_mean = 0.0) %>%
-    GRanges()
-  
-  
-  print(paste0(Sys.time(), " - getting 5' scores assigned to introns from IntroVerse ..."))
-  
-  ## https://www.nature.com/articles/nature09000
-  ## Scores from the 5'ss ---------------------------------------------------------
-  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
-                                          subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                                                           ranges = IRanges(start = db_introns %>% start() - 5,
-                                                                                            end = db_introns %>% start() + 35),
-                                                                           strand = db_introns %>% strand()),
-                                          ignore.strand = FALSE,
-                                          type = "any")
-  
-  overlaps_tidy <- overlaps %>%
-    as.data.frame() %>%
-    mutate(CDTS = CNC_CDTS_CONS_gr[queryHits(overlaps),]$CDTS,
-           mean_phastCons20way = CNC_CDTS_CONS_gr[queryHits(overlaps),]$mean_phastCons20way) %>%
-    group_by(subjectHits) %>%
-    mutate(CDTS_mean = CDTS %>% mean(),
-           mean_phastCons20way_mean = mean_phastCons20way %>% mean())
-  
-  db_introns[subjectHits(overlaps),]$CDTS_5ss_mean <- overlaps_tidy$CDTS_mean
-  db_introns[subjectHits(overlaps),]$phastCons20way_5ss_mean <- overlaps_tidy$mean_phastCons20way_mean
-  
-  
-  
-  print(paste0(Sys.time(), " - getting 3' scores assigned to introns from IntroVerse ..."))
-  
-  ## Scores from the 3'ss ---------------------------------------------------------
-  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
-                                          subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
-                                                                           ranges = IRanges(start = db_introns %>% end() - 35,
-                                                                                            end = db_introns %>% end() + 5),
-                                                                           strand = db_introns %>% strand()),
-                                          
-                                          ignore.strand = FALSE,
-                                          type = "any")
-  
-  overlaps_tidy <- overlaps %>% 
-    as.data.frame() %>%
-    mutate(CDTS = CNC_CDTS_CONS_gr[queryHits(overlaps),]$CDTS,
-           mean_phastCons20way = CNC_CDTS_CONS_gr[queryHits(overlaps),]$mean_phastCons20way) %>%
-    as_tibble() %>%
-    group_by(subjectHits) %>%
-    mutate(CDTS_mean = CDTS %>% mean(),
-           mean_phastCons20way_mean = mean_phastCons20way %>% mean())
-  
-  db_introns[subjectHits(overlaps),]$CDTS_3ss_mean <- overlaps_tidy$CDTS_mean
-  db_introns[subjectHits(overlaps),]$phastCons20way_3ss_mean <- overlaps_tidy$mean_phastCons20way_mean
-  
-  #####################
-  ## SAVE RESULTS
-  #####################
-  
-  if (!is.null(cluster)) {
-    file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-    saveRDS(object = db_introns %>% data.table::as.data.table(),
-            file = file_name)
-    
-    print(paste0(Sys.time(), " - CDTS and Conservation scores added! IDB updated!"))
-    
-    
-    rm(overlaps_tidy)
-    rm(db_introns)
-    rm(file_name)
-    rm(overlaps)
-    
-  } else {
-    return(db_introns)
-  }
-  
-  
-  
-  
-  #gc()
-}
-
-####################################################
-## ADDING FEATURES TO THE INTRON DATABASE ##########
-####################################################
-
-
-
-## MITOCHONDRIAL GENES --------------------------
-
-remove_MT_genes <- function(cluster,
-                            folder_name) {
-  
-  
-  
-  ## Load mis-splicing ratios df
-  df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-  df_introns %>% head()
-  df_introns %>% nrow()
-  
-  
-  ## Load MT genes
-  
-  print(paste0(Sys.time(), " - checking the existance of MT genes..."))
-  
-  MT_genes <- readRDS(file = "/data/references/MT_genes/MT_genes.rds")
-  MT_geneID <- MT_genes %>% distinct(gene_id) %>% pull(gene_id)
-  
-  if (any(df_introns$gene_id %in% MT_geneID)) {
-    
-    ## Remove MT genes
-    df_introns <- df_introns %>%
-      dplyr::filter(!(gene_id %in% MT_geneID)) 
-    
-    print(paste0(Sys.time(), " - MT genes removed! ", df_introns %>% nrow(), " final number of junctions."))
-    
-    
-    ## SAVE RESULTS
-    saveRDS(object = df_introns,
-            file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-    
-    print(paste0(Sys.time(), " - results saved!"))
-    
-  } else {
-    print(paste0(Sys.time(), " - the dataset doesn't contain any MT gene!"))
-  }
-  
-  
-  ## FREE SOME MEMORY
-  rm(df_introns)
-  rm(MT_geneID)
-  rm(MT_genes)
-  gc()
-  
-}
+# get_missplicing_QC <- function(cluster,
+#                                samples,
+#                                split_read_counts,
+#                                all_split_reads_details,
+#                                folder_name) {
+#   
+#   # cluster = "PD"
+#   # cluster = "control"
+#   #folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount2-projects/", project_id, "/results/pipeline3/missplicing-ratio/", cluster, "/")
+#   
+#   ################################################################################################################
+#   ## Load the intron database
+#   
+#   df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>% as_tibble()
+#   df_introns %>% head()
+#   df_introns %>% nrow()
+#   
+#   
+#   
+#   
+#   
+#   ################################################################################################################
+#   ## Double-check again that the never mis-spliced junctions can't actually be paired with any novel donor or 
+#   ## novel acceptor from the current tissue
+#   
+#   
+#   ## Get the annotation details from the never mis-spliced introns
+#   all_not_misspliced <- all_split_reads_details %>%
+#     dplyr::filter(junID %in% (df_introns %>%
+#                                 dplyr::filter(ref_type == "never") %>%
+#                                 distinct(ref_junID) %>%
+#                                 pull()))
+#   
+#   
+#   ## Add the rest of the novel donor and acceptor junctions
+#   all_not_misspliced <- rbind(all_not_misspliced,
+#                               all_split_reads_details %>%
+#                                 dplyr::filter(type %in% c("novel_donor", "novel_acceptor")))
+#   
+#   
+#   
+#   ## Call the function. The result returned should be of length zero
+#   never_misspliced_pairings <- get_never_misspliced(cluster = cluster,
+#                                                     samples = samples,
+#                                                     split_read_counts = split_read_counts,
+#                                                     all_not_misspliced = all_not_misspliced,
+#                                                     folder_name = folder_name,
+#                                                     save_results = F)
+#   
+#   
+#   if (never_misspliced_pairings %>% length() > 0) {
+#     print("Error: some introns catalogued as 'never mis-spliced' have been found to be mis-spliced.")
+#     break;
+#   }
+#   
+#   
+#   
+#   ################################################################################################################
+#   ## Load novel junctions
+#   
+#   df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds")) %>% as_tibble()
+#   df_novel %>% head()
+#   df_novel %>% nrow()
+#   
+#   
+#   ## Novel junctions from the novel database are only novel donor or novel acceptor
+#   if (any(!(df_novel$novel_type %>% unique()) %in% c("novel_acceptor", "novel_donor"))) {
+#     print("Error: some novel junctions from the novel database are not classified as 'novel donor' or 'novel acceptor'.")
+#     break;
+#   }
+#   
+#   
+#   ################################################################################################################
+#   ## All novel junctions should be attached to exact the same number of introns stored within the intron database
+#   
+#   if (df_introns %>%
+#       dplyr::filter(ref_type != "never") %>% 
+#       distinct(ref_junID) %>%
+#       nrow() != df_novel %>%
+#       distinct(ref_junID) %>%
+#       nrow()) {
+#     print("Error: some novel junctions aren't attached to the same introns stored within the intron database.")
+#     break;
+#   }
+#   
+#   
+#   
+#   if (intersect(df_novel %>%
+#                 distinct(ref_junID) %>%
+#                 pull(), 
+#                 df_introns %>%
+#                 dplyr::filter(ref_type != "never") %>%
+#                 distinct(ref_junID) %>%
+#                 pull()) %>% length() != df_introns %>% 
+#       dplyr::filter(ref_type != "never") %>% nrow()){
+#     print(paste0("Error: some ", cluster, " novel junctions are attached to introns that are not stored on the database!"))
+#   }
+#   
+#   if (intersect(df_novel %>%
+#                 distinct(novel_junID) %>%
+#                 pull() %>% sort(), all_split_reads_details %>%
+#                 dplyr::filter(type %in% c("novel_donor", "novel_acceptor")) %>%
+#                 distinct(junID) %>%
+#                 pull() %>% sort()) %>% length() != df_novel %>% nrow()){
+#     
+#     
+#     diff <-setdiff(df_novel %>%
+#                      distinct(novel_junID) %>%
+#                      pull(), all_split_reads_details %>%
+#                      dplyr::filter(type %in% c("novel_donor", "novel_acceptor")) %>%
+#                      distinct(junID) %>%
+#                      pull())
+#     
+#     all_split_reads_details %>%
+#       dplyr::filter(junID == diff[1])
+#     
+#     
+#     all_split_reads_details %>%
+#       dplyr::filter(junID == "JUNC00006215")
+#     
+#     print(paste0("Error: some ", cluster, " novel junctions have not been found within the original annotation!"))
+#   }
+#   
+#   
+#   
+#   
+#   ## FREE SOME MEMORY
+#   
+#   rm(never_misspliced_pairings)
+#   rm(all_not_misspliced)
+#   rm(df_introns)
+#   rm(df_novel)
+#   gc()
+#   
+# }
+# 
+# 
+# 
+# 
+# 
+# ####################################################
+# ## ADDING FEATURES TO THE INTRON DATABASE ##########
+# ####################################################
 
 
 
 
 
-## GENE TPM AND GENE LENGTH -----------------------
-
-# folder_name <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/ADIPOSE_TISSUE//results/pipeline3/missplicing-ratio/Adipose - Subcutaneous/v105/"
-# cluster <- "Adipose - Subcutaneous"
-
-add_gene_tpm_length <- function(cluster,
-                                tpm_file,
-                                folder_name,
-                                GTEx = T) {
-  
-  print(cluster)
-  
-  ## LOAD SOURCE DATA
-  file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-  df_introns <- readRDS(file = file_name) %>%
-    as_tibble()
-  
-  ## PRINT SOME STATS
-  df_introns %>% head()
-  df_introns %>% nrow()
-  df_introns <- df_introns %>%
-    distinct(ref_junID, .keep_all = T) # %>%
-  df_introns %>% nrow()
-  
-  
-  #########################
-  ## GENE TPM 
-  
-  if (GTEx) {
-    
-    print(paste0(Sys.time(), " - Adding gene TPM..."))
-    
-    ## Add gene TPM 
-    
-    # library(GSRI)
-    
-    tpm <- readRDS(file = tpm_file)
-
-    tpm %>% head()
-    tpm %>% nrow()
-    
-    tpm <- tpm  %>% 
-      dplyr::select(gene_id = gene, 
-                    tpm_median = TPM_median,
-                    tpm_mean = TPM_mean)
-    
-    tpm %>% head()
-    tpm %>% nrow()
-    
-    
-  } else {
-    
-    tpm <- readRDS(file = tpm_folder) %>%
-      dplyr::select(-tpm)
-  }
-  
-  
-  
-  
-  
-  df_introns <- df_introns %>%
-    unnest(gene_id)
-  
-  
-  df_merged <- merge(x = df_introns %>% data.table::as.data.table(),
-                     y = tpm %>% data.table::as.data.table(),
-                     by = "gene_id",
-                     all.x = T) %>% 
-    dplyr::rename(tpm_mean_rct = tpm_mean) %>% 
-    dplyr::rename(tpm_median_rct = tpm_median)
-  
-  
-  df_merged %>% head()
-  df_merged %>% nrow()
-  
-
-  
-  ############################
-  ## ADD NUMBER OF TRANSCRIPTS
-  ############################
-  
-  
-  print(paste0(Sys.time(), " - Adding number of transcripts..."))
-  
-  
-  if (!exists("homo_sapiens_v105")) {
-    
-    homo_sapiens_v105 <- rtracklayer::import("/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>%
-      as.data.frame()
-    
-    hsv105_transcripts <- homo_sapiens_v105 %>%
-      dplyr::count(gene_id, type) %>%
-      dplyr::filter(type == "transcript") %>%
-      unnest(gene_id)
-    
-  }
-  
-  df_merged <- merge(x = df_merged %>% data.table::as.data.table(),
-                     y = hsv105_transcripts[,c("gene_id", "n")] %>% data.table::as.data.table(),
-                     by = "gene_id",
-                     all.x = T) %>%
-    dplyr::rename(n_transcripts = n)
-  
-  df_merged %>% head()
-  df_merged %>% nrow()
-  
-  
-  if (any(is.na(df_merged$n_transcripts))) {
-    print("Error: some genes don't have their number of transcript attached!")
-  }
-  
-  
-  
-  #########################
-  ## ADD GENE LENGTH 
-  #########################
-  
-  print(paste0(Sys.time(), " - Adding gene length..."))
-  
-  ## The matching is going to be donr
-  hsv105_genes <- homo_sapiens_v105 %>%
-    dplyr::filter(type == "gene") %>%
-    dplyr::select(gene_id, gene_width = width)
-  
-  
-  df_merged %>% head()
-  df_merged %>% nrow()
-  
-  df_merged <- merge(x = df_merged %>% data.table::as.data.table(),
-                     y = hsv105_genes %>% data.table::as.data.table(),
-                     by = "gene_id",
-                     all.x = T)
-  
-  
-  df_merged %>% head()
-  df_merged %>% nrow()
-  
-  
-  if (any(is.na(df_merged$gene_width))) {
-    print("Error: some genes don't have their length attached!")
-  }
-  
-  if (any(df_merged$width > df_merged$gene_width)) {
-    print(paste0(Sys.time(), " - removing introns longer than their assigned gene!"))
-    
-    df_merged %>% nrow()
-    
-    df_merged <- df_merged %>%
-      dplyr::filter(width < gene_width)
-    
-    df_merged %>% nrow()
-  }
-  
-  df_merged %>% head()
-  df_merged %>% nrow()
-  
-  ## Remove duplicated ref introns (this is due to the 'unnest' function applied before) ----------------
-  
-  df_merged <- df_merged %>%
-    distinct(ref_junID, .keep_all = T)
-  
-  
-  ## Matching results with novel introns ---------------------------------------
-  
-  df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))%>%
-    dplyr::filter(ref_junID %in% df_merged$ref_junID)
-  
-  if (!identical(df_novel$ref_junID %>% unique() %>% sort(), 
-                 df_merged %>% dplyr::filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
-    print("ERROR!")
-  }
-  
-  ## Save results --------------------------------------------------------------
-  
-  file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-  saveRDS(object = df_merged, file = file_name)
-  
-  file_name <- paste0(folder_name, "/", cluster, "_db_novel.rds")
-  saveRDS(object = df_novel, file = file_name)
-  
-  print(paste0(Sys.time(), " - file saved!"))
-  
-  
-  ## Free some memory ----------------------------------------------------------
-  rm(hsv105_transcripts)
-  rm(homo_sapiens_v105)
-  rm(hsv105_transcripts)
-  rm(df_merged)
-  rm(df_introns)
-  rm(tpm)
-  gc()
-  
-}
 
 
-QC_IDB_junctions <- function() {
-  
-  for (cluster in gtex_tissues) {
-    
-    folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/", cluster, "/v104/")
-    file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
-    
-    ## IDB - Introns
-    df_introns <- readRDS(file = file_name) %>% as.data.frame()
-    
-    ## IDB - Novel junctions
-    df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds")) %>% as_tibble()
-    
-    ## Compare
-    if (!identical(df_novel$ref_junID %>% unique() %>% sort(), 
-                   df_introns %>% dplyr::filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
-      print("ERROR!")
-      break;
-    } else {
-      print(paste0(cluster, " correct!"))
-    }
-    
-    if (any(db_introns$u2_intron == F)){
-      print("ERROR!")
-      break;
-    }
-    
-    if (any(db_introns$width > db_introns$gene_width)) {
-      print("ERROR!")
-      break;
-    }
-    
-  }
-  
-  # cluster <- "Brain-FrontalCortex_BA9"
-  # version <- "104"
-  # 
-  
-  ## IDB - Introns
-  
-  print(cluster)
-  
-}
+
+# ## GENE TPM AND GENE LENGTH -----------------------
+# 
+# # folder_name <- "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/ADIPOSE_TISSUE//results/pipeline3/missplicing-ratio/Adipose - Subcutaneous/v105/"
+# # cluster <- "Adipose - Subcutaneous"
+# 
+# add_gene_tpm_length <- function(cluster,
+#                                 tpm_file,
+#                                 folder_name,
+#                                 GTEx = T) {
+#   
+#   print(cluster)
+#   
+#   ## LOAD SOURCE DATA
+#   file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
+#   df_introns <- readRDS(file = file_name) %>%
+#     as_tibble()
+#   
+#   ## PRINT SOME STATS
+#   df_introns %>% head()
+#   df_introns %>% nrow()
+#   df_introns <- df_introns %>%
+#     distinct(ref_junID, .keep_all = T) # %>%
+#   df_introns %>% nrow()
+#   
+#   
+#   #########################
+#   ## GENE TPM 
+#   
+#   if (GTEx) {
+#     
+#     print(paste0(Sys.time(), " - Adding gene TPM..."))
+#     
+#     ## Add gene TPM 
+#     
+#     # library(GSRI)
+#     
+#     tpm <- readRDS(file = tpm_file)
+# 
+#     tpm %>% head()
+#     tpm %>% nrow()
+#     
+#     tpm <- tpm  %>% 
+#       dplyr::select(gene_id = gene, 
+#                     tpm_median = TPM_median,
+#                     tpm_mean = TPM_mean)
+#     
+#     tpm %>% head()
+#     tpm %>% nrow()
+#     
+#     
+#   } else {
+#     
+#     tpm <- readRDS(file = tpm_folder) %>%
+#       dplyr::select(-tpm)
+#   }
+#   
+#   
+#   
+#   
+#   
+#   df_introns <- df_introns %>%
+#     unnest(gene_id)
+#   
+#   
+#   df_merged <- merge(x = df_introns %>% data.table::as.data.table(),
+#                      y = tpm %>% data.table::as.data.table(),
+#                      by = "gene_id",
+#                      all.x = T) %>% 
+#     dplyr::rename(tpm_mean_rct = tpm_mean) %>% 
+#     dplyr::rename(tpm_median_rct = tpm_median)
+#   
+#   
+#   df_merged %>% head()
+#   df_merged %>% nrow()
+#   
+# 
+#   
+#   ############################
+#   ## ADD NUMBER OF TRANSCRIPTS
+#   ############################
+#   
+#   
+#   print(paste0(Sys.time(), " - Adding number of transcripts..."))
+#   
+#   
+#   if (!exists("homo_sapiens_v105")) {
+#     
+#     homo_sapiens_v105 <- rtracklayer::import("/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>%
+#       as.data.frame()
+#     
+#     hsv105_transcripts <- homo_sapiens_v105 %>%
+#       dplyr::count(gene_id, type) %>%
+#       dplyr::filter(type == "transcript") %>%
+#       unnest(gene_id)
+#     
+#   }
+#   
+#   df_merged <- merge(x = df_merged %>% data.table::as.data.table(),
+#                      y = hsv105_transcripts[,c("gene_id", "n")] %>% data.table::as.data.table(),
+#                      by = "gene_id",
+#                      all.x = T) %>%
+#     dplyr::rename(n_transcripts = n)
+#   
+#   df_merged %>% head()
+#   df_merged %>% nrow()
+#   
+#   
+#   if (any(is.na(df_merged$n_transcripts))) {
+#     print("Error: some genes don't have their number of transcript attached!")
+#   }
+#   
+#   
+#   
+#   #########################
+#   ## ADD GENE LENGTH 
+#   #########################
+#   
+#   print(paste0(Sys.time(), " - Adding gene length..."))
+#   
+#   ## The matching is going to be donr
+#   hsv105_genes <- homo_sapiens_v105 %>%
+#     dplyr::filter(type == "gene") %>%
+#     dplyr::select(gene_id, gene_width = width)
+#   
+#   
+#   df_merged %>% head()
+#   df_merged %>% nrow()
+#   
+#   df_merged <- merge(x = df_merged %>% data.table::as.data.table(),
+#                      y = hsv105_genes %>% data.table::as.data.table(),
+#                      by = "gene_id",
+#                      all.x = T)
+#   
+#   
+#   df_merged %>% head()
+#   df_merged %>% nrow()
+#   
+#   
+#   if (any(is.na(df_merged$gene_width))) {
+#     print("Error: some genes don't have their length attached!")
+#   }
+#   
+#   if (any(df_merged$width > df_merged$gene_width)) {
+#     print(paste0(Sys.time(), " - removing introns longer than their assigned gene!"))
+#     
+#     df_merged %>% nrow()
+#     
+#     df_merged <- df_merged %>%
+#       dplyr::filter(width < gene_width)
+#     
+#     df_merged %>% nrow()
+#   }
+#   
+#   df_merged %>% head()
+#   df_merged %>% nrow()
+#   
+#   ## Remove duplicated ref introns (this is due to the 'unnest' function applied before) ----------------
+#   
+#   df_merged <- df_merged %>%
+#     distinct(ref_junID, .keep_all = T)
+#   
+#   
+#   ## Matching results with novel introns ---------------------------------------
+#   
+#   df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))%>%
+#     dplyr::filter(ref_junID %in% df_merged$ref_junID)
+#   
+#   if (!identical(df_novel$ref_junID %>% unique() %>% sort(), 
+#                  df_merged %>% dplyr::filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
+#     print("ERROR!")
+#   }
+#   
+#   ## Save results --------------------------------------------------------------
+#   
+#   file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
+#   saveRDS(object = df_merged, file = file_name)
+#   
+#   file_name <- paste0(folder_name, "/", cluster, "_db_novel.rds")
+#   saveRDS(object = df_novel, file = file_name)
+#   
+#   print(paste0(Sys.time(), " - file saved!"))
+#   
+#   
+#   ## Free some memory ----------------------------------------------------------
+#   rm(hsv105_transcripts)
+#   rm(homo_sapiens_v105)
+#   rm(hsv105_transcripts)
+#   rm(df_merged)
+#   rm(df_introns)
+#   rm(tpm)
+#   gc()
+#   
+# }
+# 
+# 
+# QC_IDB_junctions <- function() {
+#   
+#   for (cluster in gtex_tissues) {
+#     
+#     folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/", cluster, "/v104/")
+#     file_name <- paste0(folder_name, "/", cluster, "_db_introns.rds")
+#     
+#     ## IDB - Introns
+#     df_introns <- readRDS(file = file_name) %>% as.data.frame()
+#     
+#     ## IDB - Novel junctions
+#     df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds")) %>% as_tibble()
+#     
+#     ## Compare
+#     if (!identical(df_novel$ref_junID %>% unique() %>% sort(), 
+#                    df_introns %>% dplyr::filter(ref_type != "never") %>% dplyr::select(ref_junID) %>% pull()%>% unique() %>% sort())) {
+#       print("ERROR!")
+#       break;
+#     } else {
+#       print(paste0(cluster, " correct!"))
+#     }
+#     
+#     if (any(db_introns$u2_intron == F)){
+#       print("ERROR!")
+#       break;
+#     }
+#     
+#     if (any(db_introns$width > db_introns$gene_width)) {
+#       print("ERROR!")
+#       break;
+#     }
+#     
+#   }
+#   
+#   # cluster <- "Brain-FrontalCortex_BA9"
+#   # version <- "104"
+#   # 
+#   
+#   ## IDB - Introns
+#   
+#   print(cluster)
+#   
+# }
 
 
 ## PROTEIN PERCENTAGE  ----------------------------
 
 
 
-#' Title
-#'
-#' @param df_introns 
-#' @param cluster 
-#' @param folder_root 
-#'
-#' @return
-#' @export
-#'
-#' @examples
-add_protein_percentage_to_database <- function(db_introns = NULL,
-                                               cluster = NULL,
-                                               folder_root = NULL) {
-  
-  
-  ## Import HUMAN REFERENCE transcriptome
-  # homo_sapiens_v104_gtf <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
-  #   as.data.frame()
-  
-  print(paste0(Sys.time(), " - adding biotypes percentage to junctions..."))
-  
-  df_protein <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds") %>%
-    as_tibble()
-  df_protein %>% head()
-  df_protein %>% nrow()
-  
-  
-  
-  ## Load mis-splicing data for the current cluster
-  
-  
-  if (!is.null(cluster)) {
-    
-    print(paste0(Sys.time(), " - Adding biotype percentage to '", cluster, "' junctions..."))
-    
-    if (cluster == "case" || cluster == "control") {
-      folder_name <- paste0(folder_root, "/", cluster, "/pipeline3/missplicing-ratio/")
-      db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-    } else {
-      folder_name <- folder_root #paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v105")
-      db_introns <- readRDS(file = paste0(folder_root, "/", cluster, "_db_introns.rds")) %>%
-        dplyr::filter(u12_intron == T | u2_intron == T)
-    }
-    
-    ## Load database of novel junctions
-    df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))  %>%
-      dplyr::filter(ref_junID %in% db_introns$ref_junID)
-    
-    df_novel %>% head()
-    df_novel %>% distinct(ref_junID) %>% nrow()
-    
-    ## QC - novel junctions must be attached to the same introns stored on the intron database
-    if ((db_introns %>% dplyr::filter(ref_type != "never") %>% distinct(ref_junID) %>% nrow()) != 
-        (df_novel %>% distinct(ref_junID) %>% nrow())) {
-      print("Error: some novel junctions are attached to introns that are not stored on the intron database!")
-    }
-    
-  }
-  
-  
-  # db_introns %>% head()
-  # db_introns %>% nrow()
-  # db_introns %>% distinct(ref_junID) %>% nrow()
-  
-  df_protein_local <- df_protein %>%
-    dplyr::filter(junID %in% db_introns$ref_junID) 
-  
-  # df_protein_local %>% head()
-  # df_protein_local %>% nrow()
-  # db_introns %>% distinct(ref_junID) %>% nrow()
-  
-  
-  
-  if ((db_introns %>% distinct(ref_junID) %>% nrow()) == 
-      (df_protein_local %>% distinct(junID) %>% nrow())) {
-    
-    #db_introns %>% nrow()
-    
-    ## Add protein-coding to the IDB
-    
-    db_introns <- merge(x = db_introns %>% data.table::as.data.table(),
-                        y = df_protein_local %>% data.table::as.data.table(),
-                        by.x = "ref_junID",
-                        by.y = "junID",
-                        all.x = T)
-    #db_introns %>% head()
-    
-    
-    
-    
-    ## Add protein-coding info to the novel junction database
-    if (!is.null(cluster)) {
-      df_novel <- merge(x = df_novel %>% data.table::as.data.table(),
-                        y = df_protein_local %>% data.table::as.data.table(),
-                        by.x = "ref_junID",
-                        by.y = "junID",
-                        all.x = T)
-      df_novel %>% head()
-      
-      if(identical(db_introns %>% dplyr::filter(ref_type != "never") %>% distinct(ref_junID) %>% pull %>% sort(), 
-                   df_novel %>% distinct(ref_junID) %>% pull %>% sort())) {
-        
-        saveRDS(object = db_introns %>% data.table::as.data.table(),
-                file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
-        
-        saveRDS(object = df_novel,
-                file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
-        
-        print(paste0(Sys.time(), " - ", cluster, " finished!"))
-        
-      } else {
-        print(paste0(Sys.time(), " - ", cluster, " error - the two datasets present different refIDs of rows!"))
-      }
-      
-    } else {
-      return(db_introns)
-    }
-    
-    
-    
-    
-    
-    
-    
-  } else {
-    return(NULL)
-  }
-  
-  rm(df_protein_local)
-  rm(db_introns)
-  rm(df_novel)
-  
-  gc()
-  
-}
-
-add_protein_percentage_to_database_QC <- function(tissues = gtex_tissues,
-                                                  folder_root = "/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/",
-                                                  protein_folder = "/home/sruiz/PROJECTS/splicing-project/results/base_data/all_annotated_SR_details_length_104_biotype.rds") {
-  
-  ## Load database of introns
-  cluster <- tissues[11]
-  folder_name <- paste0(folder_root, "/", cluster, "/v104")
-  df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
-    dplyr::filter(u12_intron == T | u2_intron == T)
-  
-  df_protein <- readRDS(file = protein_folder)
-  df_protein %>% head()
-  df_protein %>% nrow()
-  
-  homo_sapiens_v104_gtf <- rtracklayer::import(con = "/data/references/ensembl/gtf_gff3/v104/Homo_sapiens.GRCh38.104.gtf") %>% 
-    as.data.frame()
-  homo_sapiens_v104_gtf[1,]
-  
-  
-  row_number <- sample(1:nrow(df_introns), 1, replace = F)   
-  
-  tx <- df_introns[row_number,] %>%
-    unnest(tx_id_junction) %>%
-    pull(tx_id_junction)
-  
-  df_protein %>%
-    dplyr::filter(junID == df_introns[row_number,]$ref_junID)
-  
-  homo_sapiens_v104_gtf %>%
-    dplyr::filter(type == "transcript",
-           transcript_id %in% tx)
-  
-  
-} 
+#' #' Title
+#' #'
+#' #' @param df_introns 
+#' #' @param cluster 
+#' #' @param folder_root 
+#' #'
+#' #' @return
+#' #' @export
+#' #'
+#' #' @examples
+#' add_protein_percentage_to_database <- function(db_introns = NULL,
+#'                                                cluster = NULL,
+#'                                                folder_root = NULL) {
+#'   
+#'   
+#'   ## Import HUMAN REFERENCE transcriptome
+#'   # homo_sapiens_v104_gtf <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
+#'   #   as.data.frame()
+#'   
+#'   print(paste0(Sys.time(), " - adding biotypes percentage to junctions..."))
+#'   
+#'   df_protein <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_104_biotype.rds") %>%
+#'     as_tibble()
+#'   df_protein %>% head()
+#'   df_protein %>% nrow()
+#'   
+#'   
+#'   
+#'   ## Load mis-splicing data for the current cluster
+#'   
+#'   
+#'   if (!is.null(cluster)) {
+#'     
+#'     print(paste0(Sys.time(), " - Adding biotype percentage to '", cluster, "' junctions..."))
+#'     
+#'     if (cluster == "case" || cluster == "control") {
+#'       folder_name <- paste0(folder_root, "/", cluster, "/pipeline3/missplicing-ratio/")
+#'       db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
+#'     } else {
+#'       folder_name <- folder_root #paste0(folder_root, "/results/pipeline3/missplicing-ratio/", cluster, "/v105")
+#'       db_introns <- readRDS(file = paste0(folder_root, "/", cluster, "_db_introns.rds")) %>%
+#'         dplyr::filter(u12_intron == T | u2_intron == T)
+#'     }
+#'     
+#'     ## Load database of novel junctions
+#'     df_novel <- readRDS(file = paste0(folder_name, "/", cluster, "_db_novel.rds"))  %>%
+#'       dplyr::filter(ref_junID %in% db_introns$ref_junID)
+#'     
+#'     df_novel %>% head()
+#'     df_novel %>% distinct(ref_junID) %>% nrow()
+#'     
+#'     ## QC - novel junctions must be attached to the same introns stored on the intron database
+#'     if ((db_introns %>% dplyr::filter(ref_type != "never") %>% distinct(ref_junID) %>% nrow()) != 
+#'         (df_novel %>% distinct(ref_junID) %>% nrow())) {
+#'       print("Error: some novel junctions are attached to introns that are not stored on the intron database!")
+#'     }
+#'     
+#'   }
+#'   
+#'   
+#'   # db_introns %>% head()
+#'   # db_introns %>% nrow()
+#'   # db_introns %>% distinct(ref_junID) %>% nrow()
+#'   
+#'   df_protein_local <- df_protein %>%
+#'     dplyr::filter(junID %in% db_introns$ref_junID) 
+#'   
+#'   # df_protein_local %>% head()
+#'   # df_protein_local %>% nrow()
+#'   # db_introns %>% distinct(ref_junID) %>% nrow()
+#'   
+#'   
+#'   
+#'   if ((db_introns %>% distinct(ref_junID) %>% nrow()) == 
+#'       (df_protein_local %>% distinct(junID) %>% nrow())) {
+#'     
+#'     #db_introns %>% nrow()
+#'     
+#'     ## Add protein-coding to the IDB
+#'     
+#'     db_introns <- merge(x = db_introns %>% data.table::as.data.table(),
+#'                         y = df_protein_local %>% data.table::as.data.table(),
+#'                         by.x = "ref_junID",
+#'                         by.y = "junID",
+#'                         all.x = T)
+#'     #db_introns %>% head()
+#'     
+#'     
+#'     
+#'     
+#'     ## Add protein-coding info to the novel junction database
+#'     if (!is.null(cluster)) {
+#'       df_novel <- merge(x = df_novel %>% data.table::as.data.table(),
+#'                         y = df_protein_local %>% data.table::as.data.table(),
+#'                         by.x = "ref_junID",
+#'                         by.y = "junID",
+#'                         all.x = T)
+#'       df_novel %>% head()
+#'       
+#'       if(identical(db_introns %>% dplyr::filter(ref_type != "never") %>% distinct(ref_junID) %>% pull %>% sort(), 
+#'                    df_novel %>% distinct(ref_junID) %>% pull %>% sort())) {
+#'         
+#'         saveRDS(object = db_introns %>% data.table::as.data.table(),
+#'                 file = paste0(folder_name, "/", cluster, "_db_introns.rds"))
+#'         
+#'         saveRDS(object = df_novel,
+#'                 file = paste0(folder_name, "/", cluster, "_db_novel.rds"))
+#'         
+#'         print(paste0(Sys.time(), " - ", cluster, " finished!"))
+#'         
+#'       } else {
+#'         print(paste0(Sys.time(), " - ", cluster, " error - the two datasets present different refIDs of rows!"))
+#'       }
+#'       
+#'     } else {
+#'       return(db_introns)
+#'     }
+#'     
+#'     
+#'     
+#'     
+#'     
+#'     
+#'     
+#'   } else {
+#'     return(NULL)
+#'   }
+#'   
+#'   rm(df_protein_local)
+#'   rm(db_introns)
+#'   rm(df_novel)
+#'   
+#'   gc()
+#'   
+#' }
+#' 
+#' add_protein_percentage_to_database_QC <- function(tissues = gtex_tissues,
+#'                                                   folder_root = "/home/sruiz/PROJECTS/splicing-project/results/pipeline3/missplicing-ratio/",
+#'                                                   protein_folder = "/home/sruiz/PROJECTS/splicing-project/results/base_data/all_annotated_SR_details_length_104_biotype.rds") {
+#'   
+#'   ## Load database of introns
+#'   cluster <- tissues[11]
+#'   folder_name <- paste0(folder_root, "/", cluster, "/v104")
+#'   df_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
+#'     dplyr::filter(u12_intron == T | u2_intron == T)
+#'   
+#'   df_protein <- readRDS(file = protein_folder)
+#'   df_protein %>% head()
+#'   df_protein %>% nrow()
+#'   
+#'   homo_sapiens_v104_gtf <- rtracklayer::import(con = "/data/references/ensembl/gtf_gff3/v104/Homo_sapiens.GRCh38.104.gtf") %>% 
+#'     as.data.frame()
+#'   homo_sapiens_v104_gtf[1,]
+#'   
+#'   
+#'   row_number <- sample(1:nrow(df_introns), 1, replace = F)   
+#'   
+#'   tx <- df_introns[row_number,] %>%
+#'     unnest(tx_id_junction) %>%
+#'     pull(tx_id_junction)
+#'   
+#'   df_protein %>%
+#'     dplyr::filter(junID == df_introns[row_number,]$ref_junID)
+#'   
+#'   homo_sapiens_v104_gtf %>%
+#'     dplyr::filter(type == "transcript",
+#'            transcript_id %in% tx)
+#'   
+#'   
+#' } 
 
 
 

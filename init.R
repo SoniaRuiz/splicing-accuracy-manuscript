@@ -15,10 +15,10 @@ library(dplyr)
 #            "AWS_DEFAULT_REGION"="AWS_DEFAULT_REGION")
 
 
-source("/home/sruiz/PROJECTS/splicing-project-recount3/sql_helper.R")
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline2_annotate_from_recount.R")
+
 source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_junction_pairing.R")
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation_extra.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_database_SQL_helper.R")
+source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_database_SQL_generation.R")
 
 
 
@@ -30,9 +30,7 @@ source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generat
 
 init_recount3_gtex_data <- function (gtf_version) {
   
-  # project_id <- projects_used[6]
-  all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-  
+  all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects.rds")
   ##########################################################
   ## Read all the split reads and return them by tissue
   ##########################################################
@@ -43,18 +41,19 @@ init_recount3_gtex_data <- function (gtf_version) {
     all_split_reads_raw_tidy <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/all_split_reads_raw.rds"))
     all_split_reads_raw_tidy %>% distinct(junID) %>% nrow() %>% print()
     
-    all_split_reads_raw <- map_df(all_projects, function(project_id) {
-      
-      print(paste0(project_id, "..."))
-      folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                            project_id, "/v", gtf_version, "/")
-      
-      readRDS(file = paste0(folder_root, "/all_split_reads_raw.rds")) %>%
-        return()
-      
-    })
-    
-    all_split_reads_raw_tidy <- all_split_reads_raw %>% distinct(junID, .keep_all = T) 
+    ## To load the same object but by tissue
+    # all_split_reads_raw <- map_df(all_projects, function(project_id) {
+    #   
+    #   print(paste0(project_id, "..."))
+    #   folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
+    #                         project_id, "/")
+    #   
+    #   readRDS(file = paste0(folder_root, "/all_split_reads_raw.rds")) %>%
+    #     return()
+    #   
+    # })
+    # 
+    # all_split_reads_raw_tidy <- all_split_reads_raw %>% distinct(junID, .keep_all = T) 
     
   } else {
     
@@ -63,8 +62,8 @@ init_recount3_gtex_data <- function (gtf_version) {
       # project_id <- all_projects[1]
       print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
       
-      folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                            project_id, "/v", gtf_version, "/")
+      folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
+                            project_id, "/")
       dir.create(file.path(folder_root), recursive = TRUE, showWarnings = T)
       
       rse <- recount3::create_rse_manual(
@@ -122,14 +121,15 @@ init_recount3_gtex_data <- function (gtf_version) {
                                                                                c( "1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
                                                                                   "2", "20", "21", "22", "3", "4", "5", "6", "7", "8", "9", "X", "Y")), 
                                                              pruning.mode = "tidy")
-  all_split_reads_raw_tidy_gr %>% head()
-  all_split_reads_raw_tidy_gr %>%
-    as_tibble() %>%
-    distinct(junID, .keep_all = T) %>% 
-    nrow() %>%
-    print()
-  all_split_reads_raw_tidy %>% nrow() -
-    all_split_reads_raw_tidy_gr %>% length()
+  ## Data check
+  # all_split_reads_raw_tidy_gr %>% head()
+  # all_split_reads_raw_tidy_gr %>%
+  #   as_tibble() %>%
+  #   distinct(junID, .keep_all = T) %>% 
+  #   nrow() %>%
+  #   print()
+  # all_split_reads_raw_tidy %>% nrow() -
+  #   all_split_reads_raw_tidy_gr %>% length()
   
   #######################################################
   ## Remove split reads overlapping the ENCODE backlist
@@ -142,12 +142,12 @@ init_recount3_gtex_data <- function (gtf_version) {
   all_split_reads_raw_tidy_gr <- remove_encode_blacklist_regions(GRdata = all_split_reads_raw_tidy_gr,
                                                                  blacklist_path = blacklist_path)
   
-  
-  all_split_reads_raw_tidy_gr %>%
-    as_tibble() %>%
-    distinct(junID, .keep_all = T) %>% 
-    nrow() %>% 
-    print()
+  ## Data check
+  # all_split_reads_raw_tidy_gr %>%
+  #   as_tibble() %>%
+  #   distinct(junID, .keep_all = T) %>% 
+  #   nrow() %>% 
+  #   print()
   
   
   #######################################################
@@ -156,17 +156,21 @@ init_recount3_gtex_data <- function (gtf_version) {
   
   print(paste0(Sys.time(), " - annotating dasper..."))
   
-  gtf_path <- paste0("/data/references/ensembl/gtf/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")
+  if ( file.exists(paste0("/data/references/ensembl/gtf/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")) ) {
+    gtf_path <- paste0("/data/references/ensembl/gtf/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")
+  } else {
+    gtf_path <- paste0("/data/references/ensembl/gtf/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".gtf")
+  }
   edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
   edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
   
   all_split_reads_details_w_symbol <- dasper::junction_annot(junctions = all_split_reads_raw_tidy_gr %>% GRanges(), 
-                                                                 ref = edb,
-                                                                 ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"), 
-                                                                 ref_cols_to_merge = c("gene_id", "gene_name", "tx_id"))
-  
+                                                             ref = edb,
+                                                             ref_cols = c("gene_id", "gene_name", "symbol", "tx_id"), 
+                                                             ref_cols_to_merge = c("gene_id", "gene_name", "tx_id"))
   all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>% 
     as_tibble()
+  
   
   all_split_reads_details_w_symbol_reduced <- all_split_reads_details_w_symbol %>% 
     dplyr::select(seqnames, start, end, strand, junID, 
@@ -176,7 +180,7 @@ init_recount3_gtex_data <- function (gtf_version) {
   folder_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/")
   dir.create(file.path(folder_path), recursive = TRUE, showWarnings = T)
   saveRDS(all_split_reads_details_w_symbol_reduced,
-          file = paste0(folder_path, "/all_split_reads_details_w_symbol.rds"))
+          file = paste0(folder_path, "/all_split_reads_details_", gtf_version, "_w_symbol.rds"))
   
   
   
@@ -187,7 +191,9 @@ init_recount3_gtex_data <- function (gtf_version) {
   
   print(paste0(Sys.time(), " - removing split reads not classified as 'annotated', 'novel_donor' or 'novel_acceptor'..."))
   
-  all_split_reads_details_w_symbol_reduced <- readRDS(file = paste0(folder_path, "/all_split_reads_details_w_symbol.rds"))
+  if ( !exists("all_split_reads_details_w_symbol_reduced") ) {
+    all_split_reads_details_w_symbol_reduced <- readRDS(file = paste0(folder_path, "/all_split_reads_details_w_symbol.rds"))
+  }
   
   all_split_reads_details_w_symbol_reduced_discard <- all_split_reads_details_w_symbol_reduced %>%
     dplyr::filter(!(type %in% c("annotated", "novel_donor", "novel_acceptor"))) %>%
@@ -224,7 +230,7 @@ init_recount3_gtex_data <- function (gtf_version) {
     print()
   
   all_split_reads_details_w_symbol_reduced_keep_gr <- all_split_reads_details_w_symbol_reduced_keep_gr  %>% 
-    dplyr::filter(width >=25)
+    dplyr::filter(width >= 25)
   
   all_split_reads_details_w_symbol_reduced_keep_gr %>% nrow() %>% print()
   
@@ -261,10 +267,17 @@ init_recount3_gtex_data <- function (gtf_version) {
   all_split_reads_details_w_symbol_reduced_keep_gr
   
   saveRDS(object = all_split_reads_details_w_symbol_reduced_keep_gr,
-          file = paste0(folder_path, "/all_split_reads_details_w_symbol_reduced_keep.rds"))
+          file = paste0(folder_path, "/all_split_reads_details_", gtf_version, "_w_symbol_reduced_keep.rds"))
   
-  
-  
+  rm(all_split_reads_raw_tidy_gr)
+  rm(all_split_reads_details_w_symbol)
+  rm(edb)
+  rm(all_split_reads_details_w_symbol_reduced)
+  rm(all_split_reads_details_w_symbol_reduced_keep_gr)
+  rm(all_split_reads_details_w_symbol_reduced_keep)
+  rm(all_split_reads_details_w_symbol_reduced_discard)
+  rm(ambiguous_introns)
+  gc()
 }
 
 
@@ -282,7 +295,7 @@ tidy_recount3_data_per_tissue <- function(projects_used,
     # project_id <- projects_used[10]
     # project_id <- projects_used[13]
     
-    folder_root <- paste0("~/PROJECTS/splicing-project/splicing-recount3-projects/",
+    folder_root <- paste0("~/PROJECTS/splicing-project-results/splicing-recount3-projects/",
                           project_id, "/v", gtf_version, "/", main_project, "_project/")
     
     folder_path <- paste0(folder_root, "raw_data/")
@@ -421,7 +434,7 @@ junction_pairing <- function(projects_used,
     
     # project_id <- projects_used[1]
     
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
                           project_id, "/v", gtf_version, "/", main_project, "_project/")
     folder_path <- paste0(folder_root, "/raw_data/")
     
@@ -539,7 +552,7 @@ tidy_data_pior_sql <- function (projects_used,
   
   print(paste0(Sys.time(), " - loading base data ..."))
   
-  ## Load main object
+  ## Load base recount3 object containing the GTEx v8 split reads passing the QC criteria
   all_split_reads_details_w_symbol_reduced_keep_gr <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/v",
                                                                             gtf_version, "/all_split_reads_details_w_symbol_reduced_keep.rds"))
   
@@ -628,6 +641,7 @@ tidy_data_pior_sql <- function (projects_used,
   #########################################
   
   df_never_misspliced <- get_intron_never_misspliced(projects_used = projects_used,
+                                                     all_clusters = all_clusters,
                                                      main_project = main_project)
   any(str_detect(df_never_misspliced$ref_junID, pattern = "\\*"))
   
@@ -650,7 +664,7 @@ tidy_data_pior_sql <- function (projects_used,
     dplyr::filter(!(junID %in% c(df_all_distances_pairings_raw$ref_junID,
                                  df_all_distances_pairings_raw$novel_junID)))
   
-  ## These are all the non-paired, including the never mis-spliced. Thus, [768,646 - 38,521 = 730125]
+  ## These are all the non-paired, including the never mis-spliced. Thus, GTEx 'introverse' data: [768,646 - 38,521 = 730125]
   df_not_paired %>% 
     distinct(junID)
   df_not_paired %>%
@@ -828,21 +842,22 @@ sql_database_generation <- function(database_path,
                           SRA_projects = projects_used)
   }
   
-  if (!any(tables == 'mane')) {
-    create_mane_table(database_path)
-  }
+  # if (!any(tables == 'mane')) {
+  #   create_mane_table(database_path)
+  # }
   
   
-  if (!any(tables %in% c('intron', 'novel', 'gene'))) {
+  if ( ! any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
     create_master_tables(database_path,
                          main_project = main_project,
                          gtf_version = gtf_version)
   }
   
   print(paste0(Sys.time(), " - creating cluster tables ..."))
+  
   create_cluster_tables(database_path = database_path,
                         gtf_version = gtf_version,
-                        SRA_projects = projects_used,
+                        SRA_projects = projects_used[-1],
                         main_project = main_project)
 
 }
@@ -851,48 +866,56 @@ sql_database_generation <- function(database_path,
 ## CALLS - PREPARE RECOUNT3 DATA
 #####################################
 
-
-gtf_version <- 105
-main_project <- "introverse"
-database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
-                        gtf_version, "/", main_project, "/", main_project, ".sqlite")
-
-
-
-
-if ( main_project == "introverse" ) {
-  all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-} else {
-  all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-}
-
-
-# init_recount3_gtex_data(gtf_version)
-# tidy_recount3_data_per_tissue(projects_used = all_projects,
-#                               main_project,
-#                               gtf_version = gtf_version)
-# junction_pairing(projects_used = all_projects,
-#                  main_project,
-#                  gtf_version = gtf_version)
-
-
-# get_all_annotated_split_reads(all_projects = all_projects,
-#                               gtf_version = gtf_version,
-#                               main_project = main_project)
+# gtf_versions <- c(104)
+# main_project <- "splicing"
 # 
 # 
-# get_all_raw_distances_pairings(all_projects = all_projects,
-#                                gtf_version = gtf_version,
-#                                main_project = main_project)
+# for (gtf_version in gtf_versions) {
+# 
+#   # gtf_version <- gtf_versions[1]
+# 
+#   database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
+#                           gtf_version, "/", main_project, "/", main_project, ".sqlite")
+# 
+#   if ( main_project == "introverse" ) {
+#     all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects.rds")
+#   } else {
+#     all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
+#   }
+# 
+#   all_projects <- "BRAIN"
+#   
+#   init_recount3_gtex_data(gtf_version)
+#   tidy_recount3_data_per_tissue(projects_used = all_projects,
+#                                 main_project,
+#                                 gtf_version = gtf_version)
+# 
+#   # junction_pairing(projects_used = all_projects,
+#   #                  main_project,
+#   #                  gtf_version = gtf_version)
+#   #
+#   #
+#   # get_all_annotated_split_reads(all_projects = all_projects,
+#   #                               gtf_version = gtf_version,
+#   #                               main_project = main_project)
+#   #
+#   #
+#   # get_all_raw_distances_pairings(all_projects = all_projects,
+#   #                                gtf_version = gtf_version,
+#   #                                main_project = main_project)
+#   #
+#   #
+#   # tidy_data_pior_sql(projects_used = all_projects,
+#   #                    gtf_version = gtf_version,
+#   #                    main_project = main_project)
+#   #
+#   #
+#   # sql_database_generation(database_path = database_path,
+#   #                         projects_used = all_projects,
+#   #                         main_project = main_project,
+#   #                         gtf_version = gtf_version,
+#   #                         remove_all = T)
+# 
+#   gc()
+# }
 
-
-# tidy_data_pior_sql(projects_used = all_projects,
-#                    gtf_version = gtf_version,
-#                    main_project = main_project)
-
-
-sql_database_generation(database_path = database_path,
-                        projects_used = all_projects,
-                        main_project = main_project,
-                        gtf_version = gtf_version,
-                        remove_all = T)

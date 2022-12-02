@@ -8,7 +8,7 @@ library(data.table)
 
 
 # database_path <- "/home/sruiz/PROJECTS/splicing-project-recount3/database/splicing-intronextra-v2.sqlite"
-# SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
+# SRA_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects.rds")
 # 
 # 
 # 
@@ -35,7 +35,8 @@ if (!exists("CNC_CDTS_CONS_gr")) {
 }
 
 ## GET INFO FROM MANE
-if (!exists("hg_mane_transcripts")) {
+if ( !exists("hg_mane_transcripts") ) {
+  
   print("Loading the 'hg_MANE' file...")
   hg_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf")
   hg_MANE_tidy <- hg_MANE %>%
@@ -46,13 +47,15 @@ if (!exists("hg_mane_transcripts")) {
     drop_na()
   hg_mane_transcripts <- hg_MANE_tidy %>%
     dplyr::filter(type == "transcript") %>%
-    distinct(transcript_id) %>% pull()
+    distinct(transcript_id) %>%
+    mutate(MANE = T)
 } else {
   print("'hg_mane_transcripts' file already loaded!")
 }
 
 # GET INFO FROM THE HG38
-if (!exists("hg38_transcripts")) {
+if ( !exists("hg38_transcripts") ) {
+  
   print("Loading the 'hg38' file...")
   hg38 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
   hg38_transcripts <- hg38 %>%
@@ -70,8 +73,7 @@ if (!exists("hg38_transcripts")) {
 ## Remove the tables -----------------------------------------------------------
 
 remove_tables <- function(database_path,
-                          all,
-                          age = F) {
+                          all) {
   
   con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database_path)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=0")
@@ -80,7 +82,8 @@ remove_tables <- function(database_path,
   for (table in tables) {
     #if (str_detect(table %>% tolower(), pattern = "kidney")) {
     if (!all) {
-      if (!(table %in% c("gene","intron", "mane", "master", "novel"))) {
+      if (!(table %in% c("gene", "transcript", "intron", 
+                         "master", "novel"))) {
         dbRemoveTable(conn = con, table)
         print(paste0("Table: '", table, "' has been removed!"))
       }
@@ -105,8 +108,8 @@ create_metadata_table <- function(database_path,
   print(paste0(Sys.time(), " - creating metadata table ... "))
   
   
-  if (str_detect(string = main_project,
-                 pattern = "age")) {
+  if ( str_detect(string = main_project,
+                  pattern = "age") ) {
     
     df_metadata <- map_df(SRA_projects, function(project) { 
       
@@ -134,11 +137,11 @@ create_metadata_table <- function(database_path,
       # project <- SRA_projects[2]
       # project <- SRA_projects[6]
       
-      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
                              project, "/v", gtf_version, "/",
                              main_project, "_project/raw_data/samples_metadata.rds"))) {
         
-      metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+      metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
                                         project, "/v", gtf_version, "/",
                                         main_project, "_project/raw_data/samples_metadata.rds"))
       
@@ -219,22 +222,22 @@ create_metadata_table <- function(database_path,
 
 
 
-create_mane_table <- function(database_path) {
-  
-  print(paste0(Sys.time(), " - creating master table ... "))
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  
-  DBI::dbWriteTable(conn = con,
-                    name = "mane",
-                    value = hg_MANE_tidy,
-                    overwrite = T)
-  
-  # dbRemoveTable(conn = con, "mane")
-  DBI::dbDisconnect(conn = con)
-  
-  print(paste0("Table: 'mane' created!"))
-}
+# create_mane_table <- function(database_path) {
+#   
+#   print(paste0(Sys.time(), " - creating master table ... "))
+#   
+#   con <- dbConnect(RSQLite::SQLite(), database_path)
+#   
+#   DBI::dbWriteTable(conn = con,
+#                     name = "mane",
+#                     value = hg_MANE_tidy,
+#                     overwrite = T)
+#   
+#   # dbRemoveTable(conn = con, "mane")
+#   DBI::dbDisconnect(conn = con)
+#   
+#   print(paste0("Table: 'mane' created!"))
+# }
 
 
 ## Create the master tables ----------------------------------------------------
@@ -252,8 +255,8 @@ create_master_tables <- function(database_path,
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
   
-  if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
-                            main_project, "/all_paired_intron_novel_tidy.rds"))) {
+  if ( file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+                          main_project, "/all_paired_intron_novel_tidy.rds")) ) {
     
     print(paste0(Sys.time(), " - loading the pre-generated pair-wise distances data..."))
     
@@ -267,7 +270,7 @@ create_master_tables <- function(database_path,
   } else {
     
     print("ERROR loading dependencies!")
-    # df_all_novel_raw <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/df_all_distances_pairings_raw.rds")
+    # df_all_novel_raw <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/df_all_distances_pairings_raw.rds")
     # 
     # df_ambiguous_novel <- df_all_novel_raw %>%
     #   group_by(novel_junID) %>%
@@ -275,7 +278,7 @@ create_master_tables <- function(database_path,
     #   dplyr::filter(distances_sd > 0)
     # 
     # saveRDS(df_ambiguous_novel,
-    #           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/df_all_tissues_raw_distances_ambiguous.rds")
+    #           file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/df_all_tissues_raw_distances_ambiguous.rds")
     # df_ambiguous_novel %>% distinct(novel_junID)
     # 
     # print(paste0(Sys.time(), " - tidying the pair-wise distances data..."))
@@ -312,7 +315,7 @@ create_master_tables <- function(database_path,
     #         file = "/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")
     # 
     # 
-    # aux_introns_tidy <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/df_all_introns.rds")  %>%
+    # aux_introns_tidy <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/df_all_introns.rds")  %>%
     #   distinct(ref_junID, .keep_all = T)
     # 
     # 
@@ -375,7 +378,8 @@ create_master_tables <- function(database_path,
                   start = ref_start,
                   strand = ref_strand,
                   end = ref_end,
-                  gene_id, tx_id_junction,
+                  gene_id, 
+                  tx_id_junction,
                   misspliced) %>%
     GRanges() %>% ## This is to get the width() as calculated by GRanges
     as_tibble()
@@ -420,6 +424,7 @@ create_master_tables <- function(database_path,
                         main_project, "/df_all_introns_introverse.rds"))
   
   
+  
   ######################################
   ## INTRONS - REMOVE AMBIGUOUS INTRONS
   ######################################
@@ -436,7 +441,7 @@ create_master_tables <- function(database_path,
     mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, T, F))
   
   ## There should not be any ambiguous intron at this point
-  if (any(df_introns_introverse_tidy %>% dplyr::filter(ambiguous == T) %>% nrow() > 0)) {
+  if ( any(df_introns_introverse_tidy %>% dplyr::filter(ambiguous == T) %>% nrow() > 0) ) {
     print("ERROR! Still there are some ambiguous introns")
     saveRDS(object = df_introns_introverse_tidy %>% dplyr::filter(ambiguous == T),
             file = "/home/sruiz/PROJECTS/splicing-project-recount3/database/all_ambiguous_introns.rds")
@@ -453,69 +458,81 @@ create_master_tables <- function(database_path,
   ## GENES - CREATE GENE TABLE
   ######################################
   
-  # df_introns_introverse_tidy <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/df_all_introns_introverse_tidy.rds"))
+  # df_introns_introverse_tidy <- readpaste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/df_all_introns_introverse_tidy.rds")
   create_gene_table(database_path = database_path,
-                    gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id))
+                    gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id) )
+  
+  
+  ######################################
+  ## TX_JUNCTION - CREATE TX TABLE
+  ######################################
+  
+  # df_introns_introverse_tidy <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/df_all_introns_introverse_tidy.rds"))
+  create_transcript_table(database_path = database_path,
+                          gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
+                          tx_ids = df_introns_introverse_tidy %>% unnest(tx_id_junction) %>% distinct(tx_id_junction))
+  
   
   ######################################
   ## INTRONS - ADD THE GENE FOREING KEY
   ######################################
 
-  print(paste0(Sys.time(), " --> adding GENE foreing key to the introns..."))
+  print(paste0(Sys.time(), " --> adding TRANSCRIPT foreing key to the introns..."))
   
-  query <- paste0("SELECT id, gene_id FROM 'gene'")
-  df_genes <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT id, transcript_id FROM 'transcript'")
+  df_transcripts <- dbGetQuery(con, query) %>% as_tibble()
+  
   
   ## Add the GENE ID for the foreign key
   df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
-    unnest(gene_id) %>%
-    inner_join(df_genes %>% dplyr::select(id, gene_id),
-               by = "gene_id") %>%
-    dplyr::select(-gene_id) %>%
-    dplyr::rename(gene_id = id) 
+    unnest(tx_id_junction) %>%
+    inner_join(df_transcripts,
+               by = c("tx_id_junction" = "transcript_id")) %>%
+    dplyr::select(-gene_id, -tx_id_junction) %>%
+    dplyr::rename(transcript_id = id) 
   
 
   
-  ######################################
-  ## INTRONS - ADD MANE INFO
-  ######################################
-  
-  print(paste0(Sys.time(), " --> adding MANE info ..."))
-  
-  df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
-    as.data.table() %>%
-    distinct(ref_junID, .keep_all = T) %>% 
-    rowwise() %>%
-    mutate(MANE = ifelse(any((tx_id_junction %>% unlist() %>% unname()) %in% hg_mane_transcripts), T, F)) 
-  
- 
-  ######################################
-  ## INTRONS - ADD TSL INFO 
-  ######################################
-  
-  print(paste0(Sys.time(), " --> adding TSL info ..."))
-  
-  ## Store a 10 value into the TSL field so it can be an integer field and reduce disk space
-  df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
-    unnest(tx_id_junction) %>%
-    dplyr::left_join(y = hg38_transcripts,
-                     by = c("tx_id_junction" = "transcript_id")) %>%
-    mutate(TSL = ifelse(is.na(transcript_support_level) | 
-                          transcript_support_level == "N", 
-                        10, transcript_support_level),
-           TSL = TSL %>% as.integer())
-  
-  ## Remove the columns we do not need
-  df_introns_introverse_tidy <- df_introns_introverse_tidy %>% 
-    group_by(ref_junID) %>%
-    mutate(TSL = TSL %>% min) %>%
-    dplyr::select(-tx_id_junction,
-                  -transcript_support_level) %>%
-    distinct(ref_junID, .keep_all = T)
-  
-  if (any(str_detect(df_introns_introverse_tidy$ref_junID, pattern = "\\*"))) {
-    print("ERROR!")
-  }
+  # ######################################
+  # ## INTRONS - ADD MANE INFO
+  # ######################################
+  # 
+  # print(paste0(Sys.time(), " --> adding MANE info ..."))
+  # 
+  # df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
+  #   as.data.table() %>%
+  #   distinct(ref_junID, .keep_all = T) %>% 
+  #   rowwise() %>%
+  #   mutate(MANE = ifelse(any((tx_id_junction %>% unlist() %>% unname()) %in% hg_mane_transcripts), T, F)) 
+  # 
+  # 
+  # ######################################
+  # ## INTRONS - ADD TSL INFO 
+  # ######################################
+  # 
+  # print(paste0(Sys.time(), " --> adding TSL info ..."))
+  # 
+  # ## Store a 10 value into the TSL field so it can be an integer field and reduce disk space
+  # df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
+  #   unnest(tx_id_junction) %>%
+  #   dplyr::left_join(y = hg38_transcripts,
+  #                    by = c("tx_id_junction" = "transcript_id")) %>%
+  #   mutate(TSL = ifelse(is.na(transcript_support_level) | 
+  #                         transcript_support_level == "N", 
+  #                       10, transcript_support_level),
+  #          TSL = TSL %>% as.integer())
+  # 
+  # ## Remove the columns we do not need
+  # df_introns_introverse_tidy <- df_introns_introverse_tidy %>% 
+  #   group_by(ref_junID) %>%
+  #   mutate(TSL = TSL %>% min) %>%
+  #   dplyr::select(-tx_id_junction,
+  #                 -transcript_support_level) %>%
+  #   distinct(ref_junID, .keep_all = T)
+  # 
+  # if (any(str_detect(df_introns_introverse_tidy$ref_junID, pattern = "\\*"))) {
+  #   print("ERROR!")
+  # }
   
   ######################################
   ## INTRONS - ADD MAXENTSCAN INFO 
@@ -556,7 +573,7 @@ create_master_tables <- function(database_path,
     dplyr::rename(ref_ss5score = ss5score, 
                   ref_ss3score = ss3score) %>%
     dplyr::relocate(ref_junID) %>%
-    dplyr::relocate(c(ref_ss5score, ref_ss3score), .before = gene_id ) 
+    dplyr::relocate(c(ref_ss5score, ref_ss3score), .before = transcript_id ) 
   
   
   df_all_introns %>% as_tibble()
@@ -587,7 +604,7 @@ create_master_tables <- function(database_path,
   
   print(paste0(Sys.time(), " - adding the transcript biotype ... "))
   
-  df_protein <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_105_biotype.rds") %>%
+  df_protein <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/all_annotated_SR_details_length_105_biotype.rds") %>%
     as_tibble()
   
   print(paste0(Sys.time(), " - ", intersect(df_all_introns$ref_junID, df_protein$junID) %>% length(), " total number of introns found!."))
@@ -710,15 +727,11 @@ create_master_tables <- function(database_path,
   u2_intron BOOL,
   u12_intron BOOL,
   clinvar TEXT NOT NULL, 
-  MANE BOOL NOT NULL,
-  TSL NUMERIC NOT NULL,
   lncRNA INTEGER NOT NULL,
   protein_coding INTEGER NOT NULL,
   misspliced BOOL NOT NULL,
-  gene_id INTEGER NOT NULL,
-  FOREIGN KEY (gene_id) REFERENCES 'gene'(id))")
-  
-  
+  transcript_id INTEGER NOT NULL,
+  FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
   
   con <- DBI::dbConnect(drv = RSQLite::SQLite(), dbname = database_path)
   dbListTables(con)
@@ -729,8 +742,8 @@ create_master_tables <- function(database_path,
   
   ## POPULATE INTRON TABLE ----------------------------------------------------
   df_all_introns_tidy_final <- df_all_introns_tidy %>% 
-    as_tibble() %>%
-    unnest(gene_id) %>%
+    #as_tibble() %>%
+    #unnest(gene_id) %>%
     dplyr::rename(ref_length = width) %>%
     mutate(ref_cons5score = ifelse(ref_cons5score %>% is.na(), 0, ref_cons5score),
            ref_cons3score = ifelse(ref_cons3score %>% is.na(), 0, ref_cons3score)) %>%
@@ -747,7 +760,7 @@ create_master_tables <- function(database_path,
   if (any(is.na(df_all_introns_tidy_final$lncRNA))) {
     print("ERROR! some introns do not have a biotype assigned")
   }
-  if (any(df_all_introns_tidy_final$gene_id %>% is.na())) {
+  if (any(df_all_introns_tidy_final$transcript_id %>% is.na())) {
     print("ERROR! some introns do not have a gene assigned")
   }
   
@@ -934,7 +947,81 @@ create_gene_table <- function(database_path,
 }
 
 
+create_transcript_table  <- function(database_path,
+                                     gene_ids,
+                                     tx_ids) {
+  
+  print(paste0(Sys.time(), " --> creating the 'transcript' table..."))
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  
+  ## GET TRANSCRIPT ID
+  hg38_transcripts_gene <- hg38 %>%
+    as_tibble() %>%
+    dplyr::filter(transcript_id %in% tx_ids$tx_id_junction,
+                  type == "transcript") %>%
+    mutate(gene_id = str_sub(gene_id, start = 1, end = 15)) %>%
+    #distinct(gene_id, .keep_all = T) %>%
+    dplyr::filter(gene_id %in% gene_ids$gene_id) %>%
+    dplyr::select(transcript_id, TSL = transcript_support_level, gene_id) %>%
+    mutate(TSL = str_sub(TSL, start = 1, end = 2) %>% as.integer())
+  hg38_transcripts_gene[is.na(hg38_transcripts_gene[,"TSL"]),"TSL"] <- 10
+  
+  ## ADD MANE INFO
+  hg38_transcripts_gene_mane <- hg38_transcripts_gene %>%
+    left_join(y = hg_mane_transcripts,
+              by = "transcript_id" )
+  hg38_transcripts_gene_mane[is.na(hg38_transcripts_gene_mane[,"MANE"]),"MANE"] <- F
+  
+  
 
+  ## ADD THE GENE FOREING KEY
+  print(paste0(Sys.time(), " --> adding GENE foreing key to the transcripts..."))
+  
+  query <- paste0("SELECT id, gene_id FROM 'gene'")
+  df_genes <- dbGetQuery(con, query) %>% as_tibble()
+  
+  ## Add the GENE ID for the foreign key
+  hg38_transcripts_gene_mane <- hg38_transcripts_gene_mane %>%
+    inner_join(df_genes %>% dplyr::select(id, gene_id),
+               by = "gene_id") %>%
+    dplyr::select(-gene_id) %>%
+    dplyr::rename(gene_id = id) 
+  
+  ## Add the Id to the table
+  hg38_transcripts_final <- hg38_transcripts_gene_mane %>% 
+    as_tibble() %>%
+    tibble::rowid_to_column("id") 
+  
+  
+  ####################################
+  ## CREATE TRANSCRIPT TABLE AND POPULATE
+  ####################################
+  
+  query <- paste0("CREATE TABLE IF NOT EXISTS 'transcript'",
+                  "(id NUMERIC NOT NULL,
+                  transcript_id TEXT NOT NULL,
+                  TSL NUMERIC NOT NULL, 
+                  MANE BOOL NOT NULL, 
+                  gene_id INTEGER NOT NULL,
+                  PRIMARY KEY (id),
+                  FOREIGN KEY (gene_id) REFERENCES 'gene'(id))")
+  
+  res <- DBI::dbSendQuery(conn = con, statement = query)
+  DBI::dbClearResult(res)
+  
+  print(paste0(Sys.time(), " --> 'Transcript' table created!"))
+  
+
+  if ( any(duplicated(hg38_transcripts_final$transcript_id)) ) {
+    print("ERROR! some novel junctions are duplicated")
+  }
+  DBI::dbAppendTable(conn = con,
+                     name = "transcript", 
+                     value = hg38_transcripts_final)
+  
+  
+  print( paste0(Sys.time(), " --> 'Transcript' table populated!") )
+}
 
 
 ## Create the cluster tables ----------------------------------------------------
@@ -944,12 +1031,15 @@ create_cluster_tables <- function(database_path,
                                   SRA_projects = NULL,
                                   gtf_version) {
   
-  all_split_reads_details_105 <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+  all_split_reads_details_105 <- readRDS(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", 
+                                                       gtf_version, "/",
                                                        main_project, "/all_split_reads_105_length_all_tissues.rds"))
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
   DBI::dbListTables(conn = con)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
+  
+  print( paste0(Sys.time(), " --> SQL connection stablished!") )
   
   ## GET FROM MASTER TABLE
   query = paste0("SELECT * FROM 'master'")
@@ -964,20 +1054,27 @@ create_cluster_tables <- function(database_path,
   
   ## GET FROM NOVEL JUNCTION TABLE
   query = paste0("SELECT * FROM 'novel'")
-  df_novel <- dbGetQuery(con, query) 
+  df_novel <- dbGetQuery(con, query) %>% as_tibble()
   df_novel %>% nrow()
   df_novel %>% 
     dplyr::count(novel_type) %>%
     print()
   
+  
   ## GET FROM GENE TABLE
   query = paste0("SELECT * FROM 'gene'")
-  df_gene <- dbGetQuery(con, query)
+  df_gene <- dbGetQuery(con, query) %>% as_tibble()
   df_gene %>% nrow()
   
-  if (is.null(SRA_projects)) {
+  ## GET FROM TRANSCRIPT TABLE
+  query = paste0("SELECT * FROM 'transcript'")
+  df_transcript <- dbGetQuery(con, query) %>% as_tibble()
+  df_transcript %>% nrow()
+  
+  if ( is.null(SRA_projects) ){
     SRA_projects <- (df_metadata$SRA_project %>% unique())
   }
+  
   
   
   for (db in SRA_projects) {
@@ -985,7 +1082,7 @@ create_cluster_tables <- function(database_path,
     # db <- SRA_projects[1]
     
     print(paste0(Sys.time(), " --> Working with '", db, "' DataBase..."))
-    base_folder <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+    base_folder <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
                           db, "/v", gtf_version, "/", main_project, "_project/")
     
     clusters <- df_metadata %>%
@@ -1003,14 +1100,15 @@ create_cluster_tables <- function(database_path,
       ###############################
       
       if ( file.exists(paste0(base_folder, "results/", 
-                              cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) ) {
+                              cluster, "/", cluster, "_raw_distances_tidy.rds")) ) {
         
         
         ## BASE DATA -----------------------------------------------------------
         
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(base_folder, "/raw_data/", 
-                                                   db, "_", cluster, "_split_read_counts_sample_tidy.rds")) 
+                                                   db, "_", cluster, 
+                                                   "_split_read_counts_sample_tidy.rds")) 
         if ( is.null(names(split_read_counts)) ) {
           split_read_counts <- split_read_counts %>%
             as_tibble(rownames = "junID")
@@ -1024,17 +1122,18 @@ create_cluster_tables <- function(database_path,
         
         ## LOAD INTRONS AND NOVEL JUNCTIONS ------------------------------------
         df_cluster_distances <- readRDS(file = paste0(base_folder, "results/", 
-                                                      cluster, "/distances/", cluster, "_raw_distances_tidy.rds")) %>% as_tibble()
+                                                      cluster, "/", cluster, 
+                                                      "_raw_distances_tidy.rds")) %>% as_tibble()
         
         
-       
-
         
         ## INTRONS ---------------------------------------------------
         df_introns_gr <- df_cluster_distances %>%
           distinct(ref_junID, .keep_all = T) %>%
           dplyr::select(ref_junID, seqnames = ref_seq, start = ref_start,
                         end = ref_end, strand = ref_strand)
+        
+        
         
         ## Add reads detected for the introns in the current tissue
         split_read_counts_intron <- get_mean_coverage(split_read_counts = split_read_counts,
@@ -1094,7 +1193,8 @@ create_cluster_tables <- function(database_path,
         ## Merge tidy data -----------------------------------------------------
         df_intron_novel_merged <- df_novel_merged %>%
           dplyr::select(-c(seqnames, start, end, strand)) %>%
-          inner_join(y = df_introns_merged %>% dplyr::select(-c(seqnames, start, end, strand)),
+          inner_join(y = df_introns_merged %>% 
+                       dplyr::select(-c(seqnames, start, end, strand)),
                      by = "ref_junID")
         
         
@@ -1135,7 +1235,7 @@ create_cluster_tables <- function(database_path,
         df_all_misspliced <- df_all_misspliced %>% 
           left_join(y = df_intron %>%
                       dplyr::filter(misspliced == T) %>%
-                      dplyr::select(ref_junID, ref_coordinates, gene_id) %>% 
+                      dplyr::select(ref_junID, ref_coordinates, transcript_id) %>% 
                       as.data.table(),
                     by = c("ref_junID" = "ref_coordinates")) %>%
           dplyr::select(-ref_junID) %>%
@@ -1154,7 +1254,7 @@ create_cluster_tables <- function(database_path,
         
         
         #######################################
-        ## CHECK INTEGRITY WITH PARENT TABLE
+        ## CHECK INTEGRITY WITH PARENT TABLES
         #######################################
         
         master_novel <- df_novel %>%
@@ -1164,13 +1264,13 @@ create_cluster_tables <- function(database_path,
           dplyr::select(novel_coordinates) %>% 
           as.data.table()
         
-        if (!(identical(df_all_misspliced$novel_coordinates %>% sort(), 
-                        master_novel$novel_coordinates %>% sort()))) {
+        if ( !(identical(df_all_misspliced$novel_coordinates %>% sort(), 
+                         master_novel$novel_coordinates %>% sort())) ) {
           
-          if (all(intersect(setdiff(df_all_misspliced$novel_coordinates, 
-                                    master_novel$novel_coordinates),
-                            ambiguous_novel_junc$novel_junID) == setdiff(df_all_misspliced$novel_coordinates, 
-                                                                         master_novel$novel_coordinates)) == T) {
+          if ( all(intersect(setdiff(df_all_misspliced$novel_coordinates, 
+                                     master_novel$novel_coordinates),
+                             ambiguous_novel_junc$novel_junID) == setdiff(df_all_misspliced$novel_coordinates, 
+                                                                          master_novel$novel_coordinates)) == T ) {
             df_all_misspliced <- df_all_misspliced %>%
               as.data.table() %>%
               dplyr::filter(!(novel_coordinates %in% ambiguous_novel_junc$novel_junID))
@@ -1205,7 +1305,8 @@ create_cluster_tables <- function(database_path,
           if (diff %>% nrow() > 0) {
             df_all_misspliced <- df_all_misspliced %>%
               dplyr::filter(!(ref_junID %in% diff$ref_junID.y)) 
-            print(diff)
+            print(paste0("ERROR!: ", diff, " --> mismatch junctions."))
+            break;
           } else {
             print("good")
           }
@@ -1228,7 +1329,6 @@ create_cluster_tables <- function(database_path,
             group_by(ref_junID) %>% 
             dplyr::mutate(MSR_Donor = max(novel_donor, na.rm = T)) %>%
             dplyr::mutate(MSR_Acceptor = max(novel_acceptor, na.rm = T))  %>%
-            #distinct(ref_junID, .keep_all = T)  %>%
             ungroup()
           
           
@@ -1248,14 +1348,14 @@ create_cluster_tables <- function(database_path,
             tpm <- map_df(body_sites, function(site) {
               # site <- body_sites[1]
               tpm <- readRDS(file = 
-                               paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", db, 
+                               paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", db, 
                                       "/v", gtf_version, "/splicing_project/results/tpm/",
                                       db, "_", site, "_tpm.rds")) %>% 
                 dplyr::select(gene_id = gene, any_of(samples))
               
             })
             
-            if (!identical(names(tpm)[-1] , samples)){
+            if ( !identical(names(tpm)[-1] , samples) ){
               print("ERROR! Samples obtained for the TPM analysis are not identical")
               break;
             }
@@ -1278,18 +1378,20 @@ create_cluster_tables <- function(database_path,
             group_by(gene_id) %>% 
             summarize_all(max)
           
-          tpm <- tpm %>%
+          tpm_tidy <- tpm %>%
             inner_join(y = df_gene %>% 
                          as_tibble(),
-                       by = c("gene_id" = "gene_id"))
+                       by = c("gene_id" = "gene_id")) %>%
+            inner_join(y = df_transcript %>% 
+                         as_tibble(),
+                       by = c("id" = "gene_id")) %>%
+            dplyr::select(transcript_id = id.y, 
+                          tpm_median)
           
           db_introns <- db_introns %>%
-            left_join(y = tpm,
-                      by = c("gene_id" = "id")) %>% 
-            dplyr::rename(gene_tpm = tpm_median) %>%
-            dplyr::select(-gene_id.y, 
-                          -gene_name, -n_transcripts, 
-                          -gene_width)
+            left_join(y = tpm_tidy,
+                      by = c("transcript_id" = "transcript_id")) %>% 
+            dplyr::rename(gene_tpm = tpm_median)
           
           
           
@@ -1334,20 +1436,18 @@ create_cluster_tables <- function(database_path,
           # dbRemoveTable(conn = con, paste0(cluster, "_", db))
           query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster, "_", db, "_misspliced"), "'", 
                           "(ref_junID INTEGER NOT NULL,
-                                       novel_junID INTEGER NOT NULL,
-                                       ref_n_individuals INTEGER NOT NULL,
-                                       ref_sum_counts INTEGER NOT NULL,
-                                       ref_type TEXT NOT NULL, 
-                                       novel_n_individuals INTEGER NOT NULL, 
-                                       novel_sum_counts INTEGER NOT NULL, 
-                                        
-                                       MSR_D DOUBLE NOT NULL, 
-                                       MSR_A DOUBLE NOT NULL, 
-                                       
-                                       gene_tpm DOUBLE,
-                                       gene_id INTEGER NOT NULL,
-                                       FOREIGN KEY (ref_junID, novel_junID) REFERENCES novel (ref_junID, novel_junID),
-                      FOREIGN KEY (gene_id) REFERENCES 'gene'(id))")
+                          novel_junID INTEGER NOT NULL,
+                          ref_n_individuals INTEGER NOT NULL,
+                          ref_sum_counts INTEGER NOT NULL,
+                          ref_type TEXT NOT NULL, 
+                          novel_n_individuals INTEGER NOT NULL, 
+                          novel_sum_counts INTEGER NOT NULL, 
+                          MSR_D DOUBLE NOT NULL, 
+                          MSR_A DOUBLE NOT NULL, 
+                          gene_tpm DOUBLE,
+                          transcript_id INTEGER NOT NULL, 
+                          FOREIGN KEY (ref_junID, novel_junID) REFERENCES novel (ref_junID, novel_junID),
+                          FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
           
           res <- DBI::dbSendQuery(conn = con, statement = query)
           DBI::dbClearResult(res)
@@ -1373,7 +1473,8 @@ create_cluster_tables <- function(database_path,
           DBI::dbClearResult(res)
           
           
-          print(paste0(Sys.time(), ". '", paste0(cluster, "_", db, "_misspliced"), "' table populated!"))
+          print(paste0(Sys.time(), ". '", paste0(cluster, "_", db, "_misspliced"), 
+                       "' table populated!"))
           
           ####################################
           ## NEVER MISSPLICED
@@ -1381,7 +1482,8 @@ create_cluster_tables <- function(database_path,
           
           ## TYPE 'NONE'
           introns_never <- readRDS(file = paste0(base_folder, "results/", 
-                                                cluster, "/distances/not-misspliced/", cluster, "_all_notmisspliced.rds"))
+                                                cluster, "/not-misspliced/", 
+                                                cluster, "_all_notmisspliced.rds"))
           ## The introns not misspliced in this tissue, should have not been detected as spliced.
           ## Thus, this should be zero
           if (intersect(introns_never, df_intron %>%
@@ -1450,7 +1552,7 @@ create_cluster_tables <- function(database_path,
           
           df_never_merged <- df_never_merged %>%
             inner_join(df_intron %>% 
-                         dplyr::select(ref_junID, ref_coordinates, gene_id) %>% 
+                         dplyr::select(ref_junID, ref_coordinates, transcript_id) %>% 
                          as.data.table(),
                        by = c("ref_junID" = "ref_coordinates")) %>%
             dplyr::filter(!is.na(ref_junID)) %>%
@@ -1482,12 +1584,9 @@ create_cluster_tables <- function(database_path,
           
       
           df_never_merged <- df_never_merged %>%
-            left_join(y = tpm,
-                      by = c("gene_id" = "id")) %>% 
-            dplyr::rename(gene_tpm = tpm_median) %>%
-            dplyr::select(-gene_id.y, 
-                          -gene_name, -n_transcripts, 
-                          -gene_width)
+            left_join(y = tpm_tidy,
+                      by = "transcript_id") %>% 
+            dplyr::rename(gene_tpm = tpm_median) 
           
           
           
@@ -1540,15 +1639,15 @@ create_cluster_tables <- function(database_path,
           
           query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster, "_", db, "_nevermisspliced"), "'", 
                           "(ref_junID INTEGER NOT NULL,
-                                       ref_n_individuals INTEGER NOT NULL, 
-                                       ref_sum_counts INTEGER NOT NULL,
-                                       MSR_D DOUBLE NOT NULL, 
-                                       MSR_A DOUBLE NOT NULL, 
-                                       ref_type TEXT NOT NULL, 
-                                       gene_tpm DOUBLE,
-                                       gene_id INTEGER NOT NULL,
-                                       FOREIGN KEY (ref_junID) REFERENCES intron (ref_junID),
-                      FOREIGN KEY (gene_id) REFERENCES 'gene'(id))")
+                          ref_n_individuals INTEGER NOT NULL, 
+                          ref_sum_counts INTEGER NOT NULL,
+                          MSR_D DOUBLE NOT NULL, 
+                          MSR_A DOUBLE NOT NULL, 
+                          ref_type TEXT NOT NULL, 
+                          gene_tpm DOUBLE,
+                          transcript_id INTEGER NOT NULL,
+                          FOREIGN KEY (ref_junID) REFERENCES intron (ref_junID),
+                          FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
           
           res <- DBI::dbSendQuery(conn = con, statement = query)
           DBI::dbClearResult(res)
@@ -1564,12 +1663,15 @@ create_cluster_tables <- function(database_path,
           
           
           ## CREATE INDEX
-          query <- paste0("CREATE UNIQUE INDEX 'index_", paste0(cluster, "_", db, "_nevermisspliced"), "' ON '",
+          query <- paste0("CREATE UNIQUE INDEX 'index_", 
+                          paste0(cluster, "_", db, "_nevermisspliced"), "' ON '",
                           paste0(cluster, "_", db, "_nevermisspliced"),"'(ref_junID)");
           res <- DBI::dbSendQuery(conn = con, statement = query)
           DBI::dbClearResult(res)
           
-          print(paste0(Sys.time(), ". '", paste0(cluster, "_", db, "_nevermisspliced"), "' table populated!"))
+          print(paste0(Sys.time(), ". '", 
+                       paste0(cluster, "_", db, "_nevermisspliced"), 
+                       "' table populated!"))
           
         } else {
           print("Error: novel junctions are distinct!")

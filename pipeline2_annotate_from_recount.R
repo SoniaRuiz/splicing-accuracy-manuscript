@@ -224,74 +224,38 @@ annotate_dasper <- function(all_split_reads,
 
 ## REQUIRES THE hg ENCODE Blacklist regions
 
-#' Title 'remove_encode_blacklist_regions'
-#'
-#' @param GRdata 
-#' Genomic Ranges (GR) object
-#' @return
-#' @export 
-#' from a list of junctions, it removes all junctions that overlap with an ENCODE Blacklist region
-#' @examples
-remove_encode_blacklist_regions <- function(GRdata,
-                                            blacklist_path) {
-  
-  
-  if (!exists("encode_blacklist_hg38")) {
-    encode_blacklist_hg38 <- rtracklayer::import(con = blacklist_path) %>% diffloop::rmchr()
-  } else {
-    print("'encode_blacklist_hg38' file already loaded!")
-  }
-  
-  overlaped_junctions <- GenomicRanges::findOverlaps(query = encode_blacklist_hg38, 
-                                                     subject = GRdata %>% diffloop::rmchr(),
-                                                     #type = "any",
-                                                     ignore.strand = F)
-  
-  ## JuncID indexes to be removed: they overlap with a black region
-  indexes <- S4Vectors::subjectHits(overlaped_junctions)
-  
-  if (length(indexes) > 0) {
-    print(paste0(length(unique(indexes)), " junctions overlap with a ENCODE blacklist region"))
-    GRdata <- GRdata[-indexes, ]
-    print(paste0(length(GRdata), " junctions after removing overlaps with ENCODE BlackList regions!"))
-  }else{
-    print("No junctions overlapping with an ENCODE blacklist region")
-  }
-  
-  ## Return tidied data
-  return(GRdata)
-}
 
 
 
 
 
 
-#' Title
-#' apply_split_reads_length_filter
-#' @param all_split_reads_details object containing recount2 dasper-annotated junctions
-#' all_split_reads_details <- readRDS(file = "Brain-FrontalCortex_BA9_annotated_SR_details.rds")
-#' @param min minimum split read length (min <- 25)
-#' @param max maximum split read length
-#' @return 
-#' removes all junctions shorter or longer than the specified parameters
-#' @export
-#'
-#' @examples
-apply_split_reads_length_filter <- function(all_split_reads_details,
-                                            min = 25,
-                                            max = NULL) {
-  
-  
-  if (is.null(max)) {
-    max <- all_split_reads_details$width %>% max()  
-  }
-  
-  all_split_reads_details <- all_split_reads_details %>%
-    dplyr::filter(width >= min, width <= max) 
-  
-  return(all_split_reads_details)
-}
+
+#' #' Title
+#' #' apply_split_reads_length_filter
+#' #' @param all_split_reads_details object containing recount2 dasper-annotated junctions
+#' #' all_split_reads_details <- readRDS(file = "Brain-FrontalCortex_BA9_annotated_SR_details.rds")
+#' #' @param min minimum split read length (min <- 25)
+#' #' @param max maximum split read length
+#' #' @return 
+#' #' removes all junctions shorter or longer than the specified parameters
+#' #' @export
+#' #'
+#' #' @examples
+#' apply_split_reads_length_filter <- function(all_split_reads_details,
+#'                                             min = 25,
+#'                                             max = NULL) {
+#'   
+#'   
+#'   if (is.null(max)) {
+#'     max <- all_split_reads_details$width %>% max()  
+#'   }
+#'   
+#'   all_split_reads_details <- all_split_reads_details %>%
+#'     dplyr::filter(width >= min, width <= max) 
+#'   
+#'   return(all_split_reads_details)
+#' }
 
 
 

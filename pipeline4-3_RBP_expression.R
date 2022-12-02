@@ -3,6 +3,7 @@ library(GenomicRanges)
 library(DESeq2)
 library(SummarizedExperiment)
 library(biomaRt)
+library(DBI)
 
 ## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-3_RBP_expression.R")
 
@@ -219,13 +220,37 @@ RBP_corrected_TPM_analysis <- function(project_id) {
   # project_id <- "BLOOD"
   # project_id <- "MUSCLE"
   
+ 
+  
+  ## CONNECT TO THE DATABASE
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) %>%
+    filter(SRA_project == project_id)
+  
   ## LOAD TPM CORRECTED VALUES
-  tpm_corrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-                                          project_id, "/results/pipeline3/rbp/tpm_residuals.csv"), header = T)
+  tpm_corrected <- map_df((df_metadata$region %>% unique()), function(cluster) {
+    
+    print(paste0(Sys.time(), " - ", cluster, " ... "))
+    if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                           cluster, "/tpm_ensembl105_residuals.csv"))) {
+    read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                           cluster, "/tpm_ensembl105_residuals.csv"), header = T) %>%
+      mutate(tissue = cluster)
+    } else {
+      return(NULL)
+    }
+    
+    
+  })
   
   
   ## INIT AGE SUPERGROUPS
-  age_samples_clusters_tidy <- age_stratification_init_data(project_id)
+  age_samples_clusters_tidy <- age_stratification_init_data(projects_id = project_id,
+                                                            gtf_version = gtf_version,
+                                                            main_project = main_project)
   
   
   
@@ -259,13 +284,18 @@ RBP_corrected_TPM_analysis <- function(project_id) {
   
   
   gattered_matrix <- do.call("rbind", list(tpm_20_39, tpm_40_59, tpm_60_79)) %>%
-    dplyr::rename(sample = X) %>% as_tibble() %>%
+    dplyr::rename(sample = X) %>% 
+    as_tibble() %>%
     group_by(age, RBP) %>%
+    
+    mutate(TPM = TPM %>% as.double()) %>%
+  
     mutate(mean_tpm = (TPM %>% mean())) %>%
     distinct(mean_tpm, .keep_all = T)  %>%
     ungroup() %>%
     arrange(age , mean_tpm) %>%
-    mutate(RBP = fct_inorder(RBP))
+    mutate(RBP = fct_inorder(RBP)) %>%
+    drop_na()
   
   
   ## PLOT HEATMAP
@@ -279,7 +309,7 @@ RBP_corrected_TPM_analysis <- function(project_id) {
     xlab("age cluster") +
     theme(axis.text.y = element_blank()) 
   
-  ggsave(filename = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+  ggsave(filename = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id,
                            "/results/pipeline3/rbp/heatmap.png"))
   
   
@@ -289,9 +319,11 @@ RBP_corrected_TPM_analysis <- function(project_id) {
   spread_matrix <- gattered_matrix %>%
     dplyr::select(RBP, age, mean_tpm) %>%
     spread(key = age, value = mean_tpm)
-  spread_matrix
+  spread_matrix %>%
+    filter(`20-39` > `40-59` ,
+           `40-59` > `60-79`)
   write_csv(x = spread_matrix,
-            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+            file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id,
                           "/results/pipeline3/rbp/tpm_age_spread.csv"))
   
 }
@@ -304,7 +336,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   ################################
   
   if (!exists("all_RBPs")) {
-    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/41586_2020_2077_MOESM3_ESM.xlsx', 
+    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/41586_2020_2077_MOESM3_ESM.xlsx', 
                                 sep = '\t', header = TRUE,
                                 sheetIndex = 1) %>%  as_tibble() 
   }
@@ -317,16 +349,39 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   
   
   
+  gtf_version <- 105
+  main_project <- "splicing"
+  database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
+                          gtf_version, "/", main_project, "/", main_project, ".sqlite")
+  
+  ## CONNECT TO THE DATABASE
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) %>%
+    filter(SRA_project == project_id)
+  
+  
+  
+  
   for (project_id in projects_id) {
     ## project_id <- "BRAIN"
     
     ## Load and tidy the uncorrected TPMs
-    ## TPMs here should be uncorrected as the covariates are going to be included in the linear models
-    tpm_uncorrected <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                              project_id, "/results/pipeline3/rbp/tpm_ensembl105.csv"))
+    tpm_uncorrected <- map_df((df_metadata$cluster %>% unique()), function(cluster) {
+      
+      print(paste0(Sys.time(), " - ", cluster, " ... "))
+      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                             cluster, "/tpm_ensembl105.csv"))) {
+        read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                               cluster, "/tpm_ensembl105.csv"), header = T, fileEncoding = "UTF-8") 
+      } else {
+        return(NULL)
+      }   
+    })
     
-    
-    tpm_uncorrected <- tpm_uncorrected %>%
+    tpm_uncorrected_tidy <- tpm_uncorrected %>%
       dplyr::rename(gene = "X") %>%
       as_tibble() %>%
       distinct(gene, .keep_all = T)
@@ -334,13 +389,25 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     
     
     ## Load and tidy the sample metadata
-    sample_metadata <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                              project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
-                                fileEncoding = "UTF-8") %>% as_tibble()
+    sample_metadata <- map_df((df_metadata$cluster %>% unique()), function(cluster) {
+      
+      print(paste0(Sys.time(), " - ", cluster, " ... "))
+      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                             cluster, "/covariates.csv"))) {
+        read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                               cluster, "/covariates.csv"), header = T, fileEncoding = "UTF-8") 
+      } else {
+        return(NULL)
+      }   
+    })
+    
+    
+    
+ 
     
     print(sample_metadata %>% nrow)
     ## Check the samples are the same
-    if ( !( identical(x = names(tpm_uncorrected)[-1],
+    if ( !( identical(x = names(tpm_uncorrected_tidy)[-1],
                       y = names(sample_metadata)[-1]) ) ) {
       print("ERROR!")
       break;
@@ -348,7 +415,10 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     
     
     
-    RBPs <- (tpm_uncorrected$gene)
+    RBPs <- (tpm_uncorrected_tidy$gene)
+    
+    
+  
     
     # tpm_uncorrected[rowSums(tpm_uncorrected[, c(2:ncol(tpm_uncorrected))]),]
     
@@ -359,18 +429,24 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
       # RBP <- "ENSG00000277564"
       print(RBP)
       
-      tpm <- tpm_uncorrected %>%
+      tpm <- tpm_uncorrected_tidy %>%
         filter(gene == RBP) %>%
         mutate(gene = "tpm") %>%
         as_tibble()
       
-      if (rowSums(tpm[, c(2:ncol(tpm))]) != 0) {
+      if ( rowSums(tpm[, c(2:ncol(tpm))], na.rm = T) != 0) {
         
-        df <- rbind(tpm %>% 
-                      dplyr::rename(covariates = "gene"),
+
+        
+        df <- rbind(tpm %>%  dplyr::rename(covariates = "gene"),
                     sample_metadata) %>%
           gather(sample, value, -covariates)  %>%
-          spread(key = covariates, value) %>%
+          drop_na() %>%
+          group_by(sample, covariates) %>%
+          mutate(median_tpm = value %>% median) %>%
+          distinct(median_tpm, .keep_all = T) %>%
+          dplyr::select(-value) %>%
+          spread(key = covariates, value = median_tpm) %>%
           dplyr::mutate(gtex.age = gtex.age %>% as.double(),
                         gtex.dthhrdy = gtex.dthhrdy %>% as.double(),
                         gtex.sex = gtex.sex %>% as.double(),
@@ -384,22 +460,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
                         tpm = tpm %>% as.double()) %>%
           as_tibble()
         
-        if (project_id == "MUSCLE") {
-          # print(df)
-          lm_output <- lm(tpm ~ 
-                            gtex.smrin + 
-                            gtex.smcenter +
-                            gtex.smgebtch +
-                            gtex.smgebtchd +
-                            gtex.smnabtch +
-                            gtex.smnabtchd +
-                            gtex.smnabtcht +
-                            gtex.dthhrdy +
-                            gtex.sex +
-                            #gtex.smtsd +
-                            gtex.age,
-                          data = df)
-        } else {
+
           # print(df)
           lm_output <- lm(tpm ~ 
                             gtex.smrin + 
@@ -414,7 +475,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
                             gtex.smtsd +
                             gtex.age,
                           data = df)
-        }
+        
         
         
         lm_output <- lm_output %>% summary()
@@ -463,8 +524,8 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     
     
     write_csv(x = df_lm_age_tidy,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                            "/results/pipeline3/rbp/tpm_lm_all_ensembl105.csv"))
+              file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                            project_id,"_tpm_lm_all_ensembl105.csv"))
     
   }
   
@@ -500,11 +561,17 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
 ################################################################################
 
 
-projects_used <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
+## Only for the subsampled samples - age stratification subsampled to correct by RIN
+
+
+
+projects_used <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
 
 for (project_id in projects_used) {
   
   # project_id <- projects_used[20]
+  
+  project_id <- "BRAIN"
   
   ## Load the recount3 data
   rse <- recount3::create_rse_manual(
@@ -562,7 +629,7 @@ for (project_id in projects_used) {
         pivot_wider(names_from = sample, values_from = tpm, values_fill = 0)
       
       ## Save data
-      folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/EXPRESSION/", type, "/", cluster, "/")
+      folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION/", type, "/", cluster, "/")
       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
       
       write.csv(x = dds_tpm_pv %>% tibble::column_to_rownames("gene"),

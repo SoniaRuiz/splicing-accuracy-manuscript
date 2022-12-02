@@ -6,6 +6,7 @@ library(DBI)
 
 ## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R")
 
+
 source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
 
 
@@ -14,11 +15,13 @@ main_project <- "age_subsampled"
 database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
 
+all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
+age_projects <- all_projects
+
+
 ##################################
 ## CALLS - PREPARE AGE DATA
 ##################################
-
-
 
 age_stratification_init_data <- function (projects_id,
                                           gtf_version,
@@ -29,9 +32,9 @@ age_stratification_init_data <- function (projects_id,
     
     print(paste0(Sys.time(), " --> ", project_id, " - getting sample's metadata."))
     
-    if (!file.exists(paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                            "/v", gtf_version, "/",
-                            main_project, "_project/raw_data/samples_metadata.rds"))) {
+    if ( !file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id,
+                             "/v", gtf_version, "/",
+                             main_project, "_project/raw_data/samples_metadata.rds")) ) {
       
       rse <- recount3::create_rse_manual(
         project = project_id,
@@ -47,10 +50,10 @@ age_stratification_init_data <- function (projects_id,
         filter(gtex.smrin >= 6.0,
                gtex.smafrze != "EXCLUDE")
       
-      
-      folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
+      folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id, 
                             "/v", gtf_version, "/",
                             main_project, "_project/raw_data/")
+      
       dir.create(file.path(folder_root), recursive = TRUE, showWarnings = T)
       saveRDS(object = sample_metadata,
               file = paste0(folder_root, "/samples_metadata.rds"))
@@ -60,7 +63,7 @@ age_stratification_init_data <- function (projects_id,
       
     } else {
 
-      sample_metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
+      sample_metadata <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id,
                                                "/v", gtf_version, "/",
                                                main_project, "_project/raw_data/samples_metadata.rds"))
     }
@@ -73,7 +76,7 @@ age_stratification_init_data <- function (projects_id,
     for (age_cluster in (age_samples_clusters$age %>% unique())) {
       
       # age_cluster = (age_samples_clusters$age %>% unique())[1]
-      
+      print(age_cluster)
       switch(age_cluster, 
              '20-29' = {
                indx <- which(age_samples_clusters_tidy$age == age_cluster)
@@ -100,44 +103,52 @@ age_stratification_init_data <- function (projects_id,
                age_samples_clusters_tidy[indx, "age_group"] <- "60-79"
              },
              {
+               indx <- which(age_samples_clusters_tidy$age == age_cluster)
+               age_samples_clusters_tidy[indx, "age_group"] <- NA
                print('not found')
              }
       )
     }
     
     
-    age_samples_clusters_tidy
+    if ( (age_samples_clusters_tidy %>%
+          dplyr::count(age_group) %>%
+          drop_na() %>%
+          filter(n >= 25) %>%
+          pull(n)) %>% length() == 3 ) {
     
-    
-    df_subsampled <- map_df(c("40-59", "60-79"), function(group) {
+      df_subsampled <- map_df(c("40-59", "60-79"), function(group) {
+        
+        df_youngest <- age_samples_clusters_tidy %>%
+          filter(age_group == "20-39")
+        
+        df_samples <- age_samples_clusters_tidy %>%
+          filter(age_group == group)
+        
+        data_combined <- rbind(df_youngest, df_samples)
+        
+        m.out <- MatchIt::matchit(age_group ~ rin, 
+                                  data = data_combined, 
+                                  distance = data_combined$rin,
+                                  method = "nearest", 
+                                  caliper = c(rin = 0), 
+                                  std.caliper = FALSE)
+        MatchIt::match.data(m.out) %>%
+          return()
+        
+      })
       
-      df_youngest <- age_samples_clusters_tidy %>%
-        filter(age_group == "20-39")
+      age_samples_clusters_tidy <- df_subsampled %>%
+        distinct(individual, .keep_all = T) 
       
-      df_samples <- age_samples_clusters_tidy %>%
-        filter(age_group == group)
+      # kruskal.test(mapped_read_count ~ age_group, data = age_samples_clusters_tidy) 
+      # kruskal.test(sex ~ age_group, data = age_samples_clusters_tidy) 
+      # kruskal.test(rin ~ age_group, data = age_samples_clusters_tidy) 
       
-      data_combined <- rbind(df_youngest, df_samples)
-      
-      m.out <- MatchIt::matchit(age_group ~ rin, 
-                                data = data_combined, 
-                                distance = data_combined$rin,
-                                method = "nearest", 
-                                caliper = c(rin = 0.05), 
-                                std.caliper = FALSE)
-      MatchIt::match.data(m.out) %>%
-        return()
-      
-    })
-    
-    age_samples_clusters_tidy <- df_subsampled %>%
-      distinct(individual, .keep_all = T) 
-    
-    # kruskal.test(mapped_read_count ~ age_group, data = age_samples_clusters_tidy) 
-    # kruskal.test(sex ~ age_group, data = age_samples_clusters_tidy) 
-    # kruskal.test(rin ~ age_group, data = age_samples_clusters_tidy) 
-    
-    return(age_samples_clusters_tidy)
+      return(age_samples_clusters_tidy)
+    } else {
+      return(NULL)
+    }
   })
   
   
@@ -191,7 +202,7 @@ age_stratification_clustering <- function (sample_metadata, project_id) {
 
 
 ##################################
-## CALLS - ANNOTATE
+## CALLS - JUNCTION ANNOTATION
 ##################################
 
 age_stratification_annotate <- function (age_groups,
@@ -206,7 +217,7 @@ age_stratification_annotate <- function (age_groups,
     # age_cluster <- age_groups[2]
     
     ## SET RESULTS FOLDER
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id, 
+    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id, 
                           "/v", gtf_version, "/",
                           main_project, "_project/")
     folder_name <- paste0(folder_root, "/results/", age_cluster, "/")
@@ -243,12 +254,12 @@ age_stratification_annotate <- function (age_groups,
         print(paste0(samples %>% length(), " samples... "))
         
         ## Load the annotated split reads
-        all_split_reads_details_105 <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+        all_split_reads_details_105 <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
                                                              project_id, "/v", gtf_version, "/splicing_project/raw_data/",
                                                              project_id,  "_", cluster, "_all_split_reads_sample_tidy.rds"))
         
         # Load split read counts
-        split_read_counts <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
+        split_read_counts <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
                                                    project_id, "/v", gtf_version, "/splicing_project/raw_data/",
                                                    project_id,  "_", cluster, "_split_read_counts_sample_tidy.rds"))
         
@@ -290,7 +301,7 @@ age_stratification_annotate <- function (age_groups,
     }
     
     ## SAVE RESULTS
-    print(paste0(Sys.time(), " - SAVING RESULTS - ", age_cluster))
+    print(paste0(Sys.time(), " - SAVING RESULTS ... "))
     
     split_read_counts_age <- split_read_counts_age[rowSums(is.na(split_read_counts_age[,2:ncol(split_read_counts_age)])) != 
                                                      (ncol(split_read_counts_age)-1),]
@@ -315,7 +326,7 @@ age_stratification_annotate <- function (age_groups,
             file = paste0(folder_root, "/raw_data/",
                           project_id, "_", age_cluster, "_all_split_reads_sample_tidy.rds"))
     
-    print(paste0(Sys.time(), " - RESULTS SAVED! - ", age_cluster))
+    print(paste0(Sys.time(), " - RESULTS SAVED!"))
     
     rm(all_split_reads_details_105_age)
     rm(split_read_counts_age)
@@ -335,10 +346,8 @@ age_stratification_annotate <- function (age_groups,
 
 
 ##################################
-## CALLS - DATABASE GENERATION
+## CALLS - JUNCTION PAIRING
 ##################################
-
-source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_junction_pairing.R")
 
 age_stratification_junction_pairing <- function (age_groups,
                                                  project_id,
@@ -355,7 +364,7 @@ age_stratification_junction_pairing <- function (age_groups,
     print(paste0(Sys.time(), " - Starting analysis for '", age_cluster, "' samples..."))
     
     ## SET RESULTS FOLDER
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
+    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
                           project_id, "/v", gtf_version, "/", main_project, "_project/")
     folder_name <- paste0(folder_root, "/results/", age_cluster)
     dir.create(file.path(folder_name), showWarnings = T, recursive = T)
@@ -439,7 +448,7 @@ age_stratification_junction_pairing <- function (age_groups,
     # 
     # ## Get mis-splicing ratio
     # 
-    # folder_idb_name <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/" ,
+    # folder_idb_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/" ,
     #                           project_id, "/results/pipeline3/missplicing-ratio/age/", age_cluster)
     # dir.create(file.path(folder_idb_name), showWarnings = F, recursive = T)
     # 
@@ -496,59 +505,103 @@ age_stratification_junction_pairing <- function (age_groups,
 ## CALLS - SQL GENERATION
 ##################################
 
-all_projects <- readRDS(file = "~/PROJECTS/splicing-project/splicing-recount3-projects/all_projects_used.rds")
-age_projects <- all_projects
 
-for (project_id in age_projects[-c(1:9)]) {
 
-  # project_id <- "MUSCLE"
-  # project_id <- age_projects[1]
-  # project_id <- "BRAIN"
-  print(paste0(Sys.time(), " --> ", project_id))
 
-  project_init <- age_stratification_init_data(projects_id = project_id,
-                                               gtf_version = gtf_version,
-                                               main_project = main_project)
+## Only if the database does not exist, we run this code to generate it from scratch
 
-  age_stratification_annotate(age_groups = project_init$age_group %>% unique(),
-                              project_id = project_id,
-                              main_project = main_project,
-                              age_samples_clusters = project_init)
-  
-  
-  age_stratification_junction_pairing(age_groups = project_init$age_group %>% unique(),
-                                      project_id = project_id,
-                                      age_samples_clusters = project_init)
-
-}
-
+# if ( !file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
+#                          main_project, "/", main_project , ".sqlite")) ) {
+#   
+#   project_init <- age_stratification_init_data(projects_id = age_projects,
+#                                                gtf_version = gtf_version,
+#                                                main_project = main_project) %>%
+#     as_tibble()
+#   
+#   age_projects <- project_init$project %>% unique()
+#   
+#   for (project_id in age_projects) {
+# 
+#     
+#     # project_id <- age_projects[1]
+#     # project_id <- "BRAIN"
+#     # project_id <- "MUSCLE"
+#     # project_id <- "LIVER"
+#     # project_id <- "KIDNEY"
+#     
+#     print(paste0(Sys.time(), " --> ", project_id))
+# 
+#     project_init_local <- project_init %>%
+#       filter(project == project_id)
+# 
+#     if ( !file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
+#                              project_id, "/v", gtf_version, "/", main_project, "_project/results/",
+#                              (project_init_local$age_group %>% unique())[1], "/",
+#                              (project_init_local$age_group %>% unique())[1], "_raw_distances_tidy.rds")) ) {
+# 
+# 
+# 
+#       age_stratification_annotate(age_groups = project_init_local$age_group %>% unique(),
+#                                   project_id = project_id,
+#                                   main_project = main_project,
+#                                   age_samples_clusters = project_init_local)
+# 
+# 
+#       age_stratification_junction_pairing(age_groups = project_init_local$age_group %>% unique(),
+#                                           project_id = project_id,
+#                                           age_samples_clusters = project_init_local)
+#       
+#       
+#     } else {
+#       print(paste0("File '", (project_init_local$age_group %>% unique())[1], "_raw_distances_tidy.rds' exists!"))
+#     }
+# 
+# 
+# 
+#   }
+#   
+#   
+#   
+#   if ( ! exists("project_init") ) {
+#     project_init <- age_stratification_init_data(projects_id = age_projects,
+#                                                  gtf_version = gtf_version,
+#                                                  main_project = main_project) %>%
+#       as_tibble()
+#   }
+# 
+#   get_all_annotated_split_reads(all_projects = age_projects,
+#                                 gtf_version = gtf_version,
+#                                 all_clusters = project_init$age_group %>% unique(),
+#                                 main_project = main_project)
+# 
+#   get_all_raw_distances_pairings(all_projects = age_projects,
+#                                  gtf_version = gtf_version,
+#                                  all_clusters = project_init$age_group %>% unique(),
+#                                  main_project = main_project)
+# 
+#   tidy_data_pior_sql(projects_used = age_projects,
+#                      gtf_version = gtf_version,
+#                      all_clusters = project_init$age_group %>% unique(),
+#                      main_project = main_project)
+#   
+#   
+# 
+# }
 
 project_init <- age_stratification_init_data(projects_id = age_projects,
                                              gtf_version = gtf_version,
-                                             main_project = main_project)
+                                             main_project = main_project) %>%
+  as_tibble()
 
-
-get_all_annotated_split_reads(all_projects = age_projects,
-                              gtf_version = gtf_version,
-                              all_clusters = project_init$age_group %>% unique(),
-                              main_project = main_project)
-
-get_all_raw_distances_pairings(all_projects = age_projects,
-                               gtf_version = gtf_version,
-                               all_clusters = project_init$age_group %>% unique(),
-                               main_project = main_project)
-
-tidy_data_pior_sql(projects_used = age_projects,
-                   gtf_version = gtf_version,
-                   all_clusters = project_init$age_group %>% unique(),
-                   main_project = main_project)
-
+age_projects <- project_init$project %>% unique()
 
 sql_database_generation(database_path = database_path,
                         projects_used = age_projects,
                         main_project = main_project,
                         gtf_version = gtf_version,
-                        remove_all = F)
+                        remove_all = T)
+
+
 
 
 

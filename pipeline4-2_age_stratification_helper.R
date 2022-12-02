@@ -1,14 +1,95 @@
 
-## Connect to the database -----------------------------------------------------
-#source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline3_idb_SQL_generation.R")
+library(tidyverse)
+library(data.table)
+library(GenomicRanges)
+library(ggforce)
+library(DBI)
+
+## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R")
+
+
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
+
 
 gtf_version <- 105
 main_project <- "age_subsampled"
 database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
+con <- dbConnect(RSQLite::SQLite(), database_path)
+dbListTables(con)
+
+all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
+age_projects <- all_projects
+
+
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification_helper.R")
+
 
 ##################################
-## CALLS - PLOTS
+## STATS
+##################################
+
+age_stratification_get_stats <- function() {
+  
+  tables <- dbListTables(con)
+  query <- paste0("SELECT * from 'master'")
+  db_metadata <- dbGetQuery(con, query) %>% as_tibble()
+
+  db_metadata %>% nrow() 
+  
+  db_metadata %>%
+    dplyr::count(region) %>%
+    print(n = 50)
+  
+  db_metadata %>%
+    dplyr::count(SRA_project) %>%
+    print(n = 50)
+  
+  
+  db_metadata %>%
+    group_by(SRA_project) %>%
+    distinct(cluster, .keep_all = T)%>%
+    dplyr::select(SRA_project,cluster)%>%
+    print(n = 60) %>%
+    write.csv(file = paste0("~/PROJECTS/splicing-project-results/splicing-recount3-projects/body_sites_tissues.csv"), row.names = FALSE)
+  
+  db_metadata %>%
+    group_by(SRA_project) %>%
+    mutate(nsamples = n()) %>%
+    filter(nsamples >= 70) %>%
+    distinct(SRA_project, .keep_all = T)
+  
+  db_metadata %>%
+    group_by(SRA_project) %>%
+    mutate(nsamples = n()) %>%
+    filter(nsamples >= 70) %>%
+    distinct(SRA_project, .keep_all = T) %>%
+    pull(nsamples) %>% sum
+  
+  db_metadata %>%
+    group_by(SRA_project) %>%
+    mutate(nsamples = n()) %>%
+    filter(nsamples >= 70) %>%
+    distinct(region, .keep_all = T) 
+  
+  query <- paste0("SELECT * from 'intron'")
+  db_introns <- dbGetQuery(con, query) %>% as_tibble()
+  db_introns %>% distinct(ref_junID) %>% nrow()
+  db_introns %>%
+    dplyr::count(misspliced)
+  
+  db_introns %>%
+    dplyr::count(gene_id)
+  
+  query <- paste0("SELECT * from 'novel'")
+  novel <- dbGetQuery(con, query) 
+  novel %>% distinct(novel_junID) %>% nrow()
+  novel %>% dplyr::count(novel_type)
+}
+
+
+##################################
+## BASIC PLOTS
 ##################################
 
 age_stratification_plot_distances <- function(df = NULL,
@@ -204,7 +285,7 @@ age_stratification_plot_distances <- function(df = NULL,
 
 
 age_stratification_plot_distances_across_tissues <- function(df = NULL,
-                                                             projects = c("BRAIN", "BLOOD","MUSCLE"),
+                                                             age_projects = c("BRAIN", "BLOOD","MUSCLE"),
                                                              age_groups = c("60-79", "40-59", "20-39"),
                                                              distance_limit = 30,
                                                              QC = F) {
@@ -220,7 +301,7 @@ age_stratification_plot_distances_across_tissues <- function(df = NULL,
   
   
   
-  df_age_distances <- map_df(projects, function(project_id) {
+  df_age_distances <- map_df(age_projects, function(project_id) {
     
     # project_id <- (df_metadata$SRA_project %>% unique())[1]
     
@@ -968,25 +1049,7 @@ age_stratification_plot_MSR <- function(df = NULL,
   
   
   
-  #######################################
-  ## EXTRA - CHECK INTRONS 
-  ## MSR INCREASING WITH AGE
-  #######################################
-  
-  df_MSRD <- df_age_groups_tidy %>%
-    distinct(ref_junID, sample_type, .keep_all = T) %>%
-    dplyr::select(ref_junID,
-                  sample_type,
-                  MSR_D) %>%
-    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_D)
-  
-  df_MSRD %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`)
-  df_MSRD %>%
-    filter(`20-39` > `40-59`,
-           `40-59` > `60-79`)
+
   
   
   #######################################
@@ -1017,7 +1080,7 @@ age_stratification_plot_MSR <- function(df = NULL,
     #ggtitle(title) +
     xlab("MSR") +
     facet_wrap(vars(MSR_type)) +
-    ggforce::facet_zoom(xlim = c(0,0.01)) +
+    ggforce::facet_zoom(xlim = c(0,0.005)) +
     theme_light() +
     scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
                       labels = c("20-39", "40-59", "60-79"),
@@ -1044,20 +1107,20 @@ age_stratification_plot_MSR <- function(df = NULL,
                     mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
     geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
     #ggtitle(title) +
-    xlab("MSR") +
+    xlab("MSR_A") +
     facet_wrap(vars(MSR_type)) +
-    ggforce::facet_zoom(xlim = c(0,0.01)) +
+    ggforce::facet_zoom(xlim = c(0,0.005)) +
     theme_light() +
     scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
                       labels = c("20-39", "40-59", "60-79"),
                       breaks = c("20-39", "40-59", "60-79")) +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          strip.text =  element_text(colour = "black", size = "9"),
-          plot.title = element_text(colour = "black", size = "9"),
-          legend.text = element_text(size = "9"),
-          legend.title = element_text(size = "9"),
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text =  element_text(colour = "black", size = "12"),
+          plot.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
           legend.position = "top") +
     guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
   
@@ -1068,6 +1131,7 @@ age_stratification_plot_MSR <- function(df = NULL,
   ########################################
   ## STATISTICAL TEST - MSR_DONOR
   ########################################
+  
   
   wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_D),
               y = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
@@ -1084,14 +1148,67 @@ age_stratification_plot_MSR <- function(df = NULL,
          alternative = "less",
          paired = T)
   
+
+  ## EFFECT SIZE 
+  
+  df_MSRD <- df_age_groups_tidy %>%
+    distinct(ref_junID, sample_type, .keep_all = T) %>%
+    dplyr::select(ref_junID,
+                  sample_type,
+                  MSR_D) %>%
+    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_D)
+  
+  df_MSRD %>%
+    filter(`20-39` < `40-59`,
+           `40-59` < `60-79`)
+  df_MSRD %>%
+    filter(`20-39` > `40-59`,
+           `40-59` > `60-79`)
+  
+  
+  rstatix::wilcox_effsize(data = df_MSRD %>%
+                            tidyr::gather(key = ref_junID, value = year),
+                          formula = ref_junID  ~ year )
+  
   ########################################
   ## STATISTICAL TEST - MSR_ACCEPTOR
   ########################################
+
+  ## EFFECT SIZE 
   
-  wilcox.test(x = df_MSRD$`20-39`,
-              y = df_MSRD$`40-59`,
+  df_MSRA <- df_age_groups_tidy %>%
+    distinct(ref_junID, sample_type, .keep_all = T) %>%
+    dplyr::select(ref_junID,
+                  sample_type,
+                  MSR_A) %>%
+    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_A)
+  
+  df_MSRA %>%
+    filter(`20-39` < `40-59`,
+           `40-59` < `60-79`)
+  df_MSRA %>%
+    filter(`20-39` > `40-59`,
+           `40-59` > `60-79`)
+  
+  df_MSRA_tidy <- df_MSRA %>%
+    tidyr::gather(key = ref_junID, value = year) %>%
+    dplyr::rename(MSR = year) %>%
+    mutate(year = as.numeric(factor(as.matrix(ref_junID))) ) %>%
+    as_tibble() %>%
+    dplyr::select(MSR, year)
+  
+  rstatix::wilcox_effsize(data = df_MSRA_tidy,
+                          formula = MSR  ~ year )
+  
+  wilcox.test(x = df_MSRA$`20-39`,
+              y = df_MSRA$`40-59`,
               alternative = "less",
               paired = T)
+  
+  
+
   wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_A),
               y = df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_A),
               alternative = "less",
@@ -1106,7 +1223,7 @@ age_stratification_plot_MSR <- function(df = NULL,
 }
 
 
-age_stratification_plot_MSR_across_tissues <- function(projects = c("BRAIN", "BLOOD","MUSCLE"),
+age_stratification_plot_MSR_across_tissues <- function(age_projects = c("BRAIN", "BLOOD","MUSCLE"),
                                                        age_groups = c("60-79", "40-59", "20-39")) {
   
   
@@ -1121,7 +1238,7 @@ age_stratification_plot_MSR_across_tissues <- function(projects = c("BRAIN", "BL
   df_metadata <- dbGetQuery(con, query)
   
   
-  df_age_groups_MSR <- map_df(projects, function(project_id) {
+  df_age_groups_MSR <- map_df(age_projects, function(project_id) {
     
     # project_id <- (df_metadata$SRA_project %>% unique())[1]
     
@@ -1133,6 +1250,7 @@ age_stratification_plot_MSR_across_tissues <- function(projects = c("BRAIN", "BL
       pull()
     
     df_age_groups <- map_df(age_groups, function(age_group) {
+      
       # age_group <- age_groups[1]
       print(paste0(Sys.time(), " --> ", age_group))
       query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_nevermisspliced'")
@@ -1242,362 +1360,534 @@ age_stratification_plot_MSR_across_tissues <- function(projects = c("BRAIN", "BL
  
 }
 
+
+
 ####################################
 # MSR CHANGING WITH AGE
 ####################################
 
-age_stratification_MSR_changing_with_age <- function(project_id,
-                                                     age_groups = c("60-79", "40-59", "20-39"),
-                                                     gtf_version = 105) {
+age_stratification_MSR_changing_with_age <- function(database_path,
+                                                     age_projects = NULL,
+                                                     gtf_version) {
   
   
-  #######################################
   ## CONNECT TO THE DATABASE
-  #######################################
   
-  con <- dbConnect(RSQLite::SQLite(), database_path)
+  con <- dbConnect(RSQLite::SQLite(), database_path) # "~/PROJECTS/splicing-project-recount3/database/v105/age_subsampled/age_subsampled_3tissues.sqlite"
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  df_age_groups <- map_df(project_id, function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      # age_group <- age_groups[1]
-      
-      print(paste0(age_group))
-      
-      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, gene_id FROM '", age_group, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      
-      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, gene_id FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
-      
-      query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", paste(introns$gene_id %>% unique(), collapse =","), ")")
-      introns <- merge(x = introns,
-                       y = dbGetQuery(con, query) %>% as_tibble(),
-                       by.x = "gene_id",
-                       by.y = "id")
-      
-      return(introns %>%
-               mutate(sample_type = age_group))
-    })
-    
-  })
+  df_metadata <- dbGetQuery(con, query) %>%
+    group_by(SRA_project) %>%
+    mutate(nsamples = n()) %>%
+    filter(nsamples >= 70)
   
   
-  ###############################################
-  ## QC
-  ###############################################
+  df_metadata %>%
+    write.csv(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", 
+                            gtf_version, "/", main_project, "/results/", 
+                            main_project, "_database_metadata.csv"), 
+              row.names = FALSE)
   
-  any(df_age_groups %>% filter(sample_type == "never") %>% pull(MSR_D) > 0)
-  any(df_age_groups %>% filter(sample_type == "never") %>% pull(MSR_A) > 0)
+  age_groups <- df_metadata$cluster %>% unique()
   
-  intersect(df_age_groups %>% filter(sample_type == "never") %>% pull(ref_junID),
-            df_age_groups %>% filter(sample_type != "never") %>% pull(ref_junID))
+  if ( is.null(age_projects) ) {
+    age_projects <- df_metadata$SRA_project %>% unique()
+  }
   
-  ###############################################
-  ## GET ONLY COMMON JUNCTIONS ACROSS AGE GROUPS
-  ###############################################
+  
   
   folder_results <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
-                           gtf_version, "/", main_project,"/results/")
+                           gtf_version, "/", main_project, "/results/")
   dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
   
   
-  common_introns <- df_age_groups %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::group_by(ref_junID) %>%
-    mutate(n = n()) %>%
-    filter(n == age_groups %>% length()) %>%
-    distinct(ref_junID) %>%
-    pull()
+  if ( (age_projects %>% length()) > 1) {
+    file_name <- paste0(folder_results, "/df_MSRD_common_introns_all_projects.rds")
+  } else {
+    file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
+  }
   
-  saveRDS(object = df_age_groups %>%
-            group_by(sample_type) %>%
-            distinct(ref_junID, .keep_all = T) %>%
-            ungroup() %>%
-            dplyr::group_by(ref_junID) %>%
-            mutate(n = n()) %>%
-            filter(n == age_groups %>% length()),
-          file = paste0(folder_results, "/common_introns_", project_id,".rds"))
+  if ( !file.exists(file_name) ) {
+    
+    df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
+      
+      # project_id <- (df_metadata$SRA_project %>% unique())[1]
+      
+      print(paste0(Sys.time(), " --> ", project_id))
+      
+      age_groups <- df_metadata %>%
+        filter(SRA_project == project_id) %>%
+        distinct(cluster) %>%
+        pull()
+      
+      df_age_groups <- map_df(age_groups, function(age_group) {
+        # age_group <- age_groups[1]
+        
+        print(paste0(age_group))
+        
+        query <- paste0("SELECT name FROM sqlite_master WHERE type='table' AND name='", 
+                        age_group, "_", project_id, "_nevermisspliced';")
+        
+        if ( (dbGetQuery(con, query) %>% nrow()) > 0 ) {
+          
+          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, gene_id, novel_junID, ref_sum_counts, novel_sum_counts FROM '", 
+                          age_group, "_", project_id, "_misspliced'")
+          introns <- dbGetQuery(con, query) %>% as_tibble()#introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+          
+          query <- paste0("SELECT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", 
+                          paste(introns$novel_junID %>% unique(), collapse =","), ")")
+          introns <- introns %>%
+            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                      by = "novel_junID")
+          
+          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, gene_id FROM '", 
+                          age_group, "_", project_id, "_nevermisspliced'")
+          introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+          
+          query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", paste(introns$gene_id %>% unique(), collapse =","), ")")
+          introns <- introns %>%
+            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                      by = c("gene_id" = "id"))
+          
+          return(introns %>%
+                   mutate(sample_type = age_group,
+                          project_id = project_id))
+        } else {
+          print(query)
+          return(NULL)
+        }
+      })
+      
+    })
+    
+
+    age_projects <- df_age_groups_all_introns$project_id %>% unique()
+    
+    df_common_introns <- df_age_groups_all_introns %>%
+      group_by(project_id, sample_type) %>%
+      distinct(ref_junID, .keep_all = T) %>%
+      ungroup() %>%
+      group_by(project_id) %>%
+      dplyr::count(ref_junID) %>%
+      filter(n == (age_groups %>% length())) %>% # * (age_projects %>% length())) %>%
+      ungroup()
+    df_common_introns$ref_junID %>% unique() %>% length()
+    
+    ## Save data.frame containing only common introns 
+    if ( (age_projects %>% length()) > 1) {
+      file_name <- paste0(folder_results, "/common_introns_all_projects.rds")
+    } else {
+      file_name <- paste0(folder_results, "/common_introns_", project_id, ".rds")
+    }
+    saveRDS(object = df_common_introns, file = file_name)
+    
+    ## Filter the intron data across tissues by the common introns
+    df_age_groups_tidy <- df_age_groups_all_introns %>% 
+      inner_join(y = df_common_introns %>% distinct(ref_junID),
+                 by = "ref_junID") %>%
+      group_by(project_id, sample_type) %>%
+      distinct(ref_junID, .keep_all = T) %>%
+      ungroup()
+    
+    
+    df_age_groups_tidy %>% 
+      filter(ref_junID == "68126") 
+    
+    
+    ###############################################
+    ## MSR_D
+    ###############################################
+    
+    df_MSRD <- df_age_groups_tidy %>%
+      dplyr::select(ref_junID, sample_type, MSR_D, gene_name, project_id)  %>% 
+      #distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
+      mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+      spread(sample_type, MSR_D) %>%
+      as_tibble()
+    
+    if ( (age_projects %>% length()) > 1) {
+      file_name <- paste0(folder_results, "/df_MSRD_common_introns_all_projects.rds")
+    } else {
+      file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
+    }
+    saveRDS(object = df_MSRD, file = file_name)
+    # df_MSRD <- readRDS(file = file_name)
+    
+    ###############################################
+    ## MSR_A
+    ###############################################
+    
+    df_MSRA <- df_age_groups_tidy %>%
+      dplyr::select(ref_junID, sample_type, MSR_A, gene_name, project_id)  %>% 
+      distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
+      mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+      spread(sample_type, MSR_A) %>%
+      as_tibble()
+    
+    if ( (age_projects %>% length()) > 1) {
+      file_name <- paste0(folder_results, "/df_MSRA_common_introns_all_projects.rds")
+    } else {
+      file_name <- paste0(folder_results, "/df_MSRA_common_introns_", project_id,".rds")
+    }
+    saveRDS(object = df_MSRA, file = file_name)
+    # df_MSRA <- readRDS(file = file_name)
+    
+    
+  } else {
+    
+    ## MSR_D
+    if ( (age_projects %>% length()) > 1) {
+      file_name <- paste0(folder_results, "/df_MSRD_common_introns_all_projects.rds")
+    } else {
+      file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
+    }
+    df_MSRD <- readRDS(file = file_name)
+    
+    
+    ## MSR_A
+    if ( (age_projects %>% length()) > 1) {
+      file_name <- paste0(folder_results, "/df_MSRA_common_introns_all_projects.rds")
+    } else {
+      file_name <- paste0(folder_results, "/df_MSRA_common_introns_", project_id,".rds")
+    }
+    df_MSRA <- readRDS(file = file_name)
+  }
   
-  common_introns %>% length()
+ 
   
-  ## Filter the INTRONS table by the common mis-spliced introns
-  df_age_groups_tidy <- merge(x = df_age_groups %>% data.table::as.data.table(),
-                              y = data.table::data.table(ref_junID = common_introns),
-                              by = "ref_junID",
-                              all.y = T) %>%
-    distinct(ref_junID, sample_type, .keep_all = T)
-  
-  saveRDS(object = df_age_groups_tidy,
-          file = paste0(folder_results, "/df_age_groups_common_introns_",project_id,".rds"))
-  
-  ## MSR_D -------------------------------------------------
-  df_MSRD <- df_age_groups_tidy %>%
-    dplyr::select(ref_junID,
-                  sample_type,
-                  MSR_D,
-                  gene_name) %>%
-    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_D)
-  
-  # genes_MSRD_discard <- df_MSRD %>%
-  #   rowwise() %>%
-  #   filter(`20-39` > `40-59` |
-  #            `20-39` > `60-79`) %>%
-  #   distinct(gene_name) %>% 
-  #   pull() %>% unlist()
-  
-  genes_MSRD_increasing <- df_MSRD %>%
-    filter((`20-39` < `40-59` &
-              `40-59` < `60-79`))
-  genes_MSRD_decreasing <- df_MSRD %>%
-    filter((`20-39` > `40-59` & 
-              `40-59` > `60-79`) )
-  
-  
-  saveRDS(object = genes_MSRD_increasing %>% distinct(ref_junID, .keep_all = T),
-          file = paste0(folder_results, "/genes_increase_MSRD_",project_id,".rds"))
-  saveRDS(object = genes_MSRD_decreasing %>% distinct(ref_junID, .keep_all = T),
-          file = paste0(folder_results, "/genes_decrease_MSRD_",project_id,".rds"))
-  
-  ## MSR_A -------------------------------------------------
-  df_MSRA <- df_age_groups_tidy %>%
-    #filter(ref_junID %in% df_age_groups_novel_tidy$ref_junID) %>%
-    dplyr::select(ref_junID,
-                  sample_type,
-                  MSR_A,
-                  gene_name) %>%
-    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_A)
-  
-  
-  genes_MSRA_increasing <- df_MSRA %>%
-    filter((`20-39` < `40-59` & 
-              `40-59` < `60-79`))
-  genes_MSRA_decreasing <- df_MSRA %>%
-    filter((`20-39` > `40-59` &
-              `40-59` > `60-79`))
-  
-  
-  saveRDS(object = genes_MSRA_increasing %>% distinct(ref_junID, .keep_all = T),
-          file = paste0(folder_results, "/genes_increase_MSRA_",project_id,".rds"))
-  saveRDS(object = genes_MSRA_decreasing %>% distinct(ref_junID, .keep_all = T),
-          file = paste0(folder_results, "/genes_decrease_MSRA_",project_id,".rds"))
-  
-  
-  
-  
+
   #######################################
-  ## STATISTICAL TEST - MSR_DONOR
+  ## LOOP - STATISTICAL TEST - MSR
   ########################################
+
+  df_wilcoxon <- map_df( c("MSR_D", "MSR_A"), function(MSR_type) { #, "MSR_A"
+    
+    # MSR_type <- "MSR_D"
+    print( paste0( "Getting data from: '", MSR_type, "'..." ) )
+    
+    map_df( c("increasing" ), function(tendency_type) { # ,"decreasing" 
+    
+      # tendency_type <- "increasing"
+      map_df(age_projects, function(proj_id) {
+      
+        # proj_id <- age_projects[1]
+        print( paste0( proj_id ) )
+        
+        ###############################
+        ## MSR_D INCREASING WITH AGE
+        ###############################
+        
+        df_introns <- NULL
+        if (MSR_type == "MSR_D") {
+          df_introns <- df_MSRD 
+        } else {
+          df_introns <- df_MSRA
+        }
+        df_introns <- df_introns %>%
+          filter(project_id == proj_id) 
+        
+        if ( tendency_type == "increasing" ) {
+          # df_introns <- df_introns %>%
+          #   filter((`20-39` < `40-59` &
+          #             `40-59` < `60-79`)) 
+          wilcox_alternative <- "less"
+        } else {
+          # df_introns <- df_introns %>%
+          #   filter((`20-39` > `40-59` & 
+          #             `40-59` > `60-79`) ) 
+          wilcox_alternative <- "greater"
+        }
+      
+    
+        wilcox_pval <- data.frame(pval = c((wilcox.test(x = df_introns$`20-29`,
+                                                        y = df_introns$`40-49`,
+                                                        alternative = wilcox_alternative,
+                                                        paired = T))$p.value,
+                                           #(wilcox.test(x = df_introns$`20-39`,
+                                            #            y = df_introns$`60-79`,
+                                             #           alternative = wilcox_alternative,
+                                              #          paired = T))$p.value,
+                                           (wilcox.test(x = df_introns$`40-49`,
+                                                        y = df_introns$`60-69`,
+                                                        alternative = wilcox_alternative,
+                                                        paired = T))$p.value))
+        
+        r_effect1 <-
+          rstatix::wilcox_effsize(data = df_introns %>%
+                                    dplyr::select(`20-29`,`40-49`) %>%
+                                    gather(key = age, MSR) %>%
+                                    dplyr::select(age, MSR),
+                                  formula = MSR ~ age) %>%
+          mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
+                 tissue = proj_id)
+        
+        r_effect2 <-
+          rstatix::wilcox_effsize(data = df_introns %>%
+                                    dplyr::select(`40-49`, `60-69`) %>%
+                                    gather(key = age, MSR) %>%
+                                    dplyr::select(age, MSR),
+                                  formula = MSR ~ age) %>%
+          mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
+                 tissue = proj_id) #%>%
+        
+        
+      
+        return(rbind(r_effect1,
+                     r_effect2) %>%
+                 cbind(wilcox_pval))
+      
+      })
+    })
+  })
   
-  wilcox.test(x = df_MSRD$`20-39`,
-              y = df_MSRD$`40-59`,
-              alternative = "less",
-              paired = T)
-  wilcox.test(x = df_MSRD$`40-59`,
-              y = df_MSRD$`60-79`,
-              alternative = "less",
-              paired = T)
+  if ( (age_projects %>% length()) > 1) {
+    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_all_projects.rds")
+  } else {
+    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_", project_id,".rds")
+  }
+  saveRDS(object = df_wilcoxon, file = file_name)
   
-  t.test(x = df_MSRD$`20-39`,
-         y = df_MSRD$`40-59`,
-         alternative = "less",
-         paired = T)
-  t.test(x = df_MSRD$`20-39`,
-         y = df_MSRD$`60-79`,
-         alternative = "less",
-         paired = T)
   
-  wilcox.test(x = df_MSRA$`20-39`,
-              y = df_MSRA$`40-59`,
-              alternative = "less",
-              paired = T)
-  wilcox.test(x = df_MSRA$`40-59`,
-              y = df_MSRA$`60-79`,
-              alternative = "less",
-              paired = T)
+  df_wilcoxon <- df_wilcoxon %>%
+    mutate(group = paste0(group1, "<", group2)) %>%
+    as_tibble()
+  
+  
+  #######################################################
+  ## PLOTS
+  #######################################################
+  
+  
+  for (type in c("MSR_D", "MSR_A")) {
+  
+    # type <- "MSR_A"
+    df_wilcoxon_tidy <- df_wilcoxon %>%
+      filter(MSR_type ==  type) %>%
+      group_by(group) %>%
+      mutate(tissue = fct_reorder(tissue, effsize)) %>%
+      ungroup()
+    
+  
+    ## PLOT 1
+    
+    ggplot(data = df_wilcoxon_tidy ,
+           aes(x = effsize,  y = tissue, color= group,size = pval)) +
+      geom_point(alpha=.7) +
+      facet_wrap(group~MSR_type) +
+      theme_light() +
+      ylab("") +
+      scale_x_log10() +
+      xlab("log10(effsize)") +
+      theme(axis.line = element_line(colour = "black"), 
+            axis.text = element_text(colour = "black", size = "12"),
+            axis.title = element_text(colour = "black", size = "12"),
+            legend.text = element_text(size = "12"),
+            legend.title = element_text(size = "12"),
+            axis.text.x = element_text(colour = "black", size = "12"),
+            strip.text = element_text(colour = "black", size = "12"),
+            legend.position = "top"
+      ) + 
+      scale_size(trans = "reverse")+
+      theme(legend.position="top", legend.box="vertical", legend.margin=margin()) +
+      guides(color = guide_legend(title = "Age comparison: "))
+             
+    ## Save the figure 3
+    folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
+                             gtf_version, "/", main_project, "/figures/")
+    dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
+    file_name <- paste0(folder_figures, "/effsize_common_introns_all_tissues_", type, ".svg")
+    ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+    
+    
+    
+    ## PLOT 2
+    
+    ggplot(data = df_wilcoxon_tidy %>%
+             #filter(pval < 0.05) %>%
+             dplyr::select( tissue, MSR_type, group,effsize) %>%
+             spread(key = group, value = effsize) %>%
+             mutate(effsizediff = `40-49<60-69` - `20-29<40-49`) %>%
+             mutate(col = ifelse(effsizediff > 0, "increased effsize with age", "reduced effsize with age")) %>%
+             drop_na(),
+           aes(x = `20-29<40-49`,  y = tissue, colour = col)) +
+      geom_point(alpha=.7) +
+      geom_pointrange(aes(xmax=`40-49<60-69`, 
+                          xmin=`20-29<40-49`)) +
+      facet_wrap(vars(MSR_type)) +
+      theme_light() +
+      ylab("") +
+      scale_x_log10() +
+      xlab("log10(effsize)") +
+      theme(axis.line = element_line(colour = "black"), 
+            axis.text = element_text(colour = "black", size = "12"),
+            axis.title = element_text(colour = "black", size = "12"),
+            legend.text = element_text(size = "12"),
+            legend.title = element_text(size = "12"),
+            axis.text.x = element_text(colour = "black", size = "12"),
+            strip.text = element_text(colour = "black", size = "12"),
+            legend.position = "top"
+      ) + 
+      #scale_size(trans = "reverse")+
+      theme(legend.position="top", legend.box="vertical", legend.margin=margin())+ 
+      scale_colour_discrete(direction=-1) +
+      guides(colour = guide_legend(title = NULL)) 
+    
+    file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".svg")
+    ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  }
+  
 }
 
 ####################################
 # SPLICEOSOMAL RBPs AND THEIR TPMs
 ####################################
 
-age_stratification_RBP_TPM <- function (project_id = "BRAIN") {
-  
-  ################################################################################
-  # 0. Prepare the necessary data ------------------------------------------------
-  ################################################################################
-  
-  
-  project_id <- "BRAIN"
-  
-  ## Load reference gtf and get only the genes
-  ensembl105 <- biomaRt::useEnsembl(biomart = 'genes', 
-                                    dataset = 'hsapiens_gene_ensembl',
-                                    version = 105)
-  
-  
-  ## Load the RBPs and add the ensemblID
-  all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/41586_2020_2077_MOESM3_ESM.xlsx', 
-                              sep = '\t', header = TRUE,
-                              sheetIndex = 1) %>%  as_tibble() 
-  
-  RBPs_annotated <- biomaRt::getBM(
-    attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
-    filters = 'hgnc_symbol',
-    values = all_RBPs$name %>% unique,
-    mart = ensembl105
-  )
-  RBPs_annotated <- RBPs_annotated %>%
-    distinct(hgnc_symbol, .keep_all = T)
-  
-  
-  ## Load the recount3 data
-  rse <- recount3::create_rse_manual(
-    project = project_id,
-    project_home = "data_sources/gtex",
-    organism = "human",
-    annotation = "gencode_v29",
-    type = "gene")
-  
-  ## Transform counts
-  SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
-  ## See that now we have two assayNames()
-  SummarizedExperiment::assayNames(rse)
-  
-  
-  ################################################################################
-  # 1. Get the RBP TPM expression using GTEX data --------------------------------
-  ################################################################################
-  
-  dds_tpm <- get_GTEx_gene_expression(rse = rse, ensembl = ensembl105)
-  dds_tpm %>% head()
-  
-  dds_tpm <- dds_tpm %>%
-    filter(tpm > 0)
-  
-  # Tidy the 'dds_tpm' object
-  dds_tpm_pv <- dds_tpm %>%
-    dplyr::filter(gene %in% RBPs_annotated$ensembl_gene_id) %>%
-    dplyr::select(gene, sample, tpm) %>% 
-    group_by(gene) %>%
-    distinct(sample, .keep_all = T) %>%
-    pivot_wider(names_from = sample, values_from = tpm, values_fill = 0)
-  
-  write.csv(x = dds_tpm_pv %>%
-              tibble::column_to_rownames("gene"),
-            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                          "/results/pipeline3/rbp/tpm_ensembl105.csv"))
-}
 
-age_stratification_RBP_TPM_LM <- function(projects_id = c("BRAIN")) {
+age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = c("BRAIN")) {
+  
   
   ################################
   ## LOAD RBPs OF INTEREST
   ################################
   
-  all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/41586_2020_2077_MOESM3_ESM.xlsx', 
-                              sep = '\t', header = TRUE,
-                              sheetIndex = 1) %>%  
-    as_tibble() %>%
-    mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
-    dplyr::select(name, ensembl_gene_id = id, type) %>%
-    distinct(name, .keep_all = T) 
-  
-  ## Load reference gtf and get only the genes
-  # ensembl105 <- biomaRt::useEnsembl(biomart = 'genes', 
-  #                                   dataset = 'hsapiens_gene_ensembl',
-  #                                   version = 105, mirror = "asia")
-  ensembl105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>%
-    as_tibble()
-  # RBPs_annotated <- biomaRt::getBM(
-  #   attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
-  #   filters = 'hgnc_symbol',
-  #   values = all_RBPs$name %>% unique,
-  #   mart = ensembl105
-  # )
-  RBPs_annotated <- ensembl105 %>%
-    as_tibble() %>%
-    filter(gene_id %in% all_RBPs$ensembl_gene_id) %>%
-    distinct(gene_name, .keep_all = T)
-  
-  
-  RBPs_annotated_tidy <- left_join(x = RBPs_annotated %>% select(gene_id, gene_name) %>% as_tibble(), 
-                                   y = all_RBPs %>% as_tibble(), 
-                                   by = c("gene_id" = "ensembl_gene_id")) 
-  
-  
-  
-  
-  for (project_id in projects_id) {
+  if ( !exists("all_RBPs") ) {
     
+    # Only measure RBPs that are splicing regulator, spliceosome, and Exon.Junction.Complex
+    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/41586_2020_2077_MOESM3_ESM.xlsx', 
+                                sep = '\t', header = TRUE,
+                                sheetIndex = 1) %>% 
+      as_tibble() 
+  }
+  
+  
+  all_RBPs_tidy <- all_RBPs %>%
+    filter(Splicing.regulation == 1 |
+             Spliceosome == 1 | 
+             Exon.Junction.Complex == 1) %>%
+    dplyr::select(name, id,
+                  Splicing.regulation,
+                  Spliceosome,
+                  Exon.Junction.Complex)
+  
+  write.table(x = all_RBPs_tidy$name,
+              file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs.csv"),
+              row.names = F, col.names = F, quote = F )
+  saveRDS(object = all_RBPs_tidy,
+          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/data/all_RBPs_tidy.rds"))
+  
+
+  ################################
+  ## CONNECT TO THE DATABASE
+  ################################
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) %>%
+    filter(SRA_project == project_id)
+  
+  
+  ## Get the TPM of the RBPs selected
+  
+  for (project_id in project_id) {
     ## project_id <- "BRAIN"
     
     ## Load and tidy the uncorrected TPMs
-    ## TPMs here should be uncorrected as the covariates are going to be included in the linear models
-    rbp_recount_tpm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                              project_id, "/results/pipeline3/rbp/tpm_ensembl105.csv"))
+    tpm_uncorrected <- map_df((df_metadata$region %>% unique()), function(cluster) {
+      
+      print(paste0(Sys.time(), " - ", cluster, " ... "))
+      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                             cluster, "/tpm_ensembl105.csv"))) {
+        read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                               cluster, "/tpm_ensembl105.csv"), header = T, fileEncoding = "UTF-8") 
+      } else {
+        return(NULL)
+      }   
+    })
     
-    
-    tpm_uncorrected <- rbp_recount_tpm %>%
+    tpm_uncorrected_tidy <- tpm_uncorrected %>%
       dplyr::rename(gene = "X") %>%
       as_tibble() %>%
       distinct(gene, .keep_all = T)
     
     
     ## Load and tidy the sample metadata
-    sample_metadata <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                                              project_id, "/results/pipeline3/rbp/covariates.csv"), header = T,
-                                fileEncoding = "UTF-8") %>% as_tibble()
+    sample_metadata <- map_df((df_metadata$region %>% unique()), function(cluster) {
+      
+      print(paste0(Sys.time(), " - ", cluster, " ... "))
+      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                             cluster, "/covariates.csv"))) {
+        read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                               cluster, "/covariates.csv"), header = T, fileEncoding = "UTF-8") 
+      } else {
+        return(NULL)
+      }   
+    })
+    
+    
     
     print(sample_metadata %>% nrow)
     ## Check the samples are the same
-    if ( !( identical(x = names(tpm_uncorrected)[-1],
+    if ( !( identical(x = names(tpm_uncorrected_tidy)[-1],
                       y = names(sample_metadata)[-1]) ) ) {
       print("ERROR!")
       break;
     }
     
+    # ## Select only the samples from the current database
+    # tpm_uncorrected_tidy <- tpm_uncorrected_tidy %>%
+    #   dplyr::select(gene, all_of(str_replace_all(string = df_metadata$individual,
+    #                                              pattern = "-",
+    #                                              replacement = "."))) 
+    # sample_metadata <- sample_metadata %>%
+    #   dplyr::select(covariates, all_of(str_replace_all(string = df_metadata$individual,
+    #                                                    pattern = "-",
+    #                                                    replacement = "."))) 
+    # 
+    # ## Check the samples are the same after subsampliing by the samples of the current database
+    # if ( !( identical(x = names(tpm_uncorrected_tidy)[-1],
+    #                   y = names(sample_metadata)[-1]) ) ) {
+    #   print("ERROR!")
+    #   break;
+    # }
+    
+    # RBPs <- (tpm_uncorrected_tidy$gene)
     
     
-    RBPs <- (tpm_uncorrected$gene)
+    
     
     # tpm_uncorrected[rowSums(tpm_uncorrected[, c(2:ncol(tpm_uncorrected))]),]
     
     ## Obtain values and run lm
-    df_lm_output <- map_df(RBPs, function(RBP) {
+    df_lm_output <- map_df(all_RBPs_tidy$id, function(RBP) {
       
-      # RBP <- RBPs[1]
-      # RBP <- "ENSG00000277564"
+      
+      # RBP <- all_RBPs_tidy$id[1]
+      # RBP <- "ENSG00000169045"
       print(RBP)
       
-      tpm <- tpm_uncorrected %>%
+      ## Filter by the current RBP
+      tpm <- tpm_uncorrected_tidy %>%
         filter(gene == RBP) %>%
         mutate(gene = "tpm") %>%
+        select_if(~ !any(is.na(.))) %>%
         as_tibble()
       
-      if (rowSums(tpm[, c(2:ncol(tpm))]) != 0) {
+      RBP_sample_metadata <- sample_metadata %>%
+        dplyr::select(covariates, all_of(names(tpm %>% dplyr::select(-gene))))%>%
+        drop_na() 
+      
+      if ( nrow(tpm) > 0 && rowSums(tpm[, c(2:ncol(tpm))], na.rm = T) != 0) {
         
-        df <- rbind(tpm %>% 
-                      dplyr::rename(covariates = "gene"),
-                    sample_metadata) %>%
+        
+        df <- rbind(tpm %>%  dplyr::rename(covariates = "gene"),
+                    RBP_sample_metadata) %>%
           gather(sample, value, -covariates)  %>%
-          spread(key = covariates, value) %>%
-          dplyr::mutate(gtex.age = gtex.age %>% as.double(),
+          drop_na() %>%
+          spread(key = covariates, value = value) %>%
+          dplyr::mutate(gtex.age = ifelse(gtex.age %>% as.double() == 1 | gtex.age %>% as.double() == 2, 30, gtex.age %>% as.double()),
+                        gtex.age = ifelse(gtex.age %>% as.double() == 3 | gtex.age %>% as.double() == 4, 50, gtex.age %>% as.double()),
+                        gtex.age = ifelse(gtex.age %>% as.double() == 5 | gtex.age %>% as.double() == 6, 70, gtex.age %>% as.double()),
                         gtex.dthhrdy = gtex.dthhrdy %>% as.double(),
                         gtex.sex = gtex.sex %>% as.double(),
                         gtex.smcenter = gtex.smcenter %>% as.double(),
@@ -1610,37 +1900,22 @@ age_stratification_RBP_TPM_LM <- function(projects_id = c("BRAIN")) {
                         tpm = tpm %>% as.double()) %>%
           as_tibble()
         
-        if (project_id == "MUSCLE") {
-          # print(df)
-          lm_output <- lm(tpm ~ 
-                            gtex.smrin + 
-                            gtex.smcenter +
-                            gtex.smgebtch +
-                            gtex.smgebtchd +
-                            gtex.smnabtch +
-                            gtex.smnabtchd +
-                            gtex.smnabtcht +
-                            gtex.dthhrdy +
-                            gtex.sex +
-                            #gtex.smtsd +
-                            gtex.age,
-                          data = df)
-        } else {
-          # print(df)
-          lm_output <- lm(tpm ~ 
-                            gtex.smrin + 
-                            gtex.smcenter +
-                            gtex.smgebtch +
-                            gtex.smgebtchd +
-                            gtex.smnabtch +
-                            gtex.smnabtchd +
-                            gtex.smnabtcht +
-                            gtex.dthhrdy +
-                            gtex.sex +
-                            gtex.smtsd +
-                            gtex.age,
-                          data = df)
-        }
+        
+        # print(df)
+        lm_output <- lm(tpm ~ 
+                          gtex.smrin + 
+                          gtex.smcenter +
+                          gtex.smgebtch +
+                          gtex.smgebtchd +
+                          gtex.smnabtch +
+                          gtex.smnabtchd +
+                          #gtex.smnabtcht +
+                          gtex.dthhrdy +
+                          gtex.sex +
+                          #gtex.smtsd +
+                          gtex.age,
+                        data = df)
+        
         
         
         lm_output <- lm_output %>% summary()
@@ -1654,41 +1929,59 @@ age_stratification_RBP_TPM_LM <- function(projects_id = c("BRAIN")) {
         return(df_lm_output)
         
       } else {
-        
         return(NULL)
-        
       }
       
     }) 
     
-    
-    # any(df_lm_output$pval > 0.05)
-    
-    
+
     ## Filter by age covariate and order
     df_lm_output_age <- df_lm_output %>%
-      group_by(covariate) %>%
-      mutate(pval_corrected = p.adjust(pval)) %>%
-      ungroup() %>%
       filter(str_detect(string = covariate, pattern = "gtex.age")) %>%
       arrange(Estimate)
     
-    
-    
+    if ( exists("RBPs_annotated") ) {
+      
+      RBPs_annotated_tidy <- left_join(x = RBPs_annotated %>% as_tibble(), 
+                                       y = all_RBPs_tidy %>% as_tibble(), 
+                                       by = c("ensembl_gene_id" = "ensembl_gene_id"))
+    } else {
+      RBPs_annotated_tidy <- all_RBPs_tidy
+    }
     
     ## Add gene SYMBOL info
     df_lm_age_tidy <- left_join(x = df_lm_output_age, 
                                 y = RBPs_annotated_tidy %>% drop_na(), 
-                                by = c("RBP_ID" = "gene_id")) %>%
+                                by = c("RBP_ID" = "id")) %>%
       group_by(RBP_ID) #%>%
     #distinct(pval, .keep_all = T)
     
     
     write_csv(x = df_lm_age_tidy,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                            "/results/pipeline3/rbp/tpm_lm_all_ensembl105.csv"))
+              file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+                            project_id,"_tpm_lm_all_ensembl105.csv"))
     
   }
+  
+  ###############################################
+  ## Get RBPs that decrease expression with age
+  ###############################################
+  
+  
+  # RBP_decrease <- df_lm_age_tidy %>%
+  #   filter(Estimate < 0) %>%
+  #   arrange(desc(abs(Estimate)))
+  # 
+  # RBP_increase <- df_lm_age_tidy %>%
+  #   filter(Estimate > 0) %>%
+  #   arrange(desc(Estimate))
+  # 
+  # intersect(RBP_decrease$hgnc_symbol,
+  #           RBP_increase$hgnc_symbol)
+  # 
+  # RBP_decrease$hgnc_symbol %>% unique() %>% sort()
+  
+  
 }
 
 age_stratification_RBPs_affected_age <- function (project_id = "BRAIN") {
@@ -1697,30 +1990,18 @@ age_stratification_RBPs_affected_age <- function (project_id = "BRAIN") {
   # LOAD RBPs ORIGINAL PAPER AND TIDY
   ####################################
   
-  all_RBPs_tidy <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/markdowns/41586_2020_2077_MOESM3_ESM.xlsx', 
-                                   sep = '\t', header = TRUE,
-                                   sheetIndex = 1) %>%  
-    as_tibble() %>%
-    mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
-    dplyr::select(name, ensembl_gene_id = id, type) %>%
-    distinct(name, .keep_all = T) %>%
-    dplyr::rename(RBP_name = name,
-                  RBP_type = type)
-  
-  
-  write.table(x = all_RBPs_tidy$RBP_name,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs.csv"),
-              row.names = F, col.names = F, quote = F )
+  all_RBPs_tidy <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/data/all_RBPs_tidy.rds"))  %>%
+    dplyr::select(RBP_name = name, ensembl_gene_id = id) %>%
+    distinct(RBP_name, .keep_all = T) 
   
   ####################################
   # LOAD RBPs LM RESULTS
   ####################################
   
-  RBPs_age_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                                        "/results/pipeline3/rbp/tpm_lm_all_ensembl105.csv")) %>%
+  RBPs_age_lm <- read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/", project_id,
+                                        "_tpm_lm_all_ensembl105.csv")) %>%
     drop_na() %>% 
-    as_tibble()
-  
+    as_tibble() 
   
   
   ##########################################
@@ -1728,19 +2009,18 @@ age_stratification_RBPs_affected_age <- function (project_id = "BRAIN") {
   ##########################################
   
   RBP_age <- RBPs_age_lm %>%
-    filter(pval_corrected  <= 0.05,
-           Estimate < 0) %>%
+    filter(pval <= 0.05) %>%
     drop_na() 
   
-  write.table(x = RBP_age$name,
+  write.table(x = RBP_age$name  %>% sort(),
               file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv"),
               row.names = F, col.names = F, quote = F )
   
   RBP_notage <- RBPs_age_lm %>%
-    filter(!(name %in% RBP_age$name    )) %>%
-    drop_na()
+    filter( !(name  %in% RBP_age$name) ) %>%
+    drop_na() 
   
-  write.table(x = RBP_notage$name,
+  write.table(x = RBP_notage$name ,
               file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv"),
               row.names = F, col.names = F,quote = F)
   
@@ -1750,15 +2030,15 @@ age_stratification_RBPs_affected_age <- function (project_id = "BRAIN") {
   
   RBPs_age_tidy <- RBPs_age_lm %>%
     drop_na() %>%
-    mutate(age_type = ifelse(pval_corrected <= 0.05,
+    mutate(age_type = ifelse(pval <= 0.05,
                              "affected_age",
                              "not_affected_age"))
   RBPs_age_tidy %>%
     dplyr::count(age_type)
   
   write.csv(x = RBPs_age_tidy,
-            file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", project_id,
-                          "/results/pipeline3/rbp/tpm_lm_all_ensembl105_tidy.csv"))
+            file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/", project_id,
+                          "_tpm_lm_all_ensembl105_tidy.csv"))
 }
 
 
@@ -1769,7 +2049,7 @@ age_stratification_RBPs_affected_age <- function (project_id = "BRAIN") {
 overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
   
   
-  con <- dbConnect(RSQLite::SQLite(), "./database/age-stratification.sqlite")
+  con <- dbConnect(RSQLite::SQLite(), database_path)
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
   df_metadata <- dbGetQuery(con, query)
@@ -1784,66 +2064,89 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
   
   query <- paste0("SELECT * FROM 'intron'")
   df_intron <- dbGetQuery(con, query)
-  
-  indx <- str_locate_all(string = df_intron$ref_coordinates, pattern = ":")
-  chr_positions <- NULL
-  start_positions <- NULL
-  end_positions <- NULL
-  strand_positions <- NULL
-  
-  for (i in c(1:(indx %>% length()))) {
+
+ 
+  df_positions <- map_df (df_intron$ref_coordinates, function (coordinate) {
     
-    chr_j <- df_intron$ref_coordinates[i] %>%
-      str_sub(start = 1,
-              end = str_locate_all(string = df_intron$ref_coordinates[i], pattern = ":")[[1]][1,2]-1)
-    start_j <- df_intron$ref_coordinates[i] %>%
-      str_sub(start = str_locate_all(string = df_intron$ref_coordinates[i], pattern = ":")[[1]][1,2]+1,
-              end = str_locate_all(string = df_intron$ref_coordinates[i], pattern = "-")[[1]][1,2]-1) %>% as.integer()
-    end_j <- df_intron$ref_coordinates[i] %>%
-      str_sub(start = str_locate_all(string = df_intron$ref_coordinates[i], pattern = "-")[[1]][1,2]+1,
-              end = str_locate_all(string = df_intron$ref_coordinates[i], pattern = ":")[[1]][2,2]-1) %>% as.integer()
-    strand_j <- df_intron$ref_coordinates[i] %>%
-      str_sub(start = str_locate_all(string = df_intron$ref_coordinates[i], pattern = ":")[[1]][2,2]+1,
-              end = df_intron$ref_coordinates[i] %>% stringr::str_count())
+    # coordinate <- "chr7:69596434-69597233:-"
     
-    chr_positions <- c(chr_positions, chr_j)
-    start_positions <- c(start_positions, start_j)
-    end_positions <- c(end_positions, end_j)
-    strand_positions <- c(strand_positions, strand_j)
+    print(coordinate)
     
-    print(paste0(i, " out of ", indx %>% length()))
-  }
+    chr_j <- str_sub(string = coordinate,
+                     start = 1,
+                     end = str_locate_all(string = coordinate, pattern = ":")[[1]][1,2]-1)
+    start_j <- str_sub(string = coordinate,
+                       start = str_locate_all(string = coordinate, pattern = ":")[[1]][1,2]+1,
+                       end = str_locate_all(string = coordinate, pattern = "-")[[1]][1,2]-1) %>% as.integer()
+    end_j <- str_sub(string = coordinate,
+                     start = str_locate_all(string = coordinate, pattern = "-")[[1]][1,2]+1,
+                     end = str_locate_all(string = coordinate, pattern = ":")[[1]][2,2]-1) %>% as.integer()
+    strand_j <- str_sub(string = coordinate,
+                        start = str_locate_all(string = coordinate, pattern = ":")[[1]][2,2]+1,
+                        end = coordinate %>% stringr::str_count())
+    print(coordinate)
+    
+    return(data.frame(ref_coordinates = coordinate,
+                      seqnames = chr_j %>% as.character(),
+                      start = start_j %>% as.integer(),
+                      end = end_j %>% as.integer(),
+                      strand = strand_j %>% as.character()))
+    
+  })
   
   df_intron_tidy <- df_intron %>%
-    mutate(start = start_positions,
-           end = end_positions,
-           strand = strand_positions,
-           seqnames = chr_positions)
+    left_join(y = df_positions,
+              by = "ref_coordinates")
   
   ###########################
   ## MSR_D
   ###########################
+
   
-  genes_MSRD_increasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRD.rds")
-  genes_MSRD_increasing <- merge(genes_MSRD_increasing,
-                                 y = df_intron_tidy %>% select(ref_junID, start, end, seqnames, strand),
-                                 by.x = "ref_junID",
-                                 by.y = "ref_junID")
-  genes_MSRD_increasing <- genes_MSRD_increasing %>%
-    mutate(start = start - 25,
-           end = end + 25) %>% 
+  df_MSRD <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
+                                   gtf_version,"/",main_project,"/results/df_MSRD_common_introns_all_projects.rds")) %>%
+    dplyr::rename("body_site" = project_id) %>%
+    filter(body_site == project_id) %>%
+    left_join( y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+               by.x = "ref_junID",
+               by.y = "ref_junID" )
+  
+  df_MSRD_introns_increasing <- df_MSRD %>%
+    filter((`20-39` < `40-59` |
+             `20-39` < `60-79`) | 
+             `40-59` < `60-79`) %>%
+    mutate(start = start - 25) %>% 
     GRanges()
   
   
-  genes_MSRD_decreasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_decrease_MSRD.rds")
-  genes_MSRD_decreasing <- merge(genes_MSRD_decreasing,
-                                 y = df_intron_tidy %>% select(ref_junID, start, end, seqnames, strand),
-                                 by.x = "ref_junID",
-                                 by.y = "ref_junID")
-  genes_MSRD_decreasing <- genes_MSRD_decreasing %>%
-    mutate(start = start - 25,
-           end = end + 25) %>% 
+  df_MSRD_introns_decreasing <- df_MSRD %>%
+    filter( !(ref_junID %in% df_MSRD_introns_increasing$ref_junID) ) 
+  df_MSRD_introns_decreasing <- df_MSRD_introns_decreasing[sample(nrow(df_MSRD_introns_decreasing), 
+                                                                  (df_MSRD_introns_increasing$ref_junID %>% length()) ), ]
+  df_MSRD_introns_decreasing <- df_MSRD_introns_decreasing %>%
+    mutate(start = start - 25) %>% 
     GRanges()
+  
+  # genes_MSRD_increasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+  #                                                "/", main_project, "/results/genes_increase_MSRD_", project_id, ".rds"))
+  # genes_MSRD_increasing <- merge(genes_MSRD_increasing,
+  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+  #                                by.x = "ref_junID",
+  #                                by.y = "ref_junID")
+  # genes_MSRD_increasing <- genes_MSRD_increasing %>%
+  #   mutate(start = start - 25, end = end + 25) %>% 
+  #   GRanges()
+  # 
+  # 
+  # genes_MSRD_decreasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+  #                                                "/", main_project, "/results/genes_decrease_MSRD_", project_id, ".rds"))
+  # genes_MSRD_decreasing <- merge(genes_MSRD_decreasing,
+  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+  #                                by.x = "ref_junID",
+  #                                by.y = "ref_junID")
+  # genes_MSRD_decreasing <- genes_MSRD_decreasing %>%
+  #   mutate(start = start - 25, end = end + 25) %>% 
+  #   GRanges()
   
   
   
@@ -1851,70 +2154,139 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
   ## MSR_A
   ###########################
   
-  genes_MSRA_increasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_increase_MSRA.rds")
-  genes_MSRA_increasing <- merge(genes_MSRA_increasing,
-                                 y = df_intron_tidy %>% select(ref_junID, start, end, seqnames, strand),
-                                 by.x = "ref_junID",
-                                 by.y = "ref_junID")
+  df_MSRA <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
+                                   gtf_version,"/",main_project,"/results/df_MSRA_common_introns_all_projects.rds")) %>%
+    dplyr::rename("body_site" = project_id) %>%
+    filter(body_site == project_id) %>%
+    left_join( y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+               by.x = "ref_junID",
+               by.y = "ref_junID" )
   
-  genes_MSRA_increasing <- genes_MSRA_increasing %>%
-    mutate(start = start - 25,
-           end = start + 25) %>% 
+  df_MSRA_introns_increasing <- df_MSRA %>%
+    filter( (`20-39` < `40-59` &
+             `20-39` < `60-79`) | 
+             `40-59` < `60-79`) %>%
+    mutate(end = end + 25) %>% 
     GRanges()
   
-  genes_MSRA_decreasing <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/genes_decrease_MSRA.rds")
-  genes_MSRA_decreasing <- merge(genes_MSRA_decreasing,
-                                 y = df_intron_tidy %>% select(ref_junID, start, end, seqnames, strand),
-                                 by.x = "ref_junID",
-                                 by.y = "ref_junID")
-  
-  genes_MSRA_decreasing <- genes_MSRA_decreasing %>%
-    mutate(start = start - 25,
-           end = start + 25) %>% 
+  df_MSRA_introns_decreasing <- df_MSRA %>%
+    filter( !(ref_junID %in% df_MSRA_introns_increasing$ref_junID) ) 
+  df_MSRA_introns_decreasing <- df_MSRA_introns_decreasing[sample(nrow(df_MSRA_introns_decreasing), 
+                                                                  (df_MSRA_introns_increasing$ref_junID %>% length()) ), ]
+  df_MSRA_introns_decreasing <- df_MSRA_introns_decreasing %>%
+    mutate(end = end + 25) %>% 
     GRanges()
+  # df_MSRA_introns_decreasing <- df_MSRA %>%
+  #   filter((`20-39` > `40-59` #&
+  #          #  `40-59` > `60-79`
+  #          )) %>%
+  #   mutate(end = end + 25) %>% 
+  #   GRanges()
+  
+  # genes_MSRA_increasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+  #                                                "/", main_project, "/results/genes_increase_MSRA_", project_id, ".rds"))
+  # genes_MSRA_increasing <- merge(genes_MSRA_increasing,
+  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+  #                                by.x = "ref_junID",
+  #                                by.y = "ref_junID")
+  # 
+  # genes_MSRA_increasing <- genes_MSRA_increasing %>%
+  #   mutate(start = start - 25, end = end + 25) %>% 
+  #   GRanges()
+  # 
+  # genes_MSRA_decreasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+  #                                                "/", main_project, "/results/genes_decrease_MSRA_", project_id, ".rds"))
+  # genes_MSRA_decreasing <- merge(genes_MSRA_decreasing,
+  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+  #                                by.x = "ref_junID",
+  #                                by.y = "ref_junID")
+  # 
+  # genes_MSRA_decreasing <- genes_MSRA_decreasing %>%
+  #   mutate(start = start - 25, end = end + 25) %>% 
+  #   GRanges()
   
   ######################################################################
   ## GET OVERLAPS - ENCORI AND INTRONS WITH INCREASING MSR_D AND MSR_A
   ######################################################################
   
-  df_RBP_ENCORI_MSR_result <- map_df(c("RBPs_affected_age", "RBPs_notaffected_age"), function(type) {
+  
+ 
+  
+  
+  df_RBP_ENCORI_MSR_result <- map_df( c("RBPs_affected_age", "RBPs_notaffected_age"), function(type) {
     
     # type <- "RBPs_notaffected_age"
     # type <- "RBPs_affected_age"
     
+    if ( !exists("ensembl105") ) {
+      ensembl105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")  
+    } 
+    
     ## LOAD RPB list
-    if (type == "RBPs_affected_age") {
+    if ( type == "RBPs_affected_age" ) {
+      
       RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv",
                        header = F)
+      
+      
+      # RBPs <- spread_matrix %>%
+      #   filter(`20-39` > `40-59` ,
+      #          `40-59` > `60-79`) %>%
+      #   left_join(y = ensembl105 %>%
+      #               as_tibble() %>%
+      #               dplyr::select(gene_id, gene_name) %>%
+      #               distinct(gene_id, .keep_all = T),
+      #             by = c("RBP" = "gene_id")) %>%
+      #   dplyr::select(V1 = gene_name) 
+
+      
     } else {
+      
       RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv", 
                        header = F)
+      
+      # RBPs <-  spread_matrix %>%
+      #   filter(!(RBP %in%  (spread_matrix %>%
+      #                         filter(`20-39` > `40-59` ,
+      #                                `40-59` > `60-79`) %>%
+      #                         pull(RBP)))) %>%
+      #   left_join(y = ensembl105 %>%
+      #               as_tibble() %>%
+      #               dplyr::select(gene_id, gene_name) %>%
+      #               distinct(gene_id, .keep_all = T),
+      #             by = c("RBP" = "gene_id")) %>%
+      #   dplyr::select(V1 = gene_name) 
+      
     }
     
     ##############################
     ## Check ENCORI iCLIP results
     ##############################
     
-    map_df(RBPs$V1 %>% sort(), function (RBP) {
+    map_df( RBPs$V1 %>% sort(), function (RBP) {
       
       # RBP <- "ADAR"
       file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/results/ENCORI/",
                           "/ENCORI_hg19_", RBP, "_allgenes.txt")
       
       #print(file_name)
-      if (file.exists(file_name)) {
+      
+      if ( file.exists(file_name) ) {
         
+        ENCORI_RBP_result <- read.delim(file = file_name, header = T, skip = 3, sep = "\t") 
         
-        ENCORI_RBP_result <- read.delim(file = file_name, header = T, skip = 3, sep = "\t") %>%
-          as_tibble()
-        
-        if (ENCORI_RBP_result %>% nrow() > 1) {
+        if ( ENCORI_RBP_result %>% nrow() > 1) {
           
           print(paste0(RBP, " - ", type))
           
           ENCORI_RBP_result <- ENCORI_RBP_result %>% 
-            dplyr::rename(start = broadStart, end = broadEnd) %>% 
-            GRanges()
+            as.data.frame() %>%
+            mutate(chromosome = chromosome %>% as.factor(),
+                   strand = strand %>% as.factor()) %>%
+            distinct(geneID, .keep_all = T) %>%
+            dplyr::select(RBP, seqnames = chromosome, start = broadStart, end = broadEnd, strand) %>% 
+            GenomicRanges::GRanges()
+          
           
           #######################
           # Liftover
@@ -1930,12 +2302,12 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
           ## Overlaps - MSR_D
           #######################
           
-          overlaps_MSRD <- GenomicRanges::findOverlaps(query = genes_MSRD_increasing,
+          overlaps_MSRD <- GenomicRanges::findOverlaps(query = df_MSRD_introns_increasing,
                                                        subject = ENCORI_RBP_result_GRh38,
                                                        type = "any",
                                                        ignore.strand = F)
           
-          overlaps_MSRDd <- GenomicRanges::findOverlaps(query = genes_MSRD_decreasing,
+          overlaps_MSRDd <- GenomicRanges::findOverlaps(query = df_MSRD_introns_decreasing,
                                                         subject = ENCORI_RBP_result_GRh38,
                                                         type = "any",
                                                         ignore.strand = F)
@@ -1945,12 +2317,12 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
           ## Overlaps - MSR_A
           #######################
           
-          overlaps_MSRA <- GenomicRanges::findOverlaps(query = genes_MSRA_increasing,
+          overlaps_MSRA <- GenomicRanges::findOverlaps(query = df_MSRA_introns_increasing,
                                                        subject = ENCORI_RBP_result_GRh38,
                                                        type = "any",
                                                        ignore.strand = F)
           
-          overlaps_MSRAd <- GenomicRanges::findOverlaps(query = genes_MSRA_decreasing,
+          overlaps_MSRAd <- GenomicRanges::findOverlaps(query = df_MSRA_introns_decreasing,
                                                         subject = ENCORI_RBP_result_GRh38,
                                                         type = "any",
                                                         ignore.strand = F)
@@ -1962,23 +2334,23 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
           
           data.frame(RBP_name = RBP,
                      RBP_type = type,
-                     ovlps_MSRD = genes_MSRD_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRA = genes_MSRA_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRD = genes_MSRD_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRA = genes_MSRA_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRD_perc = (((genes_MSRD_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                          genes_MSRD_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
-                     ovlps_MSRA_perc = (((genes_MSRA_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                          genes_MSRA_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
+                     ovlps_MSRD = df_MSRD_introns_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     ovlps_MSRA = df_MSRA_introns_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     total_MSRD = df_MSRD_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     total_MSRA = df_MSRA_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     ovlps_MSRD_perc = (((df_MSRD_introns_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                          df_MSRD_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
+                     ovlps_MSRA_perc = (((df_MSRA_introns_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                          df_MSRA_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
                      
-                     ovlps_MSRDd = genes_MSRD_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRAd = genes_MSRA_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRDd = genes_MSRD_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRAd = genes_MSRA_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRD_percd = (((genes_MSRD_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                           genes_MSRD_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
-                     ovlps_MSRA_percd = (((genes_MSRA_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                           genes_MSRA_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow())
+                     ovlps_MSRDd = df_MSRD_introns_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     ovlps_MSRAd = df_MSRA_introns_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     total_MSRDd = df_MSRD_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     total_MSRAd = df_MSRA_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                     ovlps_MSRD_percd = (((df_MSRD_introns_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                           df_MSRD_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
+                     ovlps_MSRA_percd = (((df_MSRA_introns_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                           df_MSRA_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow())
           ) %>% return()
         }
       }
@@ -1990,22 +2362,54 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
   write_csv(x = df_RBP_ENCORI_MSR_result,
             file = "paper_figures/iCLIP/results/RBPs_ENCORI_MSR.csv", col_names = T)
   
+  df_RBP_ENCORI_MSR_result %>% as_tibble()
+  
 }
 
 ENCORI_test_results <- function () {
   
-  
   df_RBP_result <- read.csv(file = "paper_figures/iCLIP/results/RBPs_ENCORI_MSR.csv") %>% as_tibble()
   df_RBP_result
   
+  plot(density(df_RBP_result %>% 
+                 filter(RBP_type == "RBPs_affected_age") %>%
+                 pull(ovlps_MSRD_perc)))
+  lines( density ( df_RBP_result %>% 
+                     filter(RBP_type == "RBPs_notaffected_age") %>%
+                     pull(ovlps_MSRD_perc)), col = "red")
+  
+  df_RBP_result %>% 
+    filter(RBP_type == "RBPs_affected_age") %>%
+    pull(ovlps_MSRA_perc) %>% summary  
+  df_RBP_result %>% 
+    filter(RBP_type == "RBPs_notaffected_age") %>%
+    pull(ovlps_MSRA_perc) %>% summary
+  
+  
+  ###########################################
+  ## RBPs_affected_age vs RBPs_notaffected_age
+  ###########################################
+  
   wilcox.test(x = df_RBP_result %>% 
                 filter(RBP_type == "RBPs_affected_age") %>%
                 pull(ovlps_MSRA_perc),
               y = df_RBP_result %>% 
                 filter(RBP_type == "RBPs_notaffected_age") %>%
                 pull(ovlps_MSRA_perc),
+              alternative = "greater",
+              correct = T)
+  
+  
+  wilcox.test(x = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_affected_age") %>%
+                pull(ovlps_MSRA_percd),
+              y = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_notaffected_age") %>%
+                pull(ovlps_MSRA_percd),
               paired = F,
               alternative = "greater")
+  
+  
   wilcox.test(x = df_RBP_result %>% 
                 filter(RBP_type == "RBPs_affected_age") %>%
                 pull(ovlps_MSRD_perc),
@@ -2016,6 +2420,20 @@ ENCORI_test_results <- function () {
               alternative = "greater")
   
   
+  wilcox.test(x = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_affected_age") %>%
+                pull(ovlps_MSRD_percd),
+              y = df_RBP_result %>% 
+                filter(RBP_type == "RBPs_notaffected_age") %>%
+                pull(ovlps_MSRD_percd),
+              paired = F,
+              alternative = "greater")
+ 
+  
+  
+  ###########################################
+  ## RBPs_affected_age vs RBPs_notaffected_age
+  ###########################################
   
   wilcox.test(x = df_RBP_result %>% 
                 filter(RBP_type == "RBPs_affected_age") %>%
@@ -2026,7 +2444,6 @@ ENCORI_test_results <- function () {
               paired = T,
               alternative = "greater")
   
-  
   wilcox.test(x = df_RBP_result %>% 
                 filter(RBP_type == "RBPs_affected_age") %>%
                 pull(ovlps_MSRA_perc),
@@ -2034,8 +2451,7 @@ ENCORI_test_results <- function () {
                 filter(RBP_type == "RBPs_affected_age") %>%
                 pull(ovlps_MSRA_percd),
               paired = T,
-              alternative = "less")
-  
+              alternative = "greater")
   
   
   wilcox.test(x = df_RBP_result %>% 
@@ -2045,7 +2461,8 @@ ENCORI_test_results <- function () {
                 filter(RBP_type == "RBPs_notaffected_age") %>%
                 pull(ovlps_MSRD_percd),
               paired = T,
-              alternative = "less")
+              alternative = "greater")
+  
   wilcox.test(x = df_RBP_result %>% 
                 filter(RBP_type == "RBPs_notaffected_age") %>%
                 pull(ovlps_MSRA_perc),
@@ -2053,28 +2470,16 @@ ENCORI_test_results <- function () {
                 filter(RBP_type == "RBPs_notaffected_age") %>%
                 pull(ovlps_MSRA_percd),
               paired = T,
-              alternative = "less")
-  
-  
-  
-  
+              alternative = "greater")
 }
 
 ################################
 ## CALLS
 ################################
 
+# age_stratification_MSR_changing_with_age(database_path,
+#                                          age_projects = NULL,
+#                                          gtf_version)
 
 
 
-for (project_id in c("BLOOD", "MUSCLE", "BRAIN")) {
-  
-  print(paste0(Sys.time(), " --> ", project_id))
-  # project_id <- "BLOOD"
-  project_init <- age_stratification_init_data(project_id)
-  
-  age_stratification_IDB(age_groups = project_init$age_group %>% unique(),
-                         project_id = project_id,
-                         age_samples_clusters = project_init)
-  
-}
