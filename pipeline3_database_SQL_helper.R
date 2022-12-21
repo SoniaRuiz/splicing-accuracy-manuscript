@@ -16,15 +16,7 @@ get_mode <- function(vector) {
   uniqv <- unique(vector)
   uniqv[which.max(tabulate(match(vector, uniqv)))]
 }
-
-#' Title 'remove_encode_blacklist_regions'
-#'
-#' @param GRdata 
-#' Genomic Ranges (GR) object
-#' @return
-#' @export 
-#' from a list of junctions, it removes all junctions that overlap with an ENCODE Blacklist region
-#' @examples
+ 
 remove_encode_blacklist_regions <- function(GRdata,
                                             blacklist_path) {
   

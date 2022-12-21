@@ -857,7 +857,7 @@ sql_database_generation <- function(database_path,
   
   create_cluster_tables(database_path = database_path,
                         gtf_version = gtf_version,
-                        SRA_projects = projects_used[-1],
+                        SRA_projects = projects_used,
                         main_project = main_project)
 
 }
@@ -866,56 +866,58 @@ sql_database_generation <- function(database_path,
 ## CALLS - PREPARE RECOUNT3 DATA
 #####################################
 
-# gtf_versions <- c(104)
-# main_project <- "splicing"
-# 
-# 
-# for (gtf_version in gtf_versions) {
-# 
-#   # gtf_version <- gtf_versions[1]
-# 
-#   database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
-#                           gtf_version, "/", main_project, "/", main_project, ".sqlite")
-# 
-#   if ( main_project == "introverse" ) {
-#     all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects.rds")
-#   } else {
-#     all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
-#   }
-# 
-#   all_projects <- "BRAIN"
-#   
-#   init_recount3_gtex_data(gtf_version)
-#   tidy_recount3_data_per_tissue(projects_used = all_projects,
-#                                 main_project,
-#                                 gtf_version = gtf_version)
-# 
-#   # junction_pairing(projects_used = all_projects,
-#   #                  main_project,
-#   #                  gtf_version = gtf_version)
-#   #
-#   #
-#   # get_all_annotated_split_reads(all_projects = all_projects,
-#   #                               gtf_version = gtf_version,
-#   #                               main_project = main_project)
-#   #
-#   #
-#   # get_all_raw_distances_pairings(all_projects = all_projects,
-#   #                                gtf_version = gtf_version,
-#   #                                main_project = main_project)
-#   #
-#   #
-#   # tidy_data_pior_sql(projects_used = all_projects,
-#   #                    gtf_version = gtf_version,
-#   #                    main_project = main_project)
-#   #
-#   #
-#   # sql_database_generation(database_path = database_path,
-#   #                         projects_used = all_projects,
-#   #                         main_project = main_project,
-#   #                         gtf_version = gtf_version,
-#   #                         remove_all = T)
-# 
-#   gc()
-# }
+gtf_versions <- c(105)
+main_project <- "splicing"
+
+
+for (gtf_version in gtf_versions) {
+
+  # gtf_version <- gtf_versions[1]
+
+  database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
+                          gtf_version, "/", main_project, "/", main_project, ".sqlite")
+
+  if ( main_project == "introverse" ) {
+    all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects.rds")
+  } else {
+    all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
+  }
+  all_projects <- "LUNG"
+  
+  # init_recount3_gtex_data(gtf_version)
+
+
+  tidy_recount3_data_per_tissue(projects_used = all_projects,
+                                main_project,
+                                gtf_version = gtf_version)
+
+
+  junction_pairing(projects_used = all_projects,
+                   main_project,
+                   gtf_version = gtf_version)
+
+
+  get_all_annotated_split_reads(all_projects = all_projects,
+                                gtf_version = gtf_version,
+                                main_project = main_project)
+
+
+  get_all_raw_distances_pairings(all_projects = all_projects,
+                                 gtf_version = gtf_version,
+                                 main_project = main_project)
+
+
+  tidy_data_pior_sql(projects_used = all_projects,
+                     gtf_version = gtf_version,
+                     main_project = main_project)
+  
+  
+  # sql_database_generation(database_path = database_path,
+  #                         projects_used = all_projects,
+  #                         main_project = main_project,
+  #                         gtf_version = gtf_version,
+  #                         remove_all = F)
+
+  gc()
+}
 

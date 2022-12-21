@@ -39,14 +39,12 @@ get_distances <- function(cluster,
         ## OBTAINING ALL JUNCTIONS AND COUNTS FOR THE CURRENT SAMPLE
         ############################################################
         
-        
         split_read_counts_sample <- split_read_counts %>%
           as_tibble() %>%
           dplyr::select(junID, all_of(sample %>% as.character())) %>%
           drop_na() 
         
         split_read_counts_sample <- split_read_counts_sample[(split_read_counts_sample[,2] >0),]
-          
           
         split_read_counts %>% nrow()
         split_read_counts_sample %>% nrow()
@@ -119,8 +117,12 @@ get_distances <- function(cluster,
         novel_junctions <- all_donor_forward[queryHits(overlaps),]
         ref_junctions <- all_annotated_forward[subjectHits(overlaps),]
         
-        
-        distance <- start(ref_junctions) - start(novel_junctions)
+        distance <- GenomicRanges::distance(x = IRanges(start = ref_junctions %>% start(),
+                                                        end = ref_junctions %>% start()),
+                                            y = IRanges(start = novel_junctions %>% start(),
+                                                        end = novel_junctions %>% start()))
+        distance <- start(ref_junctions) - start(novel_junctions) + 1
+        distance[1]
         
         # distance <- ifelse(distance < 0, distance + 1, distance - 1)
         if (distance %>% length() > 0) {
@@ -193,7 +195,13 @@ get_distances <- function(cluster,
         ref_junctions <- all_annotated_reverse[subjectHits(overlaps),]
         
         
-        distance <- end(novel_junctions) - end(ref_junctions)
+        distance <- end(novel_junctions) - end(ref_junctions) + 1
+        # distance <- GenomicRanges::distance(x = IRanges(start = novel_junctions %>% end(),
+        #                                                 end = novel_junctions %>% end()),
+        #                                     y = IRanges(start = ref_junctions %>% end(),
+        #                                                 end = ref_junctions %>% end()))
+        
+     
         # distance <- ifelse(distance < 0, distance + 1, distance - 1)
         
         if (distance %>% length() > 0) {
@@ -249,8 +257,13 @@ get_distances <- function(cluster,
         novel_junctions <- all_acceptor_forward[queryHits(overlaps),]
         ref_junctions <- all_annotated_forward[subjectHits(overlaps),]
         
+        distance <- GenomicRanges::distance(x = IRanges(start = novel_junctions %>% end(),
+                                                        end = novel_junctions %>% end()),
+                                            y = IRanges(start = ref_junctions %>% end(),
+                                                        end = ref_junctions %>% end()))
         
-        distance = end(novel_junctions) - end(ref_junctions)
+        distance = end(novel_junctions) - end(ref_junctions) +1 
+        distance[1]
         # distance = ifelse(distance < 0, distance + 1, distance - 1)
         
         if (distance %>% length() > 0) {
@@ -307,8 +320,14 @@ get_distances <- function(cluster,
         ref_junctions <- all_annotated_reverse[subjectHits(overlaps),]
         
         
-        distance = start(ref_junctions) - start(novel_junctions)
+        distance <- GenomicRanges::distance(x = IRanges(start = ref_junctions %>% start(),
+                                                        end = ref_junctions %>% start()),
+                                            y = IRanges(start = novel_junctions %>% start(),
+                                                        end = novel_junctions %>% start()))
+        distance <- start(ref_junctions) - start(novel_junctions) + 1
+        # distance = start(ref_junctions) - start(novel_junctions)
         # distance = ifelse(distance < 0, distance + 1, distance - 1)
+        distance[1]
         
         if (distance %>% length() > 0) {
           df_na_r <- data.frame(sample = sample,

@@ -1372,7 +1372,6 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   
   ## CONNECT TO THE DATABASE
-  
   con <- dbConnect(RSQLite::SQLite(), database_path) # "~/PROJECTS/splicing-project-recount3/database/v105/age_subsampled/age_subsampled_3tissues.sqlite"
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
@@ -1380,7 +1379,6 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     group_by(SRA_project) %>%
     mutate(nsamples = n()) %>%
     filter(nsamples >= 70)
-  
   
   df_metadata %>%
     write.csv(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", 
@@ -1407,7 +1405,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
   }
   
-  if ( !file.exists(file_name) ) {
+  if ( ! file.exists(file_name) ) {
     
     df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
       
@@ -1425,51 +1423,69 @@ age_stratification_MSR_changing_with_age <- function(database_path,
         
         print(paste0(age_group))
         
-        query <- paste0("SELECT name FROM sqlite_master WHERE type='table' AND name='", 
+        query <- paste0("SELECT name 
+                        FROM sqlite_master 
+                        WHERE type='table' AND name='", 
                         age_group, "_", project_id, "_nevermisspliced';")
         
         if ( (dbGetQuery(con, query) %>% nrow()) > 0 ) {
           
-          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, gene_id, novel_junID, ref_sum_counts, novel_sum_counts FROM '", 
-                          age_group, "_", project_id, "_misspliced'")
+          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id, 
+                          novel_junID, ref_sum_counts, novel_sum_counts 
+                          FROM '", age_group, "_", project_id, "_misspliced'")
           introns <- dbGetQuery(con, query) %>% as_tibble()#introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
           
-          query <- paste0("SELECT novel_junID, novel_type FROM 'novel' WHERE novel_junID IN (", 
+          ## Add novel junction info
+          query <- paste0("SELECT novel_junID, novel_type 
+                          FROM 'novel' 
+                          WHERE novel_junID IN (", 
                           paste(introns$novel_junID %>% unique(), collapse =","), ")")
           introns <- introns %>%
             left_join(y = dbGetQuery(con, query) %>% as_tibble(),
                       by = "novel_junID")
           
-          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, gene_id FROM '", 
+          ## Add never-misspliced info
+          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id 
+                          FROM '", 
                           age_group, "_", project_id, "_nevermisspliced'")
           introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
           
-          query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", paste(introns$gene_id %>% unique(), collapse =","), ")")
+          ## Add transcript info
+          query <- paste0("SELECT id, gene_id FROM 'transcript' WHERE id IN (", 
+                          paste(introns$transcript_id %>% unique(), collapse =","), ")")
+          introns <- introns %>%
+            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                      by = c("transcript_id" = "id"))
+          
+          ## Add gene info
+          query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", 
+                          paste(introns$gene_id %>% unique(), collapse =","), ")")
           introns <- introns %>%
             left_join(y = dbGetQuery(con, query) %>% as_tibble(),
                       by = c("gene_id" = "id"))
           
           return(introns %>%
+                   dplyr::select(-transcript_id, -gene_id) %>%
                    mutate(sample_type = age_group,
                           project_id = project_id))
         } else {
-          print(query)
+          #print(query)
           return(NULL)
         }
       })
       
     })
     
-
     age_projects <- df_age_groups_all_introns$project_id %>% unique()
     
+    ## Get common introns across age groups per tissue
     df_common_introns <- df_age_groups_all_introns %>%
       group_by(project_id, sample_type) %>%
       distinct(ref_junID, .keep_all = T) %>%
       ungroup() %>%
-      group_by(project_id) %>%
-      dplyr::count(ref_junID) %>%
-      filter(n == (age_groups %>% length())) %>% # * (age_projects %>% length())) %>%
+      group_by(ref_junID) %>%
+      dplyr::count() %>%
+      filter(n == (age_groups %>% length()) * (age_projects %>% length())) %>%
       ungroup()
     df_common_introns$ref_junID %>% unique() %>% length()
     
@@ -1482,16 +1498,14 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     saveRDS(object = df_common_introns, file = file_name)
     
     ## Filter the intron data across tissues by the common introns
+    ## At the tissue level and age cluster, the MSR_D and MSR_A values are the same per intron
+    ## as these measures are calculated using a bulk-read across samples approach
     df_age_groups_tidy <- df_age_groups_all_introns %>% 
       inner_join(y = df_common_introns %>% distinct(ref_junID),
                  by = "ref_junID") %>%
       group_by(project_id, sample_type) %>%
       distinct(ref_junID, .keep_all = T) %>%
       ungroup()
-    
-    
-    df_age_groups_tidy %>% 
-      filter(ref_junID == "68126") 
     
     
     ###############################################
@@ -1519,7 +1533,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
     df_MSRA <- df_age_groups_tidy %>%
       dplyr::select(ref_junID, sample_type, MSR_A, gene_name, project_id)  %>% 
-      distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
+      #distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
       mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
       spread(sample_type, MSR_A) %>%
       as_tibble()
@@ -1557,20 +1571,33 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
 
   #######################################
-  ## LOOP - STATISTICAL TEST - MSR
+  ## STATISTICAL TEST 
+  ## WILCOXON MSR
   ########################################
 
-  df_wilcoxon <- map_df( c("MSR_D", "MSR_A"), function(MSR_type) { #, "MSR_A"
+  
+  if ( (age_projects %>% length()) > 1) {
+    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_all_projects.rds")
+  } else {
+    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_", project_id,".rds")
+  }
+  
+  if ( file.exists(file_name) ) {
     
-    # MSR_type <- "MSR_D"
-    print( paste0( "Getting data from: '", MSR_type, "'..." ) )
+    df_wilcoxon <- readRDS(file = file_name)
     
-    map_df( c("increasing" ), function(tendency_type) { # ,"decreasing" 
+  } else {
     
+    df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
+      
+      # MSR_type <- "MSR_D"
+      print( paste0( "Getting data from: '", MSR_type, "'..." ) )
+
       # tendency_type <- "increasing"
       map_df(age_projects, function(proj_id) {
-      
+        
         # proj_id <- age_projects[1]
+        # proj_id <- "KIDNEY"
         print( paste0( proj_id ) )
         
         ###############################
@@ -1578,141 +1605,173 @@ age_stratification_MSR_changing_with_age <- function(database_path,
         ###############################
         
         df_introns <- NULL
-        if (MSR_type == "MSR_D") {
+        
+        if (MSR_type == "MSR Donor") {
           df_introns <- df_MSRD 
         } else {
           df_introns <- df_MSRA
         }
+        
+        
         df_introns <- df_introns %>%
           filter(project_id == proj_id) 
         
-        if ( tendency_type == "increasing" ) {
-          # df_introns <- df_introns %>%
-          #   filter((`20-39` < `40-59` &
-          #             `40-59` < `60-79`)) 
-          wilcox_alternative <- "less"
-        } else {
-          # df_introns <- df_introns %>%
-          #   filter((`20-39` > `40-59` & 
-          #             `40-59` > `60-79`) ) 
-          wilcox_alternative <- "greater"
-        }
-      
-    
-        wilcox_pval <- data.frame(pval = c((wilcox.test(x = df_introns$`20-29`,
-                                                        y = df_introns$`40-49`,
-                                                        alternative = wilcox_alternative,
-                                                        paired = T))$p.value,
-                                           #(wilcox.test(x = df_introns$`20-39`,
-                                            #            y = df_introns$`60-79`,
+        if ( nrow(df_introns) > 0 ) {
+          
+
+          wilcox_pval <- data.frame(pval = c((wilcox.test(x = df_introns$`20-39`,
+                                                          y = df_introns$`60-79`,
+                                                          alternative = "less",
+                                                          paired = T))$p.value))
+                                             #(wilcox.test(x = df_introns$`20-39`,
+                                             #            y = df_introns$`60-79`,
                                              #           alternative = wilcox_alternative,
-                                              #          paired = T))$p.value,
-                                           (wilcox.test(x = df_introns$`40-49`,
-                                                        y = df_introns$`60-69`,
-                                                        alternative = wilcox_alternative,
-                                                        paired = T))$p.value))
+                                             #          paired = T))$p.value,
+                                             # (wilcox.test(x = df_introns$`40-59`,
+                                             #              y = df_introns$`60-79`,
+                                             #              alternative = wilcox_alternative,
+                                             #              paired = T))$p.value))
+          
+          r_effect1 <-
+            rstatix::wilcox_effsize(data = df_introns %>%
+                                      dplyr::select(`20-39`,`60-79`) %>%
+                                      gather(key = age, MSR) %>%
+                                      dplyr::select(age, MSR),
+                                    formula = MSR ~ age) %>%
+            mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
+                   tissue = proj_id)
+          
+          # r_effect2 <-
+          #   rstatix::wilcox_effsize(data = df_introns %>%
+          #                             dplyr::select(`40-59`, `60-79`) %>%
+          #                             gather(key = age, MSR) %>%
+          #                             dplyr::select(age, MSR),
+          #                           formula = MSR ~ age) %>%
+          #   mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
+          #          tissue = proj_id) #%>%
+          
+          
+          
+          return(rbind(r_effect1) %>%
+                   cbind(wilcox_pval))
+        } else {
+          return(NULL)
+        }
         
-        r_effect1 <-
-          rstatix::wilcox_effsize(data = df_introns %>%
-                                    dplyr::select(`20-29`,`40-49`) %>%
-                                    gather(key = age, MSR) %>%
-                                    dplyr::select(age, MSR),
-                                  formula = MSR ~ age) %>%
-          mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
-                 tissue = proj_id)
-        
-        r_effect2 <-
-          rstatix::wilcox_effsize(data = df_introns %>%
-                                    dplyr::select(`40-49`, `60-69`) %>%
-                                    gather(key = age, MSR) %>%
-                                    dplyr::select(age, MSR),
-                                  formula = MSR ~ age) %>%
-          mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
-                 tissue = proj_id) #%>%
-        
-        
-      
-        return(rbind(r_effect1,
-                     r_effect2) %>%
-                 cbind(wilcox_pval))
-      
       })
+      
     })
-  })
-  
-  if ( (age_projects %>% length()) > 1) {
-    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_all_projects.rds")
-  } else {
-    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_", project_id,".rds")
+    
+    saveRDS(object = df_wilcoxon, file = file_name)
   }
-  saveRDS(object = df_wilcoxon, file = file_name)
+  
   
   
   df_wilcoxon <- df_wilcoxon %>%
     mutate(group = paste0(group1, "<", group2)) %>%
-    as_tibble()
+    as_tibble() %>%
+    as.data.frame() 
+  
+  df_wilcoxon %>%
+    filter(MSR_type == "MSR Donor",
+           pval <= 0.05) %>%
+    arrange(MSR_type, desc(pval))
+  
+  df_wilcoxon %>%
+    filter(MSR_type == "MSR Donor",
+           pval <= 0.05) %>%
+    pull(effsize) %>%
+    summary()
   
   
+  
+  df_wilcoxon %>%
+    filter(MSR_type == "MSR Acceptor",
+           pval <= 0.05) %>%
+    arrange(MSR_type, desc(pval))
+  df_wilcoxon %>%
+    filter(MSR_type == "MSR Acceptor",
+           pval <= 0.05) %>%
+    pull(effsize) %>%
+    summary()
+
   #######################################################
   ## PLOTS
   #######################################################
+
+  df_wilcoxon$MSR_type = factor(df_wilcoxon$MSR_type, 
+                                levels = c("MSR Donor",
+                                           "MSR Acceptor"))
+  
+  df_wilcoxon_tidy <- df_wilcoxon %>%
+    mutate(tissue = str_replace(tissue, 
+                                pattern = "_",
+                                replacement = " ")) %>%
+    group_by(group) %>%
+    mutate(tissue = fct_reorder(tissue, effsize)) %>%
+    ungroup() 
+
+  write.csv(x = df_wilcoxon_tidy,
+            file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
+                          main_project, "/results/wilcoxon_MSR.csv"))
+  
+  ## PLOT 1
+  ggplot(data = df_wilcoxon_tidy ,
+         aes(x = effsize, y = tissue, 
+             color= group, size = pval)) +
+    geom_point(alpha=.7) +
+    facet_wrap(vars(MSR_type)) +
+    theme_light() +
+    ylab("") +
+    #scale_x_log10() +
+    xlab("effect size") +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          strip.text = element_text(colour = "black", size = "12"),
+          legend.position = "top"
+    ) + 
+    scale_size(#trans = "reverse",
+      range = c(5, 1), 
+      breaks = c(0, 1e-40, 0.01, 1)  )+
+    theme(legend.position="top", legend.box="vertical", legend.margin=margin()) +
+    guides(color = guide_legend(title = "Age comparison: "))
+  
+  ## Save the figure 3
+  folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
+                           main_project, "/figures/")
+  dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
   
   
-  for (type in c("MSR_D", "MSR_A")) {
+  ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.svg"), 
+                  width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.png"), 
+                  width = 183, height = 100, units = "mm", dpi = 300)
   
-    # type <- "MSR_A"
-    df_wilcoxon_tidy <- df_wilcoxon %>%
-      filter(MSR_type ==  type) %>%
-      group_by(group) %>%
-      mutate(tissue = fct_reorder(tissue, effsize)) %>%
-      ungroup()
+  
+  for (type in c("MSR Donor", "MSR Acceptor")) {
+  
+    # type <- "MSR Acceptor"
+    # type <- "MSR Donor"
     
-  
-    ## PLOT 1
     
-    ggplot(data = df_wilcoxon_tidy ,
-           aes(x = effsize,  y = tissue, color= group,size = pval)) +
-      geom_point(alpha=.7) +
-      facet_wrap(group~MSR_type) +
-      theme_light() +
-      ylab("") +
-      scale_x_log10() +
-      xlab("log10(effsize)") +
-      theme(axis.line = element_line(colour = "black"), 
-            axis.text = element_text(colour = "black", size = "12"),
-            axis.title = element_text(colour = "black", size = "12"),
-            legend.text = element_text(size = "12"),
-            legend.title = element_text(size = "12"),
-            axis.text.x = element_text(colour = "black", size = "12"),
-            strip.text = element_text(colour = "black", size = "12"),
-            legend.position = "top"
-      ) + 
-      scale_size(trans = "reverse")+
-      theme(legend.position="top", legend.box="vertical", legend.margin=margin()) +
-      guides(color = guide_legend(title = "Age comparison: "))
-             
-    ## Save the figure 3
-    folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
-                             gtf_version, "/", main_project, "/figures/")
-    dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
-    file_name <- paste0(folder_figures, "/effsize_common_introns_all_tissues_", type, ".svg")
-    ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
     
     
     
     ## PLOT 2
-    
     ggplot(data = df_wilcoxon_tidy %>%
              #filter(pval < 0.05) %>%
              dplyr::select( tissue, MSR_type, group,effsize) %>%
              spread(key = group, value = effsize) %>%
-             mutate(effsizediff = `40-49<60-69` - `20-29<40-49`) %>%
+             mutate(effsizediff = `40-59<60-79` - `20-39<40-59`) %>%
              mutate(col = ifelse(effsizediff > 0, "increased effsize with age", "reduced effsize with age")) %>%
              drop_na(),
-           aes(x = `20-29<40-49`,  y = tissue, colour = col)) +
+           aes(x = `20-39<40-59`,  y = tissue, colour = col)) +
       geom_point(alpha=.7) +
-      geom_pointrange(aes(xmax=`40-49<60-69`, 
-                          xmin=`20-29<40-49`)) +
+      geom_pointrange(aes(xmax=`40-59<60-79`, 
+                          xmin=`20-39<40-59`)) +
       facet_wrap(vars(MSR_type)) +
       theme_light() +
       ylab("") +
@@ -1733,6 +1792,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
       guides(colour = guide_legend(title = NULL)) 
     
     file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".svg")
+    file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".png")
     ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
   }
   

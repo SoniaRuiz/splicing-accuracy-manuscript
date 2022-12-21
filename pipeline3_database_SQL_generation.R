@@ -261,7 +261,12 @@ create_master_tables <- function(database_path,
     print(paste0(Sys.time(), " - loading the pre-generated pair-wise distances data..."))
     
     df_all_distances_pairings_raw <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
-                                                           main_project, "/all_paired_intron_novel_tidy.rds")) #"/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")
+                                                           main_project, "/all_paired_intron_novel_tidy.rds"))
+    
+    df_all_distances_pairings_raw <- df_all_distances_pairings_raw %>%
+      mutate(distance2 = ifelse (distance < 0, distance + 1,
+                                 distance -1))
+    #"/home/sruiz/PROJECTS/splicing-project-recount3/database/all_paired_intron_novel_tidy.rds")
     df_ambiguous_novel <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
                                                 main_project, "/df_all_tissues_raw_distances_ambiguous.rds"))
     df_introns_never <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
@@ -458,7 +463,7 @@ create_master_tables <- function(database_path,
   ## GENES - CREATE GENE TABLE
   ######################################
   
-  # df_introns_introverse_tidy <- readpaste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/df_all_introns_introverse_tidy.rds")
+  # df_introns_introverse_tidy <- readRDS(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/df_all_introns_introverse_tidy.rds"))
   create_gene_table(database_path = database_path,
                     gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id) )
   
@@ -790,8 +795,10 @@ create_master_tables <- function(database_path,
     mutate( start = novel_start %>% as.integer(),
             end = novel_end %>% as.integer()) %>%
     dplyr::select(seqnames = novel_seq,
-                  start, end, strand = novel_strand,
-                  novel_junID, ref_junID, novel_type = type, distance) %>%
+                  start, end, 
+                  strand = novel_strand,
+                  novel_junID, ref_junID, 
+                  novel_type = type, distance) %>%
     distinct(novel_junID, .keep_all = T)
   
   wd <- getwd()
@@ -856,6 +863,7 @@ create_master_tables <- function(database_path,
                   novel_coordinates TEXT NOT NULL, 
                   novel_ss5score DOUBLE NOT NULL, 
                   novel_ss3score DOUBLE NOT NULL,
+                  novel_length INTEGER NOT NULL, 
                   novel_type TEXT NOT NULL, 
                   distance INTEGER NOT NULL,
                   PRIMARY KEY (ref_junID, novel_junID),
@@ -871,10 +879,13 @@ create_master_tables <- function(database_path,
     as_tibble() %>%
     dplyr::rename(novel_coordinates = novel_junID ) %>%
     distinct(novel_coordinates, .keep_all = T) %>%
+    GRanges() %>%
+    as_tibble() %>%
     tibble::rowid_to_column("novel_junID") %>%
     dplyr::select(-seqnames, 
                   -start,
-                  -end, -strand)
+                  -end, -strand) %>%
+    dplyr::rename(novel_length = width)
   
   df_all_novels_tidy_final
   if (any(duplicated(df_all_novels_tidy_final$novel_coordinates))) {
