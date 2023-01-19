@@ -15,9 +15,9 @@ setwd("~/PROJECTS/splicing-project-recount3/")
 
 dependencies_folder <- paste0(getwd(), "/../introverse-app/database_generation/dependencies/")
 
-source(paste0(getwd(), "/junction_pairing.R"))
-source(paste0(getwd(), "/database_SQL_helper.R"))
-source(paste0(getwd(), "/database_SQL_generation.R"))
+source(paste0(getwd(), "/pipeline3_junction_pairing.R"))
+source(paste0(getwd(), "/pipeline3_database_SQL_helper.R"))
+source(paste0(getwd(), "/pipeline3_database_SQL_generation.R"))
 
 
 
@@ -917,7 +917,7 @@ for (gtf_version in gtf_versions) {
                           projects_used = all_final_projects_used,
                           main_project = main_project,
                           gtf_version = gtf_version,
-                          remove_all = F)
+                          remove_all = T)
   
   gc()
 }

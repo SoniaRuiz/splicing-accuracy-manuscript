@@ -15,8 +15,8 @@ library(DBI)
 
 gtf_version <- 105
 main_project <- "splicing"
-database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
-                        gtf_version, "/", main_project, "/", main_project, ".sqlite")
+# database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
+#                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
 
 
 getwd()
@@ -25,7 +25,7 @@ dbListTables(con)
 
 ## GET FROM MASTER TABLE
 query = paste0("SELECT * FROM 'master'")
-df_metadata <- dbGetQuery(con, query) 
+df_metadata <- dbGetQuery(con, query) %>% as_tibble()
 
 all_projects <- df_metadata$SRA_project %>% unique
 all_projects %>% length() %>% print()
@@ -130,10 +130,21 @@ get_database_stats <- function() {
   db_metadata <- dbGetQuery(con, query) %>% as_tibble()
   
   db_metadata %>% nrow() 
+  
+  db_metadata %>%
+    filter(rin >= 8) %>% nrow()
   db_metadata %>%
     filter(rin >= 7) %>% nrow()
   db_metadata %>%
-    dplyr::count(tissue) %>%
+    filter(rin >= 6) %>% nrow()
+  
+  if ( db_metadata %>% filter(rin < 6) %>% nrow() > 1 ) {
+    print("ERROR! Some of the samples considered present a RIN number lower than 6!")
+    break;
+  }
+  
+  db_metadata %>%
+    dplyr::count(cluster) %>%
     print(n = 50)
   
   

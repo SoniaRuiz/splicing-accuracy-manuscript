@@ -1,11 +1,3 @@
-library(tidyverse)
-library(data.table)
-library(GenomicRanges)
-library(DBI)
-
-# source("/home/sruiz/PROJECTS/splicing-project-recount3/sql_helper.R")
-
-
 ################################################################
 ## UTILS
 ## functions to help in the QC data, add intronic features
@@ -16,7 +8,7 @@ get_mode <- function(vector) {
   uniqv <- unique(vector)
   uniqv[which.max(tabulate(match(vector, uniqv)))]
 }
- 
+
 remove_encode_blacklist_regions <- function(GRdata,
                                             blacklist_path) {
   
@@ -55,10 +47,6 @@ generate_max_ent_score <- function(junc_tidy,
   library(Biostrings)
   library(tidyverse)
   library(protr)
-  
-  # ## Load the annotated split reads data (both for PD and control samples)
-  # junc_tidy <-readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount2-projects/data/",
-  #                                   project_id, "/results/base_data/", project_id, "_split_reads.rda"))
   
   junc_tidy <- junc_tidy %>% dplyr::as_tibble()
   
@@ -195,10 +183,6 @@ add_cdts_cons_scores <- function(cluster = NULL,
                                  folder_name = NULL) {
   
   
-  
-  
-  
-  
   if (is.null(db_introns) && !is.null(cluster)) {
     ## Load the IDB 
     db_introns <- readRDS(file = paste0(folder_name, "/", cluster, "_db_introns.rds")) %>%
@@ -213,7 +197,7 @@ add_cdts_cons_scores <- function(cluster = NULL,
     GRanges()
   
   
-  print(paste0(Sys.time(), " - getting 5' scores assigned to introns ..."))
+  print(paste0(Sys.time(), " - getting 5' scores assigned to introns from IntroVerse ..."))
   
   ## https://www.nature.com/articles/nature09000
   ## Scores from the 5'ss ---------------------------------------------------------
@@ -238,7 +222,7 @@ add_cdts_cons_scores <- function(cluster = NULL,
   
   
   
-  print(paste0(Sys.time(), " - getting 3' scores assigned to introns ..."))
+  print(paste0(Sys.time(), " - getting 3' scores assigned to introns from IntroVerse ..."))
   
   ## Scores from the 3'ss ---------------------------------------------------------
   overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
@@ -304,7 +288,8 @@ remove_MT_genes <- function(cluster,
   
   print(paste0(Sys.time(), " - checking the existance of MT genes..."))
   
-  MT_genes <- readRDS(file = "/data/references/MT_genes/MT_genes.rds")
+  MT_genes <- readRDS(file = paste0(dependencies_folder,
+                                    "/MT_genes/MT_genes.rds"))
   MT_geneID <- MT_genes %>% distinct(gene_id) %>% pull(gene_id)
   
   if (any(df_introns$gene_id %in% MT_geneID)) {
@@ -335,338 +320,267 @@ remove_MT_genes <- function(cluster,
   
 }
 
-generate_recount3_median_tpm <- function(all_projects,
-                                         gtf_version,
-                                         main_project) {
-  
-  for (project_id in all_projects) {
-    
-    # project_id <- all_projects[1]
-    # project_id <- "KIDNEY"
-    
-    rse <- recount3::create_rse_manual(
-      project = project_id,
-      project_home = "data_sources/gtex",
-      organism = "human",
-      annotation = "gencode_v29",
-      type = "gene")
-    
-    ## Transform the raw counts prior calculating TPM
-    SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
-    SummarizedExperiment::assays(rse)$TPM <- recount::getTPM(rse)
-    
-    recount_tpm <- SummarizedExperiment::assays(rse)$TPM %>%
-      as_tibble(rownames = "gene") %>% 
-      mutate(gene = gene %>% str_remove("\\..*"))
-    
-    rm(rse)
-    gc()
-    
-    ## 1. For each tissue within the current project, filter the RSE by the set of samples used
-    ## 2. Calculate median TPM value of each gene across the set of samples chosen from the current tissue
-    
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/", 
-                          project_id, "/v", gtf_version, "/", main_project, "_project/")
-    
-    if (file.exists(paste0(folder_root, "/raw_data/samples_metadata.rds"))) {
-      
-      metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
-      
-      clusters_ID <- metadata.info$gtex.smtsd %>% unique()
-      
-      for (cluster in clusters_ID) {
-        
-        # cluster <- clusters_ID[1]
-        
-    
-        samples <- metadata.info %>% 
-          as_tibble() %>%
-          filter(gtex.smtsd == cluster,
-                 gtex.smrin >= 6.0,
-                 gtex.smafrze != "EXCLUDE") %>%
-          distinct(external_id) %>% 
-          pull()
-        
-        
-        if ( main_project == "splicing" && length(samples) >= 70 ) {
-          
-          cluster_samples <- readRDS(file = paste0(folder_root, "/raw_data/", 
-                                                   project_id, "_", cluster, "_samples_used.rds"))
-          
-          if (!identical(samples, cluster_samples)) {
-            print("ERROR - samples filtered are not identical")  
-          }
-          
-          n_cols <- length(cluster_samples) # length(names(recount_tpm))-1
-          
-          recount_tpm_local <- recount_tpm %>%
-            dplyr::select( c("gene", all_of(cluster_samples)) ) 
-          
-          # recount_tpm_local$TPM_median %>% unique()
-          
-          folder_name <- paste0(folder_root, "/results/tpm/")
-          dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
-          saveRDS(object = recount_tpm_local,
-                  file = paste0(folder_name, 
-                                project_id, "_", cluster, "_tpm.rds"))
-          
-          
-          rm(recount_tpm_local)
-          rm(cluster_samples)
-          gc()
-          
-        }
-        
-      }
-    }
-    
-    print(paste0(Sys.time(), " - ", project_id, " finished!"))
-    
-    rm(folder_root)
-    rm(clusters_ID)
-    rm(recount_tpm)
-    gc()
-    
-  }
-  
-}
-
-# tidy_gtex_tpm <- function() {
-#   
-#   ## LOAD THE TPM DATA
-#   tpm <- aws.s3::s3read_using(FUN = CePa::read.gct,
-#                               object = "GTEx_Analysis_2017-06-05_v8_RNASeQCv1.1.9_gene_median_tpm.gct",
-#                               bucket = "data-references") %>%
-#     as.data.frame()
-#   
-#   colnames(tpm) <- all_clusters_used[-24]
-#   tpm <- tpm %>%
-#     tibble::rownames_to_column("gene_id") %>%
-#     mutate(gene_id = gene_id %>% str_remove("\\..*"))
-#   
-#   tpm %>% head()
-#   
-#   ## Save
-#   saveRDS(object = tpm,
-#           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/tpm_tidy.rds")
-#   
-#   
-# }
-
-# generate_biotype_percentage <- function() {
-#   
-#   
-#   #######################################
-#   ## GET THE TRANSCRIPT BIOTYPE
-#   #######################################
-#   
-#   
-#   print(paste0(Sys.time(), " - loading the human reference transcriptome ... "))
-#   
-#   ## Import HUMAN REFERENCE transcriptome
-#   homo_sapiens_v105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
-#     as_tibble()
-#   
-#   ## Get v105 transcripts
-#   transcripts_v105 <- homo_sapiens_v105 %>%
-#     filter(type == "transcript") %>% 
-#     dplyr::select(transcript_id, transcript_biotype, gene_id)
-#   
-#   transcripts_v105 %>% head()
-#   
-#   
-#   ## LOAD ALL ANNOTATED RECOUNT3 JUNCTIONS
-#   ## We load all projects, one by one to load the SR data 
-#   
-#   print(paste0(Sys.time(), " - loading the recount3 split reads ... "))
-#   
-#   all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_projects.rds")
-#   
-#   #######################################
-#   ## LOOP THROUGH THE TISSUES
-#   #######################################
-#   
-#   df_all <- map_df(all_projects, function(project) {
-#     
-#     # project <- all_projects[7]
-#     print(project)
-#     
-#     all_clusters <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-#                                           project, "/raw_data/all_clusters.rds"))
-#     
-#     df_all <- map_df(all_clusters, function(cluster) {
-#       
-#       # cluster <- all_clusters[1]
-#       print(cluster)
-#       df_all <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/",
-#                                       project, "/results/base_data/", cluster, "/", 
-#                                       cluster, "_annotated_SR_details_length_105.rds")) %>%
-#         dplyr::select(junID, seqnames, start, end, strand, tx_id_junction)
-#       
-#       return(df_all)
-#       
-#     })
-#     
-#     return(df_all)
-#     
-#   })
-#   
-#   ## Check if the junction "chr1:100007157-100011364:+" belongs to multiple genes across the tissues
-#   df_test_1 <- merge(x = df_all %>% filter(junID == "chr1:100007157-100011364:+") %>% unnest(tx_id_junction),
-#                      y = transcripts_v105,
-#                      by.x = "tx_id_junction",
-#                      by.y = "transcript_id",
-#                      all.x = T)
-#   df_test_1 %>%
-#     group_by(junID) %>% 
-#     distinct(gene_id, .keep_all = T) %>% 
-#     dplyr::count() %>% 
-#     distinct(n, .keep_all = T)
-#   
-#   ## Check if the junction "chr7:117604990-117616228:-", which ultimately has
-#   ## been classified as lncRNA = 100, has only lncRNA transcripts
-#   df_biotype %>%
-#     filter(junID == "chr7:117604990-117616228:-")
-#   
-#   saveRDS(object = df_all %>%
-#             distinct(junID, .keep_all = T) %>% 
-#             mutate(ref_coord = paste0("chr", seqnames, ":", 
-#                                       start, "-", end, ":", strand)) %>% 
-#             dplyr::select(-junID) %>%
-#             dplyr::rename(junID = ref_coord) %>% 
-#             data.table::as.data.table(),
-#           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_introns_raw.rds")
-#   
-#   #######################################
-#   ## EXPLORE AND TIDY THE RESULT
-#   #######################################
-#   
-#   df_all_introns <- df_all %>%
-#     mutate(ref_coord = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) %>% 
-#     dplyr::select(-junID) %>%
-#     dplyr::rename(junID = ref_coord)
-#   
-#   # indx <- which(str_detect(df_all_introns %>% distinct(junID) %>% pull(), pattern = "\\*"))
-#   # if (indx %>% length > 0) {
-#   #   print("ERROR!")
-#   # }
-#   
-#   #df_all_introns %>% head()
-#   #df_all_introns %>% nrow()
-#   #print(object.size(df_all_introns), units = "Gb")
-#   
-#   
-#   ## Merge datasets to add transcript biotype
-#   print(paste0(Sys.time(), " --> adding transcript biotype..."))
-#   
-#   df_all_introns <- df_all_introns %>% data.table::as.data.table()
-#   transcripts_v105 <- transcripts_v105 %>% data.table::as.data.table()
-#   
-#   df_all_introns <- merge(x = df_all_introns,
-#                           y = transcripts_v105,
-#                           by.x = "tx_id_junction",
-#                           by.y = "transcript_id",
-#                           all.x = T)
-#   
-#   # df_all_introns %>% head()
-#   # df_all_introns %>% nrow()
-#   
-#   #print(object.size(df_all_introns), units = "Gb")
-#   
-#   
-#   
-#   #######################################
-#   ## CALCULATE THE TRANSCRIPT PERCENTAGE
-#   #######################################
-#   
-#   
-#   print(paste0(Sys.time(), " --> starting protein-coding percentage calculation ..."))
-#   #print(paste0(Sys.time(), " --> ", df_all_introns$junID %>% unique() %>% length(), " total number of junctions."))
-#   
-#   
-#   
-#   ## Remove ambiguous jxn (belonging to multiple genes)
-#   junID_OK <- df_all_introns %>% 
-#     group_by(junID) %>% 
-#     distinct(gene_id, .keep_all = T) %>% 
-#     dplyr::count() %>% 
-#     filter(n == 1) %>%
-#     pull(junID)
-#   
-#   # junID %>% unique() %>% length()
-#   
-#   ## Calculate the biotype percentage
-#   df_all_percentage <- df_all_introns %>% 
-#     filter(junID %in% junID_OK) %>%
-#     group_by(junID, transcript_biotype) %>%
-#     distinct(tx_id_junction, .keep_all = T) %>% 
-#     summarise(n = n()) %>% 
-#     mutate(percent = (n / sum(n)) * 100) %>%
-#     ungroup()
-#   
-#   saveRDS(object = df_all_percentage,
-#           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_105_raw_biotype.rds")
-#   
-#   ## Only filter by the protein-coding biotype
-#   df_all_percentage_tidy_PC <- df_all_percentage %>% 
-#     group_by(junID) %>%
-#     rowwise() %>%
-#     mutate(percent = ifelse (transcript_biotype == "protein_coding", percent, 0)) %>%
-#     ungroup() %>%
-#     group_by(junID) %>%
-#     filter(percent == max(percent)) %>%
-#     dplyr::select(-transcript_biotype, -n) %>%
-#     distinct(junID, .keep_all = T) %>%
-#     ungroup()
-#   
-#   ## Only filter by the lncRNA biotype
-#   df_all_percentage_tidy_lncRNA <- df_all_percentage %>% 
-#     group_by(junID) %>%
-#     rowwise() %>%
-#     mutate(percent = ifelse (transcript_biotype == "lncRNA", percent, 0)) %>%
-#     ungroup() %>%
-#     group_by(junID) %>%
-#     filter(percent == max(percent)) %>%
-#     dplyr::select(-transcript_biotype, -n) %>%
-#     distinct(junID, .keep_all = T) %>%
-#     ungroup()
-#   
-#   
-#   df_all_percentage_tidy_merged <- merge(x = df_all_percentage_tidy_PC %>% dplyr::rename(percent_PC = percent) %>% as.data.table(),
-#                                          y = df_all_percentage_tidy_lncRNA %>% dplyr::rename(percent_lncRNA = percent) %>% as.data.table(),
-#                                          by = "junID")
-#   df_all_percentage_tidy_merged %>% nrow()
-#   
-#   if (df_all_percentage_tidy_merged %>% filter(percent_PC == 100) %>% distinct(percent_lncRNA) %>% pull() != 0) {
-#     print("ERROR! some only protein-coding introns have been also classified as lncRNAs!")
-#   }
-#   if (df_all_percentage_tidy_merged %>% filter(percent_lncRNA == 100) %>% distinct(percent_PC) %>% pull() != 0) {
-#     print("ERROR! some only lncRNA introns have been also classified as protein-coding!")
-#   }
-#   
-#   
-#   print(object.size(df_all_percentage_tidy_merged), units = "Gb")
-#   
-#   saveRDS(object = df_all_percentage_tidy_merged,
-#           file = "/home/sruiz/PROJECTS/splicing-project/splicing-recount3-projects/all_annotated_SR_details_length_105_biotype.rds")
-#   
-#   
-#   ##########################################
-#   ## FREE UP SOME MEMORY 
-#   ##########################################
-#   
-#   rm(df_all)
-#   rm(df_all_introns)
-#   rm(homo_sapiens_v105)
-#   rm(transcripts_v105)
-#   print(paste0(Sys.time(), " - file saved!"))
-# }
-
 
 #################################################################
 ## SQL HELPER
 ## auxiliary functions to help in the generation of a database
 #################################################################
+
+
+
+get_all_annotated_split_reads <- function(projects_used,
+                                          gtf_version,
+                                          all_clusters,
+                                          main_project) {
+  
+  
+  
+  #############################################
+  ## These are all split reads from all tissues
+  ## obtained from 'USE ME' SAMPLES and samples with more than 6 RIN
+  #############################################
+  
+  ## The sample filter in IntroVerse corresponded to 
+  
+  all_split_reads_details_all_tissues <- map_df(projects_used, function(project_id) {
+    
+    # project_id <- projects_used[4]
+    # project_id <- "BONE_MARROW"
+    
+    folder_root <- paste0(getwd(), "/results/", project_id, "/v", 
+                          gtf_version, "/", main_project, "/")
+    
+    ## Get the metadata and clusters info
+    metadata.info <- readRDS(file = paste0(folder_root, "/base_data/", 
+                                           project_id, "_samples_metadata.rds"))
+    
+    if ( any(metadata.info$gtex.smrin < 6) ) {
+      print("ERROR! The samples used have not been filtered adequately.")
+      break;
+    }
+    
+    all_clusters <-  metadata.info %>%
+      distinct(gtex.smtsd) %>% 
+      pull()
+    
+    
+    all_jxn_qc <- map_df(all_clusters, function(cluster) {
+      
+      # cluster <- all_clusters[1]
+      print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
+      
+      if ( file.exists(paste0(folder_root, "/base_data/", 
+                              project_id, "_", cluster, "_all_split_reads.rds")) ) {
+        
+        all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_",
+                                                             cluster, "_all_split_reads.rds"))
+        
+        all_split_reads_details_tidy <- all_split_reads_details_105 %>% 
+          distinct(junID, .keep_all = T) %>% 
+          as_tibble() %>%
+          return()
+        
+      } else {
+        return(NULL)
+      }
+      
+    })
+    
+    if (all_jxn_qc %>% nrow() > 0 ) {
+      
+      all_jxn_qc %>%
+        distinct(junID, .keep_all = T) %>% 
+        return()
+      
+    } else {
+      return(NULL)
+    }
+    
+  })
+  
+  
+  print(paste0(Sys.time(), " - saving 'all_annotated_split_reads' for the database!"))
+  
+  all_split_reads_details_all_tissues <- all_split_reads_details_all_tissues %>%
+    distinct(junID, .keep_all = T)
+  
+  database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/")
+  dir.create(file.path(database_folder), showWarnings = T, recursive = T)
+  
+  ## Save data
+  saveRDS(object = all_split_reads_details_all_tissues,
+          file = paste0(database_folder, "/all_split_reads_details_all_tissues.rds") )
+  
+}
+
+
+get_all_raw_distances_pairings <- function(projects_used,
+                                           gtf_version,
+                                           all_clusters,
+                                           main_project) {
+  
+  
+  ## LOOP THROUGH PROJECTS
+  df_all_distances_pairings_raw <- map_df(projects_used, function(project_id) {
+    
+    # project_id <- projects_used[1]
+    # project_id <- "KIDNEY"
+    
+    print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
+    folder_root <- paste0(getwd(), "/results/", 
+                          project_id, "/v", gtf_version, "/", main_project, "/")
+    
+    
+    ## Read all clusters considered from the current tissue
+    metadata.info <- readRDS(file = paste0(folder_root, "/base_data/", 
+                                           project_id, "_samples_metadata.rds"))
+    all_clusters <-  metadata.info %>% 
+      distinct(gtex.smtsd) %>% 
+      pull()
+    
+    if ( any(metadata.info$gtex.smrin < 6) ) {
+      print("ERROR! The samples used have not been filtered adequately.")
+      break;
+    }
+    
+    map_df(all_clusters, function(cluster) {
+      
+      # cluster <- all_clusters[1]
+      
+      print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
+      
+      ## Load samples
+      if ( file.exists(paste0(folder_root, "/base_data/", project_id, "_", cluster, "_samples_used.rds")) ) {
+        
+        samples <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_", cluster,  "_samples_used.rds"))
+        
+        if ( samples %>% length() > 0 ) {
+          
+          folder_name <- paste0(folder_root, "/results/", cluster, "/")
+          
+          if ( !file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) ) {
+            
+            ## Obtain the distances across all samples
+            df_all <- map_df(samples, function(sample) { 
+              
+              # sample <- samples[1]
+              
+              file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
+              
+              
+              if (file.exists(file_name)) {
+                print(paste0(cluster, " - ", sample))
+                df <- readRDS(file = file_name)
+                
+                return(df)
+              } else {
+                return(NULL)
+              }
+              
+            })
+            
+            if ( nrow(df_all) > 0 ) {
+              saveRDS(object = df_all %>%
+                        distinct(novel_junID, ref_junID, .keep_all = T) %>%
+                        mutate(tissue = cluster),
+                      file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+            }
+            
+          } else {
+            print(paste0("File '", cluster, "_raw_distances_tidy.rds' already exists!"))
+            df_all <- readRDS( file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds") )
+          }
+          
+          
+          if ( nrow(df_all) > 0 ) {
+            
+            df_all %>%
+              distinct(novel_junID, ref_junID, .keep_all = T) %>%
+              mutate(project = project_id) %>%
+              return()
+            
+          } else {
+            return(NULL)
+          }          
+          # df_all2 <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+          
+        } else {
+          print(paste0("ERROR: no samples available for the tissue: ", project_id))
+          return(NULL)
+        }
+        
+      } else {
+        return(NULL)
+      }
+    })  
+  })  
+  
+  
+  print(paste0(Sys.time(), " - saving 'df_all_distances_pairings' for the database!"))
+  
+  
+  saveRDS(object = df_all_distances_pairings_raw %>%
+            distinct(project) %>%
+            pull(),
+          file = paste0(getwd(),"/results/all_final_projects_used.rds"))
+  
+  saveRDS(object = df_all_distances_pairings_raw %>%
+            distinct(novel_junID, ref_junID, .keep_all = T) %>% 
+            as.data.table(),
+          file = paste0(getwd(),"/database/v", gtf_version, "/",
+                        main_project, "/all_distances_pairings_all_tissues.rds"))
+  
+}
+
+get_intron_never_misspliced <- function (projects_used,
+                                         all_clusters,
+                                         main_project) {
+  
+  
+  df_never <- map_df(projects_used, function(project_id) {
+    
+    # project_id <- projects_used[1]
+    
+    print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
+    base_folder <- paste0(getwd(), "/results/", 
+                          project_id, "/v", gtf_version, "/", main_project, "/")
+    
+    
+    
+    if ( file.exists(paste0(base_folder, "/base_data/", 
+                            project_id, "_samples_metadata.rds")) ) {
+      metadata.info <- readRDS(file = paste0(base_folder, "/base_data/", 
+                                             project_id, "_samples_metadata.rds"))
+      all_clusters <-  metadata.info %>% 
+        distinct(gtex.smtsd) %>% 
+        pull()
+      
+    }
+    
+    
+    map_df(all_clusters, function(cluster) { 
+      
+      # cluster <- all_clusters[1]
+      
+      # print(paste0(Sys.time(), " --> ", cluster))
+      if ( file.exists(paste0(base_folder, "results/", cluster, 
+                              "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
+        df_introns_never <- readRDS(file = paste0(base_folder, "results/", cluster, 
+                                                  "/not-misspliced/", 
+                                                  cluster, "_all_notmisspliced.rds")) %>% as_tibble()
+        return(data.frame(ref_junID = df_introns_never$value))
+      } else {
+        return(NULL)
+      }
+      
+    })
+  })
+  
+  df_never %>%
+    distinct(ref_junID) %>%
+    return()
+}
+
 
 get_mean_coverage <- function(split_read_counts,
                               samples,
@@ -693,475 +607,270 @@ get_mean_coverage <- function(split_read_counts,
   split_read_counts_intron %>% return()
 }
 
-# all_projects <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects.rds")
-get_all_annotated_split_reads <- function(projects_used,
-                                          gtf_version,
-                                          all_clusters = NULL,
-                                          main_project = "splicing") {
+
+generate_transcript_biotype_percentage <- function(projects_used,
+                                                   homo_sapiens_v105_path,
+                                                   main_project,
+                                                   gtf_version) {
+  
+  
+  #######################################
+  ## GET THE TRANSCRIPT BIOTYPE
+  #######################################
+  
+  print(paste0(Sys.time(), " - loading the human reference transcriptome ... "))
+  
+  ## Import HUMAN REFERENCE transcriptome
+  homo_sapiens_v105 <- rtracklayer::import(con = homo_sapiens_v105_path) %>% 
+    as_tibble()
+  
+  ## Get v105 transcripts
+  transcripts_v105 <- homo_sapiens_v105 %>%
+    filter(type == "transcript") %>% 
+    dplyr::select(transcript_id, transcript_biotype, gene_id)
+  
+  transcripts_v105 %>% head()
+  
+  
+  #######################################
+  ## LOAD ALL SPLIT READS ALL TISSUES
+  #######################################
+  
+  print(paste0(Sys.time(), " - loading the recount3 GTEx split reads ... "))
+  
+  ## LOAD the all split reads from all recount3 GTEx projects
+  database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/")
+  all_split_reads_details_all_tissues <- readRDS(file = paste0(database_folder, "/all_split_reads_details_all_tissues.rds") )
+  
+  all_split_reads_details_all_tissues %>% head()
+  all_split_reads_details_all_tissues %>% nrow()
   
   
   
   
-  # all_split_reads_details_105 <- readRDS(file = "~/PROJECTS/splicing-project-recount3/database/all_split_reads_105_length_all_tissues.rds")
+  #######################################
+  ## EXPLORE AND TIDY THE RESULT
+  #######################################
   
-  #############################################
-  ## GET ALL SPLIT READS FROM 'USE ME' SAMPLES
-  #############################################
+  ## Remove potential * in the junID of the reference introns
+  ind <- which(str_detect(string = all_split_reads_details_all_tissues$junID, pattern = "\\*"))
+  if (ind %>% length() > 0) {
+    all_split_reads_details_all_tissues[ind, "junID"] <- str_replace(string = all_split_reads_details_all_tissues[ind, "junID"]$junID, 
+                                                                     pattern = "\\*", 
+                                                                     replacement = all_split_reads_details_all_tissues[ind, "strand"]$strand %>% as.character() )
+    any(str_detect(all_split_reads_details_all_tissues$junID, pattern = "\\*")) %>% print()
+  }
   
+  print(object.size(all_split_reads_details_all_tissues), units = "Gb")
   
+  ## Merge datasets to add transcript biotype
+  print(paste0(Sys.time(), " --> adding transcript biotype..."))
   
-  all_split_reads_details_105 <- map_df(projects_used, function(project_id) {
-    
-    # project_id <- projects_used[1]
-    # project_id <- "BONE_MARROW"
-    
-    
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
-                          project_id, "/v", gtf_version, "/", 
-                          main_project, "_project/")
-    
-    if (is.null(all_clusters)) {
-      
-      metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
-      
-      all_clusters <-  metadata.info %>% 
-        as_tibble() %>%
-        filter(gtex.smrin >= 6.0,
-               gtex.smafrze != "EXCLUDE") %>%
-        distinct(gtex.smtsd) %>% 
-        pull()
-      
-    }
-    
-    
-    jxn_qc <- map_df(all_clusters, function(cluster) {
-      
-      # cluster <- all_clusters[1]
-      print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
-      
-      if (file.exists(paste0(folder_root, "/raw_data/", project_id, "_",
-                             cluster, "_all_split_reads_sample_tidy.rds"))) {
-        
-        all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/raw_data/", project_id, "_",
-                                                             cluster, "_all_split_reads_sample_tidy.rds"))
-        
-        ## Remove split reads annotated to multiple genes
-        all_split_reads_details_tidy <- all_split_reads_details_105 %>%
-          distinct(junID, .keep_all = T) %>% 
-          rowwise() %>%
-          mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, T, F))
-        
-        all_split_reads_details_tidy <- all_split_reads_details_tidy %>%
-          filter(ambiguous == F)
-        
-        saveRDS(all_split_reads_details_tidy %>% dplyr::select(-ambiguous),
-                file =  paste0(folder_root, "/raw_data/", project_id, "_",
-                               cluster, "_annotated_SR_details_length_105.rds"))
-        
-        ## Print message
-        print(paste0(all_split_reads_details_105 %>% nrow, " - ", all_split_reads_details_tidy %>% nrow()))
-        
-        all_split_reads_details_tidy %>%
-          distinct(junID, .keep_all = T) %>% 
-          as_tibble() %>%
-          return()
-        
-      } else {
-        return(NULL)
-      }
-      
-    })
-    if (jxn_qc %>% nrow() > 0 ) {
-      jxn_qc %>%
-        distinct(junID, .keep_all = T) %>% return()
-    } else {
-      return(NULL)
-    }
-    
-  })
+  ## Merging using data table structures saves time
+  df_all_junctions <- all_split_reads_details_all_tissues %>% unnest(tx_id_junction) %>% data.table::as.data.table()
+  transcripts_v105 <- transcripts_v105 %>% data.table::as.data.table()
+  
+  df_all_junctions %>% head()
+  transcripts_v105 %>% head()
+  
+  df_all_junctions_tx <- df_all_junctions %>% 
+    left_join(y = transcripts_v105,
+              by = c("tx_id_junction" = "transcript_id"))
+  
+  print(object.size(df_all_junctions_tx), units = "Gb")
   
   
-  print(paste0(Sys.time(), " - saving 'all_annotated_split_reads' for the database!"))
-  
-  all_split_reads_details_105 <- all_split_reads_details_105 %>%
-    distinct(junID, .keep_all = T)
-  
-  database_folder <- paste0("~/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/")
-  dir.create(file.path(database_folder), showWarnings = T, recursive = T)
-  
-  saveRDS(object = all_split_reads_details_105,
-          file = paste0(database_folder, "/all_split_reads_105_length_all_tissues.rds"))
+  #######################################
+  ## CALCULATE THE TRANSCRIPT PERCENTAGE
+  #######################################
   
   
+  print(paste0(Sys.time(), " --> starting protein-coding percentage calculation ..."))
+  print(paste0(Sys.time(), " --> ", df_all_junctions$junID %>% unique() %>% length(), " total number of junctions."))
   
   
+  ## Only keep not ambiguous jxn (i.e. junctions belonging to multiple genes)
+  junID_OK <- df_all_junctions %>% 
+    dplyr::group_by(junID) %>% 
+    distinct(gene_id, .keep_all = T) %>% 
+    dplyr::count() %>% 
+    filter(n == 1) %>%
+    pull(junID)
+  
+  # junID_OK %>% unique() %>% length()
+  
+  ## Calculate the biotype percentage
+  df_all_percentage <- df_all_junctions_tx %>% 
+    filter(junID %in% junID_OK) %>%
+    dplyr::group_by(junID, transcript_biotype) %>%
+    distinct(tx_id_junction, .keep_all = T) %>% 
+    summarise(n = n()) %>% 
+    mutate(percent = (n / sum(n)) * 100) %>%
+    ungroup()
+  
+  df_all_percentage %>% head()
+  saveRDS(object = df_all_percentage,
+          file = paste0(getwd(), "/results/all_split_reads_all_tissues_all_biotypes.rds"))
+  
+  ## Only filter by the protein-coding biotype
+  df_all_percentage_tidy_PC <- df_all_percentage %>% 
+    dplyr::group_by(junID) %>%
+    rowwise() %>%
+    mutate(percent = ifelse (transcript_biotype == "protein_coding", percent, 0)) %>%
+    ungroup() %>%
+    dplyr::group_by(junID) %>%
+    filter(percent == max(percent)) %>%
+    dplyr::select(-transcript_biotype, -n) %>%
+    distinct(junID, .keep_all = T) %>%
+    ungroup()
+  
+  ## Only filter by the lncRNA biotype
+  df_all_percentage_tidy_lncRNA <- df_all_percentage %>% 
+    dplyr::group_by(junID) %>%
+    rowwise() %>%
+    mutate(percent = ifelse (transcript_biotype == "lncRNA", percent, 0)) %>%
+    ungroup() %>%
+    dplyr::group_by(junID) %>%
+    filter(percent == max(percent)) %>%
+    dplyr::select(-transcript_biotype, -n) %>%
+    distinct(junID, .keep_all = T) %>%
+    ungroup()
+  
+  
+  df_all_percentage_tidy_merged <- merge(x = df_all_percentage_tidy_PC %>% dplyr::rename(percent_PC = percent) %>% as.data.table(),
+                                         y = df_all_percentage_tidy_lncRNA %>% dplyr::rename(percent_lncRNA = percent) %>% as.data.table(),
+                                         by = "junID")
+  df_all_percentage_tidy_merged %>% nrow()
+  
+  if (df_all_percentage_tidy_merged %>% filter(percent_PC == 100) %>% distinct(percent_lncRNA) %>% pull() != 0) {
+    print("ERROR! some only protein-coding introns have been also classified as lncRNAs!")
+  }
+  if (df_all_percentage_tidy_merged %>% filter(percent_lncRNA == 100) %>% distinct(percent_PC) %>% pull() != 0) {
+    print("ERROR! some only lncRNA introns have been also classified as protein-coding!")
+  }
+  
+  print(object.size(df_all_percentage_tidy_merged), units = "Gb")
+  
+  saveRDS(object = df_all_percentage_tidy_merged,
+          file = paste0(getwd(), "/results/all_split_reads_all_tissues_PC_biotype.rds"))
+  print(paste0(Sys.time(), " - files saved!"))
+  
+  ##########################################
+  ## FREE UP SOME MEMORY 
+  ##########################################
+  
+  rm(all_split_reads_details_all_tissues)
+  rm(df_all_junctions)
+  rm(df_all_junctions_tx)
+  rm(homo_sapiens_v105)
+  rm(transcripts_v105)
+  gc()
   
 }
 
 
-get_all_raw_distances_pairings <- function(projects_used,
-                                           gtf_version,
-                                           all_clusters = NULL,
-                                           main_project) {
-  
-  
-  ## LOOP THROUGH PROJECTS
-  df_all_distances_pairings_raw <- map_df(projects_used, function(project_id) {
-    
-    # project_id <- projects_used[1]
-    # project_id <- "KIDNEY"
-    
-    print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
-                          project_id, "/v", gtf_version, "/", main_project, "_project/")
-    
-    if (is.null(all_clusters)) {
-      
-      metadata.info <- readRDS(file = paste0(folder_root, "/raw_data/samples_metadata.rds"))
-      
-      
-      if ( main_project == "introverse" ) {
-        all_clusters <-  metadata.info %>% 
-          as_tibble() %>%
-          filter(#gtex.smrin >= 6.0,
-            gtex.smafrze != "EXCLUDE") %>%
-          distinct(gtex.smtsd) %>% 
-          pull()
-      } else {
-        all_clusters <-  metadata.info %>% 
-          as_tibble() %>%
-          filter(gtex.smrin >= 6.0,
-                 gtex.smafrze != "EXCLUDE") %>%
-          distinct(gtex.smtsd) %>% 
-          pull()
-      }
-      
-    }
-    
-    map_df(all_clusters, function(cluster) {
-      
-      # cluster <- all_clusters[1]
-      
-      print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
-      
-      ## Load samples
-      if ( file.exists( paste0(folder_root, "/raw_data/", project_id, "_", cluster,  "_samples_used.rds") ) ) {
-        
-        samples <- readRDS(file = paste0(folder_root, "/raw_data/", project_id, "_", cluster,  "_samples_used.rds"))
-        
-        if (samples %>% length() > 0) {
-          
-          folder_name <- paste0(folder_root, "/results/", cluster, "/")
-          
-          if ( !file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) ) {
-            
-            ## Obtain the distances across all samples
-            df_all <- map_df(samples, function(sample) { 
-              
-              # sample <- samples[1]
-              print(paste0(cluster, " - ", sample))
-              file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
-              
-              
-              if (file.exists(file_name)) {
-                
-                df <- readRDS(file = file_name)
-                
-                return(df)
-              } else {
-                return(NULL)
-              }
-              
-            })
-            
-            if ( !is.null(df_all) ) {
-              saveRDS(object = df_all %>%
-                        distinct(novel_junID, ref_junID, .keep_all = T) %>%
-                        mutate(tissue = cluster),
-                      file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
-            } 
-          } else {
-            df_all <- readRDS( file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds") )
-          }
-          
-          
-          # df_all2 <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
-          return(df_all %>%
-                   distinct(novel_junID, ref_junID, .keep_all = T))
-        } else {
-          return(NULL)
-        }
-        
-      } else {
-        return(NULL)
-      }
-    })  
-  })  
-  
-  print(paste0(Sys.time(), " - saving 'df_all_distances_pairings_raw' for the database!"))
-  
-  
-  saveRDS(object = df_all_distances_pairings_raw %>%
-            distinct(novel_junID, ref_junID, .keep_all = T) %>% 
-            as.data.table(),
-          file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/",
-                        main_project, "/df_all_distances_pairings_raw.rds"))
-  
-}
 
-get_intron_never_misspliced <- function (projects_used,
-                                         all_clusters = NULL,
-                                         main_project) {
-  
-  
-  df_never <- map_df(projects_used, function(db) {
-    
-    # db <- projects_used[1]
-    
-    print(paste0(Sys.time(), " --> Working with '", db, "' DataBase..."))
-    base_folder <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
-                          db, "/v", gtf_version, "/", main_project, "_project/")
-    
-    if ( is.null(all_clusters) ) {
-      
-      if (file.exists(paste0(base_folder, "/raw_data/samples_metadata.rds"))) {
-        metadata.info <- readRDS(file = paste0(base_folder, "/raw_data/samples_metadata.rds"))
-        
-        if ( main_project == "introverse" ) {
-          all_clusters <-  metadata.info %>% 
-            as_tibble() %>%
-            filter(#gtex.smrin >= 6.0,
-              gtex.smafrze != "EXCLUDE") %>%
-            distinct(gtex.smtsd) %>% 
-            pull()
-        } else {
-          all_clusters <-  metadata.info %>% 
-            as_tibble() %>%
-            filter(gtex.smrin >= 6.0,
-                   gtex.smafrze != "EXCLUDE") %>%
-            distinct(gtex.smtsd) %>% 
-            pull()
-        }
-        
-      }
-      
-    }
-    
-    map_df(all_clusters, function(cluster) { 
-      
-      # cluster <- all_clusters[1]
-      
-      # print(paste0(Sys.time(), " --> ", cluster))
-      if ( file.exists(paste0(base_folder, "results/", cluster, 
-                              "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
-        df_introns_never <- readRDS(file = paste0(base_folder, "results/", cluster, 
-                                                  "/not-misspliced/", cluster, "_all_notmisspliced.rds")) %>% as_tibble()
-        return(data.frame(ref_junID = df_introns_never$value))
-      } else {
-        return(NULL)
-      }
-      
-    })
-  })
-  
-  df_never %>%
-    distinct(ref_junID) %>%
-    return()
-}
 
-#################################################################
-
-get_and_tidy_recount3_raw_GTEx_split_reads <- function(projects_used) {
-  
-  # project_id <- projects_used[6]
+generate_recount3_tpm <- function(projects_used,
+                                  gtf_version,
+                                  main_project) {
   
   
   for (project_id in projects_used) {
     
+    # project_id <- projects_used[1]
+    # project_id <- projects_used[8]
+    
+    
+    ## 1. Get expression data from recount3 and transform raw counts
     rse <- recount3::create_rse_manual(
       project = project_id,
       project_home = "data_sources/gtex",
       organism = "human",
       annotation = "gencode_v29",
-      type = "jxn"
-    )
+      type = "gene")
     
-    all_split_reads <- data.frame(chr = rse %>% SummarizedExperiment::seqnames(),
-                                  start = rse %>% SummarizedExperiment::start(),
-                                  end = rse %>% SummarizedExperiment::end(),
-                                  strand = rse %>% SummarizedExperiment::strand(),
-                                  width = rse %>% SummarizedExperiment::width(),
-                                  junID = rse %>% rownames())
-    all_split_reads %>% nrow()
-    saveRDS(object = all_split_reads %>% data.table::as.data.table(),
-            file = paste0(folder_path, "/", "all_split_reads_raw.rds"))
+    SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
+    
+    if ( !any(rowData(rse) %>% names() == "bp_length") ) {
+      ## The column score also contains the length of the gene,
+      ## but we need the coding sequence length of the gene to calculate the TPM
+      SummarizedExperiment::assays(rse)$TPM <- recount::getRPKM(rse, length_var = "score")
+    } else {
+      SummarizedExperiment::assays(rse)$TPM <- recount::getRPKM(rse)
+    }
+    colData(rse)[, "mapped_read_count"]
+    colSums(assay(rse, "TPM")) / 1e6 
+    width(rowRanges(rse))[1] 
+    
+    recount_tpm <- SummarizedExperiment::assays(rse)$TPM %>%
+      as_tibble(rownames = "gene") %>%
+      mutate(gene = gene %>% str_remove("\\..*"))
+    
+    rm(rse)
+    gc()
+    
+    
+    
+    ## 2. For each tissue within the current project, filter the RSE by its samples
+    
+    folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/")
+    
+    if ( file.exists(paste0(folder_root, "/base_data/", project_id, "_samples_metadata.rds")) ) {
+      
+      metadata.info <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_samples_metadata.rds"))
+      
+      clusters_ID <- metadata.info$gtex.smtsd %>% unique()
+      
+      for ( cluster_id in clusters_ID ) {
+        
+        # cluster_id <- clusters_ID[1]
+        
+        samples <- metadata.info %>%
+          as_tibble() %>%
+          filter(gtex.smtsd == cluster_id,
+                 gtex.smrin >= 6.0,
+                 gtex.smafrze != "EXCLUDE") %>%
+          distinct(external_id) %>%
+          pull()
+        
+        if ( (main_project == "splicing" && length(samples) >= 70) ) {
+          
+          cluster_samples <- readRDS(file = paste0(folder_root, "/base_data/",
+                                                   project_id, "_", cluster_id, "_samples_used.rds"))
+          
+          if ( !identical(samples, cluster_samples) ) {
+            print("ERROR - samples initially set and the ones obtained now are not identical")
+            break;
+          }
+          
+          ## Filter the object for the set of samples corresponding to the current cluster
+          recount_tpm_local <- recount_tpm %>%
+            dplyr::select(c("gene", all_of(cluster_samples)))
+          
+          ## Save results
+          folder_name <- paste0(folder_root, "/results/tpm/")
+          dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
+          saveRDS(object = recount_tpm_local,
+                  file = paste0(folder_name, project_id, "_", cluster_id, "_tpm.rds"))
+          
+          
+          rm(recount_tpm_local)
+          rm(cluster_samples)
+          gc()
+          
+        }
+        
+      }
+    }
+    
+    print(paste0(Sys.time(), " - ", project_id, " finished!"))
+    
+    rm(folder_root)
+    rm(clusters_ID)
+    rm(recount_tpm)
+    gc()
+    
   }
   
-  
-  
-  ##########################################################
-  ## Read all the split reads and return them by tissue
-  ##########################################################
-  
-  all_split_reads_raw <- map_df(all_projects, function(project_id) {
-    
-    # project_id <- all_projects[1]
-    
-    folder_root <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id, "/")
-    folder_path <- paste0(folder_root, "/raw_data/")
-    
-    
-    print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
-    
-    readRDS(file = paste0(folder_path, "/all_split_reads_raw.rds")) %>%
-      return()
-  })
-  
-  
-  all_split_reads_raw_tidy <- all_split_reads_raw %>%
-    mutate(junID_tidy = paste0(chr, ":", start, "-", end, ":", strand)) %>%
-    as_tibble() %>%
-    distinct(junID_tidy, .keep_all = T)
-  
-  all_split_reads_raw_tidy %>% nrow()
-  
-  
-  
-  
-  #######################################################################
-  ## Remove split reads located in unplaced sequences in the chromosomes
-  #######################################################################
-  
-  all_split_reads_raw_tidy_gr <- all_split_reads_raw_tidy %>%
-    GenomicRanges::GRanges() %>%
-    diffloop::rmchr()
-  
-  
-  all_split_reads_raw_tidy_gr %>% length()
-  all_split_reads_raw_tidy_gr <- GenomeInfoDb::keepSeqlevels(x = all_split_reads_raw_tidy_gr,
-                                                             value = intersect(all_split_reads_raw_tidy_gr %>% 
-                                                                                 GenomeInfoDb::seqnames() %>% 
-                                                                                 levels(), 
-                                                                               c( "1", "10", "11", "12", "13", "14", "15", "16", "17", "18", "19",
-                                                                                  "2", "20", "21", "22", "3", "4", "5", "6", "7", "8", "9", "X", "Y")), 
-                                                             pruning.mode = "tidy")
-  all_split_reads_raw_tidy_gr %>% head()
-  all_split_reads_raw_tidy_gr %>%
-    as_tibble() %>%
-    distinct(junID_tidy, .keep_all = T) %>% 
-    nrow()
-  
-  
-  #######################################################
-  ## Remove split reads overlapping the ENCODE backlist
-  #######################################################
-  
-  source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline2_annotate_from_recount.R")
-  blacklist_path <- "/data/references/ENCODE_blacklist_v2/hg38-blacklist.v2.bed"
-  all_split_reads_raw_tidy_gr <- remove_encode_blacklist_regions(GRdata = all_split_reads_raw_tidy_gr,
-                                                                 blacklist_path = blacklist_path)
-  
-  
-  all_split_reads_raw_tidy_gr %>%
-    as_tibble() %>%
-    distinct(junID_tidy, .keep_all = T) %>% 
-    nrow()
-  
-  
-  #######################################################
-  ## Anotate using 'dasper'
-  #######################################################
-  
-  gtf_path <- paste0("/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")
-  edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  
-  all_split_reads_details_105_w_symbol <- dasper::junction_annot(junctions = all_split_reads_raw_tidy_gr %>% GRanges(), 
-                                                                 ref = edb)
-  
-  all_split_reads_details_105_w_symbol <- all_split_reads_details_105_w_symbol %>% 
-    as_tibble()
-  
-  all_split_reads_details_105_w_symbol_reduced <- all_split_reads_details_105_w_symbol %>% 
-    dplyr::select(seqnames, start, end, strand, junID, gene_id = gene_id_junction, in_ref, type )
-  
-  saveRDS(all_split_reads_details_105_w_symbol_reduced,
-          file = "~/PROJECTS/splicing-project-recount3/database/all_split_reads_details_105_w_symbol.rds")
-  
-  
-  
-  
-  ################################################################################
-  ## Discard all junctions that are not annotated, novel donor or novel acceptor
-  ################################################################################
-  
-  all_split_reads_details_105_w_symbol_reduced <- readRDS(file = "~/PROJECTS/splicing-project-recount3/database/all_split_reads_details_105_w_symbol.rds")
-  
-  all_split_reads_details_105_w_symbol_reduced_discard <- all_split_reads_details_105_w_symbol_reduced %>%
-    dplyr::filter(!(type %in% c("annotated", "novel_donor", "novel_acceptor"))) %>%
-    as.data.table()
-  all_split_reads_details_105_w_symbol_reduced_discard %>%
-    distinct(junID, .keep_all = T) %>%
-    dplyr::count(type)
-  all_split_reads_details_105_w_symbol_reduced_discard %>%
-    distinct(junID) %>%
-    nrow()
-  
-  
-  all_split_reads_details_105_w_symbol_reduced_keep <- all_split_reads_details_105_w_symbol_reduced %>%
-    as.data.table() %>%
-    dplyr::filter(!(junID %in% all_split_reads_details_105_w_symbol_reduced_discard$junID))
-  
-  ############################################
-  ## Discard all junctions shorter than 25bp
-  ############################################
-  
-  all_split_reads_details_105_w_symbol_reduced_keep_gr <- all_split_reads_details_105_w_symbol_reduced_keep %>%
-    GRanges() %>%
-    as_tibble()
-  
-  all_split_reads_details_105_w_symbol_reduced_keep_gr  %>% 
-    dplyr::filter(width < 25) %>%
-    nrow()
-  
-  all_split_reads_details_105_w_symbol_reduced_keep_gr <- all_split_reads_details_105_w_symbol_reduced_keep_gr  %>% 
-    dplyr::filter(width >=25)
-  
-  
-  ############################################################################
-  ## Discard all introns assigned to multiple genes (i.e. ambiguous introns)
-  ############################################################################
-  
-  
-  all_split_reads_details_105_w_symbol_reduced_keep_gr <- all_split_reads_details_105_w_symbol_reduced_keep_gr %>%
-    distinct(junID, .keep_all = T) %>% 
-    rowwise() %>%
-    mutate(ambiguous = ifelse(gene_id %>% unlist() %>% length() > 1, T, F))
-  
-  ambiguous_introns <- all_split_reads_details_105_w_symbol_reduced_keep_gr %>%
-    dplyr::filter(ambiguous == T)
-  
-  ambiguous_introns %>%
-    distinct(junID, .keep_all = T) %>%
-    dplyr::count(type)
-  
-  
-  saveRDS(object = ambiguous_introns,
-          file = "/home/sruiz/PROJECTS/splicing-project-recount3/database/all_ambiguous_introns.rds")
-  
-  all_split_reads_details_105_w_symbol_reduced_keep_gr <- all_split_reads_details_105_w_symbol_reduced_keep_gr %>%
-    dplyr::filter(ambiguous == F) %>%
-    dplyr::select(-ambiguous)
-  
-  saveRDS(object = all_split_reads_details_105_w_symbol_reduced_keep_gr,
-          file = "~/PROJECTS/splicing-project-recount3/database/all_split_reads_details_105_w_symbol_reduced_keep.rds")
-  
 }
-
-
-##################################################################
-
-
-
-
-
