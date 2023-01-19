@@ -155,7 +155,7 @@ get_database_stats <- function() {
   
 }
 
-get_contamination_rates_all_tissues <- function () {
+get_contamination_rates_all_tissues <- function (all_tissues = T) {
 
   
   #############################
@@ -203,11 +203,11 @@ get_contamination_rates_all_tissues <- function () {
           # version <- versions[1]
           print(paste0("v", version))
           
-          if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
+          if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3-results/",
                                  project_id, "/v", version, "/", main_project, "_project/raw_data/",
                                  project_id, "_", cluster, "_all_split_reads_sample_tidy.rds"))) {
             
-            data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
+            data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3-results/",
                                project_id, "/v", version, "/", main_project, "_project/raw_data/",
                                project_id, "_", cluster, "_all_split_reads_sample_tidy.rds")
             
@@ -220,7 +220,7 @@ get_contamination_rates_all_tissues <- function () {
               filter(type %in% c("novel_donor", "novel_acceptor"))
             
             ## ENSEMBL v105
-            df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
+            df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3-results/",
                                             project_id, "/v105/", main_project, "_project/raw_data/",
                                             project_id, "_", cluster, "_all_split_reads_sample_tidy.rds")) %>%
               as_tibble()
@@ -244,6 +244,11 @@ get_contamination_rates_all_tissues <- function () {
               distinct(junID, .keep_all = T) 
             out_annotation %>% nrow() %>% print()
             
+            keep_annotation <- db_novel_new %>%
+              filter(junID %in% db_novel_old$junID) %>% 
+              distinct(junID, .keep_all = T) 
+            keep_annotation %>% nrow() %>% print()
+            
             label <- NULL
             
             if (!all_tissues) {
@@ -260,6 +265,8 @@ get_contamination_rates_all_tissues <- function () {
               label <- paste0("Ensembl_v", version, " (", dates, ")")
             }
             
+            (in_annotation %>% nrow()) / (in_annotation %>% nrow() +
+                                                  keep_annotation %>% nrow()) * 100
             
             return(data.frame(tissue = cluster,
                               contamination_rates = label,
