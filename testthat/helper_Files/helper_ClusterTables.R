@@ -7,6 +7,7 @@ suppressWarnings(suppressMessages(library(GenomicRanges)))
 con <- DBI::dbConnect(RSQLite::SQLite(), database_path)
 df_novel <- dplyr::tbl(con, "novel") %>% dplyr::collect()
 df_intron <- dplyr::tbl(con, "intron") %>% dplyr::collect()
+df_transcript <- dplyr::tbl(con, "transcript") %>% dplyr::collect()
 df_gene <- dplyr::tbl(con, "gene") %>% dplyr::collect()
 
 if(identical(test_clusters, "all")) test_clusters = getClusters(con)

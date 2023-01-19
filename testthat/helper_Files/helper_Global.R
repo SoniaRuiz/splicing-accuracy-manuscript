@@ -26,7 +26,7 @@ test_MANE <- TRUE
 test_MaxEntScan <- TRUE
 test_TSL <- TRUE
 test_biotypes <- TRUE
-test_cluster_data <- FALSE
+test_cluster_data <- T
 
 ### Clusters to test
 #test_clusters <- "all" # Input a list of cluster such as c("Adipose - Subcutaneous_ADIPOSE_TISSUE", "Brain - Frontal Cortex (BA9)_BRAIN")
@@ -79,7 +79,7 @@ generateClusterSplitReadsPath <- function(table_name, projects_path, gtf_version
   project <- full_name[2]
   cluster <- full_name[1]
   
-  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "_project/base_data/", project, "_", cluster, "_split_read_counts.rds")
+  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "/base_data/", project, "_", cluster, "_split_read_counts.rds")
   return(cluster_split_reads_path)
 }
 
@@ -99,7 +99,7 @@ generateAnnotatedSRdetailsPath <- function(table_name, projects_path, gtf_versio
   project <- full_name[2]
   cluster <- full_name[1]
   
-  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "/base_data/", project, "_", cluster, "_annotated_SR_details_length_", gtf_version, ".rds")
+  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "/base_data/", project, "_", cluster, "_all_split_reads.rds")
   return(cluster_split_reads_path)
 }
 

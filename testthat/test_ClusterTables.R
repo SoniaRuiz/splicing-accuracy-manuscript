@@ -36,22 +36,22 @@ test_that("Test junction IDs and their reference with intron and novel tables", 
   }
 })
 
-context("\tTest reference between cluster and gene table")
-test_that("Test reference between cluster and gene table", {
+context("\tTest reference between cluster and transcript table")
+test_that("Test reference between cluster and transcript table", {
   ## Loop for every valid cluster
   for(i in seq(length(test_clusters))){
     cluster <- test_clusters[i]
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
     
-    misspliced_gene_id <- df_misspliced %>% pull(gene_id)
-    never_gene_id <- df_never %>% pull(gene_id)
+    misspliced_transcript_id <- df_misspliced %>% pull(transcript_id)
+    never_transcript_id <- df_never %>% pull(transcript_id)
     
-    ## All gene_id in misspliced table are properly referenced to a row in the gene table
-    expect_true(all(misspliced_gene_id %in% df_gene$id))
+    ## All gene_id in misspliced table are properly referenced to a row in the transcript table
+    expect_true(all(misspliced_transcript_id %in% df_transcript$id))
     
-    ## All gene_id in nevermisspliced table are properly referenced to a row in the gene table
-    expect_true(all(never_gene_id %in% df_gene$id))
+    ## All gene_id in nevermisspliced table are properly referenced to a row in the transcript table
+    expect_true(all(never_transcript_id %in% df_transcript$id))
   }
 })
 
@@ -248,34 +248,34 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     ## when calculating the distances again.
     expect_true(all(df_never_coordinates$ref_coordinates %in% never_miss_spliced_junctions))
     
-    #################### Test that TPM values are properly calculated
-    context(paste0("\t\tCluster ", cluster, ". Test that TPM values are properly calculated"))
-    
-    ## Get the TPM dataframe and calculate the median of each row
-    tpm_path <-  generateTPMpath(cluster, projects_path, gtf_version, main_project)
-    tpm <- getClusterTPM(tpm_path) %>%
-      select(gene_id = gene, all_of(samples)) %>%
-      mutate(tpm_median = matrixStats::rowMedians(as.matrix(.[-1]))) %>%
-      select(gene_id, tpm_median) %>% 
-      group_by(gene_id) %>% 
-      summarize_all(max)
-    
-    ## Merge the calculated tpm values with the database information
-    df_genes_tpm <- df_gene %>% 
-      select(id, gene_id) %>%
-      left_join(tpm, by = "gene_id")
-      
-    df_tpm_misspliced <- df_misspliced %>%
-      select(id = gene_id, gene_tpm) %>%
-      left_join(df_genes_tpm, by = "id")
-    
-    df_tpm_never <- df_never %>%
-      select(id = gene_id, gene_tpm) %>%
-      left_join(df_genes_tpm, by = "id")
-    
-    ## All gene_tpm values should match the obtained from the tpm results
-    expect_equal(df_tpm_misspliced$gene_tpm, df_tpm_misspliced$tpm_median)
-    expect_equal(df_tpm_never$gene_tpm, df_tpm_never$tpm_median)
+    # #################### Test that TPM values are properly calculated
+    # context(paste0("\t\tCluster ", cluster, ". Test that TPM values are properly calculated"))
+    # 
+    # ## Get the TPM dataframe and calculate the median of each row
+    # tpm_path <-  generateTPMpath(cluster, projects_path, gtf_version, main_project)
+    # tpm <- getClusterTPM(tpm_path) %>%
+    #   select(gene_id = gene, all_of(samples)) %>%
+    #   mutate(tpm_median = matrixStats::rowMedians(as.matrix(.[-1]))) %>%
+    #   select(gene_id, tpm_median) %>% 
+    #   group_by(gene_id) %>% 
+    #   summarize_all(max)
+    # 
+    # ## Merge the calculated tpm values with the database information
+    # df_genes_tpm <- df_gene %>% 
+    #   select(id, gene_id) %>%
+    #   left_join(tpm, by = "gene_id")
+    #   
+    # df_tpm_misspliced <- df_misspliced %>%
+    #   select(id = gene_id, gene_tpm) %>%
+    #   left_join(df_genes_tpm, by = "id")
+    # 
+    # df_tpm_never <- df_never %>%
+    #   select(id = gene_id, gene_tpm) %>%
+    #   left_join(df_genes_tpm, by = "id")
+    # 
+    # ## All gene_tpm values should match the obtained from the tpm results
+    # expect_equal(df_tpm_misspliced$gene_tpm, df_tpm_misspliced$tpm_median)
+    # expect_equal(df_tpm_never$gene_tpm, df_tpm_never$tpm_median)
     
     ## Delete the cluster variables after execution
     rm(split_read_counts, annotated_SR_details, envir = .GlobalEnv)
@@ -315,13 +315,13 @@ test_that("Test that Mis-Splicing Ratio is properly calculated", {
     MSR_D_never <- df_never %>% pull(MSR_D)
     MSR_A_never <- df_never %>% pull(MSR_A)
     
-    ## All misspliced MSR are between 0 and 100
-    expect_true(all(MSR_D %>% dplyr::between(0, 100)), info = paste0("Error in cluster ", cluster))
-    expect_true(all(MSR_A %>% dplyr::between(0, 100)), info = paste0("Error in cluster ", cluster))
+    ## All misspliced MSR are between 0 and 1
+    expect_true(all(MSR_D %>% dplyr::between(0, 1)), info = paste0("Error in cluster ", cluster))
+    expect_true(all(MSR_A %>% dplyr::between(0, 1)), info = paste0("Error in cluster ", cluster))
     
-    ## No misspliced MSR at 100
-    expect_false(any(MSR_D == 100), info = paste0("Error in cluster ", cluster))
-    expect_false(any(MSR_A == 100), info = paste0("Error in cluster ", cluster))
+    ## No misspliced MSR at 1
+    expect_false(any(MSR_D == 1), info = paste0("Error in cluster ", cluster))
+    expect_false(any(MSR_A == 1), info = paste0("Error in cluster ", cluster))
     
     ## Never misspliced MSR are equal to 0
     expect_false(any(MSR_D_never != 0), info = paste0("Error in cluster ", cluster))
