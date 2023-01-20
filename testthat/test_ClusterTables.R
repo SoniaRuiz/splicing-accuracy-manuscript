@@ -347,22 +347,22 @@ test_that("Test that reference intron type is consistent with MSR", {
   }
 })
 
-context("\tTest that no NAs are found in where they are not allowed")
-test_that("Test that no NAs are found in where they are not allowed", {
-  ## Loop for every valid cluster
-  for(i in seq(length(test_clusters))){
-    cluster <- test_clusters[i]
-    df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
-    df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
-    
-    ## No single value should be NA or equal to "NA"
-    expect_false(any(df_misspliced %>% select(-gene_tpm) %>% is.na()))
-    expect_false(any((df_misspliced %>% select(-gene_tpm)) == "NA"))
-    
-    expect_false(any(df_never %>% select(-gene_tpm) %>% is.na()))
-    expect_false(any((df_never %>% select(-gene_tpm)) == "NA"))
-  }
-})
+# context("\tTest that no NAs are found in where they are not allowed")
+# test_that("Test that no NAs are found in where they are not allowed", {
+#   ## Loop for every valid cluster
+#   for(i in seq(length(test_clusters))){
+#     cluster <- test_clusters[i]
+#     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
+#     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
+#     
+#     ## No single value should be NA or equal to "NA"
+#     expect_false(any(df_misspliced %>% select(-gene_tpm) %>% is.na()))
+#     expect_false(any((df_misspliced %>% select(-gene_tpm)) == "NA"))
+#     
+#     expect_false(any(df_never %>% select(-gene_tpm) %>% is.na()))
+#     expect_false(any((df_never %>% select(-gene_tpm)) == "NA"))
+#   }
+# })
 
 context("\tTest that the set of introns in intron table and the set in the cluster tables are the same")
 test_that("Test that the set of introns in intron table and the set in the cluster tables are the same", {

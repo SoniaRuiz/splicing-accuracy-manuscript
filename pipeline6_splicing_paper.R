@@ -17,9 +17,12 @@ gtf_version <- 105
 main_project <- "splicing"
 # database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
 #                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
-
-
 getwd()
+database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
+dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
+database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
+
+
 con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
@@ -155,7 +158,7 @@ get_database_stats <- function() {
     dplyr::count(misspliced)
   
   db_introns %>%
-    dplyr::count(gene_id)
+    dplyr::count(transcript_id)
   
   
   query <- paste0("SELECT * from 'novel'")

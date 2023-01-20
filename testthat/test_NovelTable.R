@@ -1,6 +1,6 @@
-source("helper_Files/helper_Global.R")
+source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_NovelTable, "Novel table tests not executed. Variable test_NovelTable set to FALSE in global options.")
-source("helper_Files/helper_NovelTable.R")
+source(paste0(getwd(), "/testthat/helper_Files/helper_NovelTable.R"))
 
 context("\tTest consistent junction IDs with other tables")
 test_that("Test consistent junction IDs with other tables", {

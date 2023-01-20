@@ -19,13 +19,13 @@ test_that("Test that genes exists in the reference transcriptome", {
 
 context("\tTest that all transcripts are correct")
 test_that("Test that all transcripts are correct", {
-  hg38_transcripts <- hg38 %>% 
+  hg38_transcripts <- hg38 %>%
     as_tibble() %>%
     filter(gene_id %in% df_gene$gene_id & type == "transcript") %>%
-    count(gene_id, name = "n_transcripts")
-  
+    dplyr::count(gene_id, name = "n_transcripts")
+
   df_combined = df_gene %>% left_join(hg38_transcripts, by = "gene_id")
-  
+
   ## All gene transcripts are consistent with the reference transcriptome
   expect_equal(df_combined$n_transcripts.x, df_combined$n_transcripts.y)
 })

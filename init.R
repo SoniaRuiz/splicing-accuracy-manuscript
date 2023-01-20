@@ -805,7 +805,6 @@ sql_database_generation <- function(database_path,
   if ( !is.null(remove_all) ) {
     
     remove_tables(database_path, remove_all)
-    
   } 
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
@@ -827,6 +826,14 @@ sql_database_generation <- function(database_path,
   }
   
   print(paste0(Sys.time(), " - creating cluster tables ..."))
+  
+  rm(CNC_CDTS_CONS_gr)
+  rm(hg_mane_transcripts)
+  rm(hg_MANE_tidy)
+  rm(hg_MANE)
+  rm(hg38_transcripts)
+  rm(hg38)
+  gc()
   
   create_cluster_tables(database_path = database_path,
                         gtf_version = gtf_version,
@@ -917,7 +924,7 @@ for (gtf_version in gtf_versions) {
                           projects_used = all_final_projects_used,
                           main_project = main_project,
                           gtf_version = gtf_version,
-                          remove_all = T)
+                          remove_all = F)
   
   gc()
 }

@@ -10,10 +10,10 @@
 # } else {
 #   print("'CNC_CDTS_CONS_gr' file already loaded!")
 # }
-
+# 
 # ## GET INFO FROM MANE
 # if ( !exists("hg_mane_transcripts") ) {
-#   
+# 
 #   print("Loading the 'hg_MANE' file...")
 #   hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
 #                                               "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
@@ -23,7 +23,7 @@
 #                   -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
 #     mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
 #     drop_na()
-#   
+# 
 #   hg_mane_transcripts <- hg_MANE_tidy %>%
 #     dplyr::filter(type == "transcript") %>%
 #     distinct(transcript_id) %>%
@@ -34,14 +34,14 @@
 # 
 # # GET INFO FROM THE HG38
 # if ( !exists("hg38_transcripts") ) {
-#   
+# 
 #   print("Loading the 'hg38' file...")
-#   
+# 
 #   if ( !exists("hg38") ) {
 #     hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
 #                                              "/Homo_sapiens.GRCh38.105.chr.gtf"))
 #   }
-#   
+# 
 #   hg38_transcripts <- hg38 %>%
 #     as_tibble() %>%
 #     dplyr::filter(type == "transcript") %>%
@@ -1560,7 +1560,7 @@ create_cluster_tables <- function(database_path,
         }
         
       }
-      
+      gc()
     }
     gc()
   }

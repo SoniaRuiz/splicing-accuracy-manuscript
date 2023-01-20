@@ -5,10 +5,16 @@ library(tidyverse, warn.conflicts = FALSE)
 
 #################### Main testing parameters
 gtf_version <- "105"
-main_project <- "splicing"
+# main_project <- "splicing"
+# main_path <- getwd()
+# database_path <- paste0(main_path, "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
+# projects_path <- paste0(main_path, "/results/")
+
+
+main_project <- "introverse"
 main_path <- getwd()
-database_path <- paste0(main_path, "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
-projects_path <- paste0(main_path, "/results/")
+database_path <- paste0("~/PROJECTS/introverse-app/database_generation/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
+projects_path <- paste0("~/PROJECTS/introverse-app/database_generation/results/")
 
 #################### Control what is being tested
 ### Specific tests
@@ -17,6 +23,7 @@ test_DataTypes <- TRUE
 test_IntronTable <- TRUE
 test_NovelTable <- TRUE
 test_GeneTable <- TRUE
+test_TranscriptTable <- TRUE
 test_ClusterTables <- TRUE
 
 ### Specific sub-tests
@@ -36,16 +43,19 @@ num_cores <- 8
 #################### Additional files and paths
 ## Additional Files
 reference_transcriptome_path <- path.expand(paste0("~/PROJECTS/introverse-app/database_generation/dependencies/Homo_sapiens.GRCh38.105.chr.gtf"))
-clinvar_path <- path.expand(paste0(main_path, "~/PROJECTS/introverse-app//database_generation/dependencies/clinvar_intronic_tidy.rda"))
-CNC_CDTS_CONS_gr_path <- path.expand(paste0(main_path, "~/PROJECTS/introverse-app//database_generation/dependencies/CNC_CDTS_CONS_gr.rda"))
-hg_mane_transcripts_path <- path.expand(paste0(main_path, "~/PROJECTS/introverse-app//database_generation/dependencies/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
+clinvar_path <- path.expand(paste0("~/PROJECTS/introverse-app//database_generation/dependencies/clinvar_intronic_tidy.rda"))
+CNC_CDTS_CONS_gr_path <- path.expand(paste0( "~/PROJECTS/introverse-app//database_generation/dependencies/CNC_CDTS_CONS_gr.rda"))
+hg_mane_transcripts_path <- path.expand(paste0( "~/PROJECTS/introverse-app//database_generation/dependencies/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
 
-df_all_introns_introverse_tidy_path <- path.expand(paste0(main_path, "/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
-all_annotated_SR_details_length_105_raw_biotype_path <-paste0(main_path, "/results/all_split_reads_all_tissues_PC_biotype.rds")
+# df_all_introns_introverse_tidy_path <- path.expand(paste0(main_path, "/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
+# all_annotated_SR_details_length_105_raw_biotype_path <-paste0(main_path, "/results/all_split_reads_all_tissues_PC_biotype.rds")
+
+df_all_introns_introverse_tidy_path <- path.expand(paste0("~/PROJECTS/introverse-app/database_generation/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
+all_annotated_SR_details_length_105_raw_biotype_path <-paste0( "~/PROJECTS/introverse-app/database_generation/results/all_split_reads_all_tissues_PC_biotype.rds")
 
 ## MaxEntScan path
 bedtools_path <- path.expand("/home/grocamora/tools/bedtools/")
-fasta_path <- path.expand(paste0(main_path, "~/PROJECTS/introverse-app//database_generation/dependencies/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
+fasta_path <- path.expand("~/PROJECTS/introverse-app//database_generation/dependencies/Homo_sapiens.GRCh38.dna.primary_assembly.fa")
 fordownload_path <- path.expand("/home/grocamora/tools/fordownload/")
 
 #################### Variables to validate the data

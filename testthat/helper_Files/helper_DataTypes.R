@@ -54,27 +54,27 @@ novel_expected_notnull <- c(novel_junID = 1, ref_junID = 1, novel_coordinates = 
 novel_expected_pk <- c(novel_junID = 2, ref_junID = 1, novel_coordinates = 0, novel_ss5score = 0, novel_ss3score = 0, novel_length = 0, novel_type = 0, distance = 0)
 novel_expected_foreign <- c(table = "intron", from = "ref_junID", to = "ref_junID")
 
-### MANE table
-mane_expected_types <- c(seqnames = "TEXT", 
-                         start = "INTEGER", 
-                         end = "INTEGER", 
-                         strand = "TEXT", 
-                         type = "TEXT", 
-                         gene_name = "TEXT", 
-                         transcript_id = "TEXT", 
-                         transcript_name = "TEXT")
-mane_expected_notnull <- c(seqnames = 0, start = 0, end = 0, strand = 0, type = 0, gene_name = 0, transcript_id = 0, transcript_name = 0)
-mane_expected_pk <- c(seqnames = 0, start = 0, end = 0, strand = 0, type = 0, gene_name = 0, transcript_id = 0, transcript_name = 0)
+# ### MANE table
+# mane_expected_types <- c(seqnames = "TEXT", 
+#                          start = "INTEGER", 
+#                          end = "INTEGER", 
+#                          strand = "TEXT", 
+#                          type = "TEXT", 
+#                          gene_name = "TEXT", 
+#                          transcript_id = "TEXT", 
+#                          transcript_name = "TEXT")
+# mane_expected_notnull <- c(seqnames = 0, start = 0, end = 0, strand = 0, type = 0, gene_name = 0, transcript_id = 0, transcript_name = 0)
+# mane_expected_pk <- c(seqnames = 0, start = 0, end = 0, strand = 0, type = 0, gene_name = 0, transcript_id = 0, transcript_name = 0)
 
 ### Master table
 master_expected_types <- c(age = "TEXT", 
-                           rin = "TEXT", 
-                           gender = "TEXT", 
+                           rin = "REAL", 
+                           gender = "REAL", 
                            cluster = "TEXT", 
                            smnabtcht = "TEXT", 
-                           sample_id = "INTEGER", 
+                           sample_id = "TEXT", 
                            smafrze = "TEXT", 
-                           avg_read_length = "REAL", 
+                           avg_read_length = "INTEGER", 
                            mapped_read_count = "INTEGER", 
                            SRA_project = "TEXT")
 master_expected_notnull <- c(age = 0, rin = 0, gender = 0, cluster = 0, smnabtcht = 0, sample_id = 0, smafrze = 0, avg_read_length = 0, mapped_read_count = 0, SRA_project = 0)

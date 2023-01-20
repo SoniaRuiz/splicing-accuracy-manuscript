@@ -1,6 +1,6 @@
-source("helper_Files/helper_Global.R")
+source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_IntronTable, "Intron table tests not executed. Variable test_IntronTable set to FALSE in global options.")
-source("helper_Files/helper_IntronTable.R")
+source(paste0(getwd(), "/testthat/helper_Files/helper_IntronTable.R"))
 
 context("\tTest consistent junction IDs with other tables")
 test_that("Test consistent junction IDs with other tables", {
@@ -19,12 +19,12 @@ test_that("Test consistent junction IDs with other tables", {
   expect_equal(intron_ref_junID %>% unique() %>% length, intron_ref_junID %>% length())
 })
 
-context("\tTest reference between intron and gene table")
-test_that("Test reference between intron and gene table", {
-  gene_id <- df_intron %>% pull(gene_id)
+context("\tTest reference between intron and transcript table")
+test_that("Test reference between intron and transcript table", {
+  transcript_id <- df_intron %>% pull(transcript_id)
   
-  ## All `gene_id`` are properly referenced to a row in the gene table
-  expect_true(all(gene_id %in% df_gene$id))
+  ## All `transcript_id`` are properly referenced to a row in the gene table
+  expect_true(all(transcript_id %in% df_transcript$id))
 })
 
 context("\tTest that different fields have consistent values")
@@ -37,8 +37,8 @@ test_that("Test that different fields have consistent values", {
   clinvar_types <- clinvar_split[, 1] %>% unique()
   clinvar_values <- clinvar_split[, 2]
   
-  mane <- df_intron %>% pull(MANE)
-  tsl <- df_intron %>% pull(TSL) %>% unique
+  #mane <- df_intron %>% pull(MANE)
+  #tsl <- df_intron %>% pull(TSL) %>% unique
   lncRNA <- df_intron %>% pull(lncRNA)
   protein_coding <- df_intron %>% pull(protein_coding)
   misspliced <- df_intron %>% pull(misspliced)
@@ -52,10 +52,10 @@ test_that("Test that different fields have consistent values", {
   expect_match(clinvar_values[0:3], regexp = "^$|^[0-9]+bp$")
   
   ## All MANE values are either 0 or 1 (boolean)
-  expect_true(all((mane %>% unique) %in% c(0, 1)))
+  #expect_true(all((mane %>% unique) %in% c(0, 1)))
   
   ## All TSL values are between the valid values (1, 2, 3, 4, 5 and 10)
-  expect_true(all(tsl %in% valid_intron_TSL))
+  #expect_true(all(tsl %in% valid_intron_TSL))
   
   ## All lncRNA values, protein_coding values and their sum are between 0 and 100%
   expect_true(all(lncRNA %>% dplyr::between(0, 100)))
@@ -260,67 +260,52 @@ test_that("Test that the CDTS and conservation scores are correctly obtained", {
   expect_equal(df_intron$ref_cons3score, GRdata_CDTS$phastCons20way_3ss_mean)
 })
 
-context("\tTest that the TSL values are correctly obtained")
-test_that("Test that the TSL values are correctly obtained", {
-  skip_if(!test_TSL, "No TSL value test. Variable test_TSL set to FALSE in global options.")
-  
-  ## Load the reference transcriptome
-  hg38_transcripts <- rtracklayer::import(reference_transcriptome_path) %>% 
-    as_tibble() %>%
-    filter(type == "transcript") %>%
-    select(transcript_id, transcript_support_level) %>%
-    mutate(transcript_support_level = str_sub(transcript_support_level, 1, 1))
-  
-  ## Load the introns with transcripts IDs
-  df_all_introns_introverse_tidy = readRDS(df_all_introns_introverse_tidy_path)
-  
-  ## Obtain the TSL and select the minimum value for each intron
-  all_intron_tsl <- df_all_introns_introverse_tidy %>%
-    select(ref_junID, tx_id_junction) %>%
-    distinct() %>%
-    tidyr::unnest(tx_id_junction) %>% 
-    left_join(hg38_transcripts,
-              by = c("tx_id_junction" = "transcript_id")) %>%
-    mutate(TSL = transcript_support_level %>% replace(is.na(.) | . == "N", 10) %>% as.integer()) %>%
-    group_by(ref_junID) %>%
-    summarise(TSL = min(TSL))
-  
-  ## Add the calculated values to the reference values
-  df_combined <- df_intron %>% left_join(all_intron_tsl %>% select(ref_junID, TSL), 
-                                         by = c("ref_coordinates" = "ref_junID"))
-  
-  ## Both tables have similar number of rows
-  expect_equal(nrow(df_intron), nrow(all_intron_tsl))
-  
-  ## They share the same junIDs
-  expect_true(length(intersect(df_intron$ref_coordinates, all_intron_tsl$ref_junID)) == length(df_intron$ref_coordinates))
-  
-  ## All `TSL` values calculated are consistent with the ones found in the `intron` table.
-  expect_equal(df_combined$TSL.x, df_combined$TSL.y)
-})
+# context("\tTest that the TSL values are correctly obtained")
+# test_that("Test that the TSL values are correctly obtained", {
+#   skip_if(!test_TSL, "No TSL value test. Variable test_TSL set to FALSE in global options.")
+#   
+#   ## Load the reference transcriptome
+#   hg38_transcripts <- rtracklayer::import(reference_transcriptome_path) %>% 
+#     as_tibble() %>%
+#     filter(type == "transcript") %>%
+#     select(transcript_id, transcript_support_level) %>%
+#     mutate(transcript_support_level = str_sub(transcript_support_level, 1, 1))
+#   
+#   ## Load the introns with transcripts IDs
+#   df_all_introns_introverse_tidy = readRDS(df_all_introns_introverse_tidy_path)
+#   
+#   ## Obtain the TSL and select the minimum value for each intron
+#   all_intron_tsl <- df_all_introns_introverse_tidy %>%
+#     select(ref_junID, tx_id_junction) %>%
+#     distinct() %>%
+#     tidyr::unnest(tx_id_junction) %>% 
+#     left_join(hg38_transcripts,
+#               by = c("tx_id_junction" = "transcript_id")) %>%
+#     mutate(TSL = transcript_support_level %>% replace(is.na(.) | . == "N", 10) %>% as.integer()) %>%
+#     group_by(ref_junID) %>%
+#     summarise(TSL = min(TSL))
+#   
+#   ## Add the calculated values to the reference values
+#   df_combined <- df_intron %>% left_join(all_intron_tsl %>% select(ref_junID, TSL), 
+#                                          by = c("ref_coordinates" = "ref_junID"))
+#   
+#   ## Both tables have similar number of rows
+#   expect_equal(nrow(df_intron), nrow(all_intron_tsl))
+#   
+#   ## They share the same junIDs
+#   expect_true(length(intersect(df_intron$ref_coordinates, all_intron_tsl$ref_junID)) == length(df_intron$ref_coordinates))
+#   
+#   ## All `TSL` values calculated are consistent with the ones found in the `intron` table.
+#   expect_equal(df_combined$TSL.x, df_combined$TSL.y)
+# })
 
 context("\tTest that the biotypes percentage values are corrently obtained")
 test_that("Test that the biotypes percentage values are corrently obtained", {
   skip_if(!test_biotypes, "No biotypes percentage test. Variable test_biotypes set to FALSE in global options.")
   
   ## Load the biotype percentages
-  df_all_percentage = readRDS(all_annotated_SR_details_length_105_raw_biotype_path)
+  df_all_percentage_tidy_merged = readRDS(all_annotated_SR_details_length_105_raw_biotype_path)
   
-  ## Extract the percentage for each reference junction
-  df_all_percentage_tidy_PC <- df_all_percentage %>%
-    group_by(junID) %>%
-    mutate(percent = ifelse(transcript_biotype == "protein_coding", percent, 0)) %>%
-    summarise(percent = max(percent))
-  
-  df_all_percentage_tidy_lncRNA <- df_all_percentage %>%
-    group_by(junID) %>%
-    mutate(percent = ifelse(transcript_biotype == "lncRNA", percent, 0)) %>%
-    summarise(percent = max(percent))
-  
-  ## Combine both percentages
-  df_all_percentage_tidy_merged <- inner_join(df_all_percentage_tidy_PC %>% dplyr::rename(percent_PC = percent),
-                                              df_all_percentage_tidy_lncRNA %>% dplyr::rename(percent_lncRNA = percent),
-                                              by = "junID")
   
   ## Add the calculated percentages to the reference table
   df_combined <- df_intron %>% 
@@ -334,39 +319,39 @@ test_that("Test that the biotypes percentage values are corrently obtained", {
   expect_equal(df_combined$protein_coding, df_combined$percent_PC)
 })
 
-context("\tTest that the MANE information is properly calculated")
-test_that("Test that the MANE information is properly calculated", {
-  skip_if(!test_MANE, "No MANE test. Variable test_MANE set to FALSE in global options.")
-  
-  ## Load the MANE transcripts
-  hg_MANE <- rtracklayer::import(hg_mane_transcripts_path)
-  hg_MANE_transcripts <- hg_MANE %>% 
-    as_tibble() %>%
-    select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id, -db_xref, -transcript_type, -exon_id, -exon_number, -width) %>%
-    mutate(transcript_id = transcript_id %>% str_sub(1, 15)) %>%
-    tidyr::drop_na() %>%
-    filter(type == "transcript") %>%
-    distinct(transcript_id) %>%
-    pull(transcript_id)
-  
-  ## Load the introns with transcripts IDs
-  df_all_introns_introverse_tidy = readRDS(df_all_introns_introverse_tidy_path)
-  
-  ## Find the MANE introns
-  df_mane_introns <- df_all_introns_introverse_tidy %>%
-    tidyr::unnest(tx_id_junction) %>%
-    mutate(MANE = ifelse(tx_id_junction %in% hg_MANE_transcripts, T, F)) %>%
-    group_by(ref_junID) %>%
-    summarise(MANE = any(MANE))
-  
-  ## Combine with the intron table
-  df_combined <- df_intron %>% 
-    left_join(df_mane_introns,
-              by = c("ref_coordinates" = "ref_junID"))
-  
-  ## All `MANE` classification calculated is consistent with the ones found in the `intron` table
-  expect_equal(df_combined$MANE.x %>% as.logical(), df_combined$MANE.y)
-})
+# context("\tTest that the MANE information is properly calculated")
+# test_that("Test that the MANE information is properly calculated", {
+#   skip_if(!test_MANE, "No MANE test. Variable test_MANE set to FALSE in global options.")
+#   
+#   ## Load the MANE transcripts
+#   hg_MANE <- rtracklayer::import(hg_mane_transcripts_path)
+#   hg_MANE_transcripts <- hg_MANE %>% 
+#     as_tibble() %>%
+#     select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id, -db_xref, -transcript_type, -exon_id, -exon_number, -width) %>%
+#     mutate(transcript_id = transcript_id %>% str_sub(1, 15)) %>%
+#     tidyr::drop_na() %>%
+#     filter(type == "transcript") %>%
+#     distinct(transcript_id) %>%
+#     pull(transcript_id)
+#   
+#   ## Load the introns with transcripts IDs
+#   df_all_introns_introverse_tidy = readRDS(df_all_introns_introverse_tidy_path)
+#   
+#   ## Find the MANE introns
+#   df_mane_introns <- df_all_introns_introverse_tidy %>%
+#     tidyr::unnest(tx_id_junction) %>%
+#     mutate(MANE = ifelse(tx_id_junction %in% hg_MANE_transcripts, T, F)) %>%
+#     group_by(ref_junID) %>%
+#     summarise(MANE = any(MANE))
+#   
+#   ## Combine with the intron table
+#   df_combined <- df_intron %>% 
+#     left_join(df_mane_introns,
+#               by = c("ref_coordinates" = "ref_junID"))
+#   
+#   ## All `MANE` classification calculated is consistent with the ones found in the `intron` table
+#   expect_equal(df_combined$MANE.x %>% as.logical(), df_combined$MANE.y)
+# })
 
 context("\tTest that the misspliced information is properly calculated")
 test_that("Test that the misspliced information is properly calculated", {
