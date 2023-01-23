@@ -19,7 +19,6 @@ main_project <- "splicing"
 #                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
 getwd()
 database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
-dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
 database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
 
 
@@ -34,6 +33,10 @@ all_projects <- df_metadata$SRA_project %>% unique
 all_projects %>% length() %>% print()
 
 
+get_mode <- function(data) {
+  uniqv <- unique(data)
+  uniqv[which.max(tabulate(match(data, uniqv)))]
+}
 
 
 ########################################
@@ -43,88 +46,7 @@ all_projects %>% length() %>% print()
 
 ## SECTION 1 ---------------------------------------------
 
-get_junc_length <- function() {
-  
-  
-  tables <- dbListTables(con)
-  tables
-  
-  query <- paste0("SELECT * from 'intron'")
-  db_introns <- dbGetQuery(con, query) %>% as_tibble()
-  db_introns %>% distinct(ref_junID) %>% nrow()
-  db_introns %>%
-    dplyr::count(misspliced)
-  
-  
-  query <- paste0("SELECT * from 'novel'")
-  db_novel <- dbGetQuery(con, query) %>% as_tibble()
-  db_novel %>% distinct(novel_junID) %>% nrow()
-  db_novel %>% dplyr::count(novel_type)
-  
-  
-  
-  ## HISTOGRAM PLOT
-  df_all_lengths_tidy <- rbind(db_introns %>%
-                                 dplyr::select(length = ref_length) %>%
-                                 mutate(type = "annotated intron"),
-                               db_novel %>%
-                                 dplyr::select(length = novel_length) %>%
-                                 mutate(type = "novel junction"))
-   
-  
-  get_mode( df_all_lengths_tidy %>%
-             filter(type == "annotated intron") %>%
-             pull(length) )
-  df_all_lengths_tidy %>%
-    filter(type == "annotated intron") %>%
-    pull(length) %>% mean()
-  
-  
-  df_all_lengths_tidy$type = factor( df_all_lengths_tidy$type, 
-                                       levels = c( "novel junction", "annotated intron" ) )
-  
-  
-  ggplot(data = df_all_lengths_tidy %>%
-           drop_na() %>%
-           filter(length <= 200)) + 
-    geom_count(aes(x = length, 
-                       colour = type), 
-                   #dplyr::mutate(df_all_lengths, z = FALSE), 
-                   alpha = 0.7,
-               stat = "count",
-                   position = "identity") +
-    #geom_histogram(aes(x = length, fill = type), binwidth = 5, 
-    #               dplyr::mutate(df_all_lengths, z = TRUE), 
-    #               alpha = 0.7, position = "identity") +
-    # ggforce::facet_zoom(xlim = c(0, 200),
-    #                    ylim = c(0, 710000),
-    #                    zoom.data = z, horizontal = FALSE) +
-    xlim(c(0,200))+
-    ## ggtitle(paste0("Length of the annotated, partially unannotated and completely unannotated junctions.\nAll samples used - ", tissue)) +
-    xlab("Implied intron length (in bp)") +
-    ylab("Number of unique junctions") +
-    theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12")) +
-    guides(colour = guide_legend(title = "Split Reads Category: ",
-                               ncol = 2,
-                               nrow = 1)) +
-    scale_colour_manual(values = c("#661100", "#009E73"), 
-                      name = "Category",
-                      breaks = c("annotated intron", "novel junction"),
-                      labels = c("annotated intron", "novel junctions")) +
-    theme(legend.position = "top",
-          legend.text = element_text(size = 11)) %>%
-    return()
-  
-  ## Save plot
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project,"/figures/junction_length")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-}
+
 
 get_database_stats <- function() {
   
@@ -146,6 +68,7 @@ get_database_stats <- function() {
     break;
   }
   
+  
   db_metadata %>%
     dplyr::count(cluster) %>%
     print(n = 50)
@@ -161,15 +84,39 @@ get_database_stats <- function() {
     dplyr::count(transcript_id)
   
   
+  
+  
   query <- paste0("SELECT * from 'novel'")
   novel <- dbGetQuery(con, query) 
+  
+  
+  
+  ## Novel junctions exceed in X fold to annotated introns
+  (db_novel %>% distinct(novel_junID) %>% nrow()) / (db_introns %>% distinct(ref_junID) %>% nrow())
+  
+  ## Percentage of mis-spliced introns
+  ((db_introns %>%
+      dplyr::count(misspliced) %>%
+      filter(misspliced == 1) %>%
+      pull(n)) * 100 ) /
+  (db_introns %>% distinct(ref_junID) %>% nrow()) 
+  
+  ## Collectively, we detected X novel junctions
   novel %>% distinct(novel_junID) %>% nrow()
-  novel %>% dplyr::count(novel_type)
+  
+  
+  ## equating to 12 novel junctions per an annotated junction.
+  (novel %>% distinct(novel_junID) %>% nrow()) / (db_introns %>%
+                                                  dplyr::count(misspliced) %>%
+                                                  filter(misspliced == 1) %>%
+                                                  pull(n))
   
   
 }
 
-get_contamination_rates_all_tissues <- function (all_tissues = T) {
+
+
+get_contamination_rates_all_tissues <- function () {
 
   
   #############################
@@ -181,11 +128,10 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
-  if ( !file.exists( paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                            main_project, "/results/contamination_rates.rds") )) {
+  if ( !file.exists( paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/contamination_rates.rds") )) {
     
     
-    df_contamination <- map_df(all_projects, function(project_id) {
+    df_contamination <- map_df(all_projects[1:3], function(project_id) {
       
       # project_id <- all_projects[1]
       # project_id <- all_projects[12]
@@ -193,20 +139,14 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
       
       print(paste0(Sys.time(), " - ", project_id))
       
+      all_clusters <- df_metadata %>%
+        filter(SRA_project == project_id) %>%
+        distinct(cluster) %>%
+        pull()
       
-      if (all_tissues) {
-        all_clusters <- df_metadata %>%
-          filter(SRA_project == project_id) %>%
-          distinct(cluster) %>%
-          pull()
-        versions <- c("97")
-        dates <- c("26-May-2019")
-      } else {
-        all_clusters <- "Brain - Frontal Cortex (BA9)"
-        versions <- c("76", "81", "90", "97", "104")
-        dates <- c("18-Jul-2014", "07-Jul-2015", "28-Jul-2017", "26-May-2019", "19-Mar-2021")
-      }
-      
+      versions <- c("97")
+      dates <- c("26-May-2019")
+
       map_df(all_clusters, function(cluster) {
         
         # cluster <- all_clusters[1]
@@ -217,26 +157,28 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
           # version <- versions[1]
           print(paste0("v", version))
           
-          if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3-results/",
-                                 project_id, "/v", version, "/", main_project, "_project/raw_data/",
-                                 project_id, "_", cluster, "_all_split_reads_sample_tidy.rds"))) {
+          if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/",
+                                 project_id, "/v", version, "/", main_project, "/base_data/",
+                                 project_id, "_", cluster, "_all_split_reads.rds"))) {
             
-            data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3-results/",
-                               project_id, "/v", version, "/", main_project, "_project/raw_data/",
-                               project_id, "_", cluster, "_all_split_reads_sample_tidy.rds")
+            data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/",
+                               project_id, "/v", version, "/", main_project, "/base_data/",
+                               project_id, "_", cluster, "_all_split_reads.rds")
             
             ## ENSEMBL v97
             df_old <-  readRDS(file = data_old) %>%
               as_tibble()
+            
             db_introns_old <- df_old %>% 
               filter(type == "annotated")
+            
             db_novel_old <- df_old %>%
               filter(type %in% c("novel_donor", "novel_acceptor"))
             
             ## ENSEMBL v105
-            df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3-results/",
-                                            project_id, "/v105/", main_project, "_project/raw_data/",
-                                            project_id, "_", cluster, "_all_split_reads_sample_tidy.rds")) %>%
+            df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/",
+                                            project_id, "/v105/", main_project, "/base_data/",
+                                            project_id, "_", cluster, "_all_split_reads.rds")) %>%
               as_tibble()
             db_introns_new <- df_new %>%
               filter(type == "annotated")
@@ -265,19 +207,8 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
             
             label <- NULL
             
-            if (!all_tissues) {
-              if (version == "76") {
-                label <- paste0("Ensembl_v", version, " (", dates[1], ")")
-              } else if (version == "81") {
-                label <- paste0("Ensembl_v", version, " (", dates[2], ")")
-              } else if (version == "90") {
-                label <- paste0("Ensembl_v", version, " (", dates[3], ")")
-              } else {
-                label <- paste0("Ensembl_v", version, " (", dates[4], ")")
-              } 
-            } else {
-              label <- paste0("Ensembl_v", version, " (", dates, ")")
-            }
+            label <- paste0("Ensembl_v", version, " (", dates, ")")
+            
             
             (in_annotation %>% nrow()) / (in_annotation %>% nrow() +
                                                   keep_annotation %>% nrow()) * 100
@@ -295,16 +226,14 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
     })
     
     
-    contamination_path <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                                 main_project, "/results/contamination_rates.rds")
+    contamination_path <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/")
     dir.create(file.path(contamination_path), recursive = TRUE, showWarnings = T)
     saveRDS(object = df_contamination,
             file = paste0(contamination_path, "/contamination_rates.rds"))
     
     
   } else {
-    df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                                              main_project, "/results/contamination_rates.rds"))
+    df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/contamination_rates.rds"))
   }
   
   
@@ -353,8 +282,10 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
     guides(fill = guide_legend(title = NULL, ncol = 1, nrow = 2)) %>%
     return()
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/contamination_rates_all_tissues")
+  figures_path <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper/figures/")
+  dir.create(file.path(contamination_path), recursive = TRUE, showWarnings = T)
+  file_name <- paste0(figures_path, "/contamination_rates_all_tissues")
+  
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -373,7 +304,7 @@ get_contamination_rates_all_tissues <- function (all_tissues = T) {
   gc()
 }
 
-get_contamination_rates_FCTX <- function (all_tissues = F) {
+get_contamination_rates_FCTX <- function () {
   
   #############################
   ## CONNECT TO THE DATABASE
@@ -388,24 +319,23 @@ get_contamination_rates_FCTX <- function (all_tissues = F) {
   versions <- c("76", "81", "90", "97", "104")
   dates <- c("Jul-2014", "Jul-2015", "Jul-2017", "May-2019", "Mar-2021")
   
-  if ( !file.exists( paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
-                            project_id, "/v105/", main_project, 
-                            "_project/results/contamination/contamination_rates.rds") ) ) {
+  if ( !file.exists( paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
+                            project_id, "/contamination_rates.rds") ) ) {
     
-    df_contamination <- map_df(versions, function(version) {
+    df_contamination <- map_df(versions, function(gtf_version) {
           
       # version <- versions[1]
-      print(paste0("v", version))
+      print(paste0("v", gtf_version))
       
-      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
-                             project_id, "/v", version, "/", main_project, "_project/raw_data/",
-                             project_id, "_", cluster, "_all_split_reads_sample_tidy.rds"))) {
+      if ( file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
+                              project_id, "/v", gtf_version, "/", main_project, "/base_data/",
+                              project_id, "_", cluster, "_all_split_reads.rds")) ) {
         
-        data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
-                           project_id, "/v", version, "/", main_project, "_project/raw_data/",
-                           project_id, "_", cluster, "_all_split_reads_sample_tidy.rds")
+        data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
+                           project_id, "/v", gtf_version, "/", main_project, "/base_data/",
+                           project_id, "_", cluster, "_all_split_reads.rds")
         
-        ## ENSEMBL v97
+        ## ENSEMBL old
         df_old <-  readRDS(file = data_old) %>%
           as_tibble()
         db_introns_old <- df_old %>% 
@@ -414,10 +344,10 @@ get_contamination_rates_FCTX <- function (all_tissues = F) {
           filter(type %in% c("novel_donor", "novel_acceptor"))
         
         ## ENSEMBL v105
-        df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
-                                        project_id, "/v105/", main_project, "_project/raw_data/",
-                                        project_id, "_", cluster, "_all_split_reads_sample_tidy.rds")) %>%
-          as_tibble()
+        df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
+                                        project_id, "/v105/", main_project, "/base_data/",
+                                        project_id, "_", cluster, "_all_split_reads.rds") ) %>% as_tibble()
+        
         db_introns_new <- df_new %>%
           filter(type == "annotated")
         db_novel_new <- df_new %>%
@@ -428,29 +358,28 @@ get_contamination_rates_FCTX <- function (all_tissues = F) {
         rm(df_new)
         
         
-        in_annotation <- db_introns_new %>%
-          filter(junID %in% db_novel_old$junID) %>% 
+        in_annotation <- db_novel_old %>%
+          filter(junID %in% db_introns_new$junID) %>% 
           distinct(junID, .keep_all = T)
         in_annotation %>% nrow() %>% print()
         
-        out_annotation <- db_novel_new %>%
-          filter(junID %in% db_introns_old$junID) %>% 
+        out_annotation <- db_introns_old %>%
+          filter(!(junID %in% db_introns_new$junID)) %>% 
           distinct(junID, .keep_all = T) 
         out_annotation %>% nrow() %>% print()
         
         label <- NULL
-        
      
-        if (version == "76") {
-          label <- paste0("Ensembl v", version, "\n(", dates[1], ")")
-        } else if (version == "81") {
-          label <- paste0("Ensembl v", version, "\n(", dates[2], ")")
-        } else if (version == "90") {
-          label <- paste0("Ensembl v", version, "\n(", dates[3], ")")
-        } else if (version == "97") {
-          label <- paste0("Ensembl v", version, "\n(", dates[4], ")")
+        if (gtf_version == "76") {
+          label <- paste0("Ensembl v", gtf_version, "\n(", dates[1], ")")
+        } else if (gtf_version == "81") {
+          label <- paste0("Ensembl v", gtf_version, "\n(", dates[2], ")")
+        } else if (gtf_version == "90") {
+          label <- paste0("Ensembl v", gtf_version, "\n(", dates[3], ")")
+        } else if (gtf_version == "97") {
+          label <- paste0("Ensembl v", gtf_version, "\n(", dates[4], ")")
         } else {
-          label <- paste0("Ensembl v", version, "\n(", dates[5], ")")
+          label <- paste0("Ensembl v", gtf_version, "\n(", dates[5], ")")
         }
         
         
@@ -466,17 +395,15 @@ get_contamination_rates_FCTX <- function (all_tissues = F) {
     })
     
     
-    contamination_path <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
-                                 project_id, "/v105/", main_project, "_project/results/contamination")
-    dir.create(file.path(contamination_path), recursive = TRUE, showWarnings = T)
+    contamination_path <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
+                                 project_id, "/")
     saveRDS(object = df_contamination,
             file = paste0(contamination_path, "/contamination_rates.rds"))
     
     
   } else {
-    df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", 
-                                              project_id, "/v105/", main_project, 
-                                              "_project/results/contamination/contamination_rates.rds"))
+    df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
+                                              project_id, "/v105/", main_project, "/contamination_rates.rds") )
   }
   
   
@@ -1908,6 +1835,90 @@ get_maxentscan_score <- function() {
  
   df_delta_3ss$MES %>% min
   df_delta_3ss$MES %>% max
+  
+}
+
+get_junc_length <- function() {
+  
+  
+  tables <- dbListTables(con)
+  tables
+  
+  query <- paste0("SELECT * from 'intron'")
+  db_introns <- dbGetQuery(con, query) %>% as_tibble()
+  db_introns %>% distinct(ref_junID) %>% nrow()
+  db_introns %>%
+    dplyr::count(misspliced)
+  
+  
+  query <- paste0("SELECT * from 'novel'")
+  db_novel <- dbGetQuery(con, query) %>% as_tibble()
+  db_novel %>% distinct(novel_junID) %>% nrow()
+  db_novel %>% dplyr::count(novel_type)
+  
+  
+  
+  
+  ## HISTOGRAM PLOT
+  df_all_lengths_tidy <- rbind(db_introns %>%
+                                 dplyr::select(length = ref_length) %>%
+                                 mutate(type = "annotated intron"),
+                               db_novel %>%
+                                 dplyr::select(length = novel_length) %>%
+                                 mutate(type = "novel junction"))
+  
+  
+  get_mode( df_all_lengths_tidy %>%
+              filter(type == "annotated intron") %>%
+              pull(length) )
+  df_all_lengths_tidy %>%
+    filter(type == "annotated intron") %>%
+    pull(length) %>% mean()
+  
+  
+  df_all_lengths_tidy$type = factor( df_all_lengths_tidy$type, 
+                                     levels = c( "novel junction", "annotated intron" ) )
+  
+  
+  ggplot(data = df_all_lengths_tidy %>%
+           drop_na() %>%
+           filter(length <= 200)) + 
+    geom_count(aes(x = length, 
+                   colour = type), 
+               #dplyr::mutate(df_all_lengths, z = FALSE), 
+               alpha = 0.7,
+               stat = "count",
+               position = "identity") +
+    #geom_histogram(aes(x = length, fill = type), binwidth = 5, 
+    #               dplyr::mutate(df_all_lengths, z = TRUE), 
+    #               alpha = 0.7, position = "identity") +
+    # ggforce::facet_zoom(xlim = c(0, 200),
+    #                    ylim = c(0, 710000),
+    #                    zoom.data = z, horizontal = FALSE) +
+    xlim(c(0,200))+
+    ## ggtitle(paste0("Length of the annotated, partially unannotated and completely unannotated junctions.\nAll samples used - ", tissue)) +
+    xlab("Implied intron length (in bp)") +
+    ylab("Number of unique junctions") +
+    theme_light() +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12")) +
+    guides(colour = guide_legend(title = "Split Reads Category: ",
+                                 ncol = 2,
+                                 nrow = 1)) +
+    scale_colour_manual(values = c("#661100", "#009E73"), 
+                        name = "Category",
+                        breaks = c("annotated intron", "novel junction"),
+                        labels = c("annotated intron", "novel junctions")) +
+    theme(legend.position = "top",
+          legend.text = element_text(size = 11)) %>%
+    return()
+  
+  ## Save plot
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
+                      main_project,"/figures/junction_length")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
 }
 

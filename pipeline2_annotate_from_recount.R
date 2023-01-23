@@ -53,10 +53,7 @@ library(GenomicRanges)
 
 
 
-get_mode <- function(data) {
-  uniqv <- unique(data)
-  uniqv[which.max(tabulate(match(data, uniqv)))]
-}
+
 
 
 

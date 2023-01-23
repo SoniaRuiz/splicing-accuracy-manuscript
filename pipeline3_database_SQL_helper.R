@@ -320,6 +320,69 @@ remove_MT_genes <- function(cluster,
   
 }
 
+annotate_contamination_rates <- function(gtf_versions,
+                                         splicing_projects) {
+  
+  gtf_versions <- c("76", "81", "90", "104")
+  splicing_projects <- "BRAIN"
+  # gtf_versions <- c("97")
+  
+  for (gtf_version in gtf_versions) {
+    
+    # gtf_version <- gtf_versions[1]
+    
+    ## re-annotate them
+    if ( file.exists(paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")) ) {
+      gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")
+    } else {
+      gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".gtf")
+    }
+    
+    edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+    edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+    
+    ## Per each project
+    for (project_id in splicing_projects) {
+      
+      # project_id <- splicing_projects[1]
+      
+      folder_results <- paste0(getwd(), "/results/", project_id, "/v105/", main_project, "/base_data/")
+      
+      all_clusters <- readRDS(file = paste0(folder_results, "/", project_id, "_clusters_used.rds"))
+      
+      
+      ## Per each cluster
+      for ( cluster_id in all_clusters[6] ) {
+        
+        # cluster_id <- all_clusters[1]
+        
+        ## get the QC split reads
+        all_split_reads <- readRDS(file = paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds"))
+        
+        
+        
+        
+        all_split_reads_details_w_symbol <- dasper::junction_annot(junctions = all_split_reads %>%
+                                                                     dplyr::select(junID, seqnames, start, end, strand) %>%
+                                                                     GRanges(), 
+                                                                   ref = edb)
+        
+        
+        folder_path <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/")
+        dir.create(file.path(folder_path), recursive = TRUE, showWarnings = T)
+        saveRDS(object = all_split_reads_details_w_symbol,
+                file = paste0(folder_path, "/", project_id, "_", cluster_id, "_all_split_reads.rds") )
+      }
+      
+    }
+    
+    rm(list = ls(envir = .GlobalEnv), envir = .GlobalEnv)
+    gc()
+    
+  }
+  
+}
+
 
 #################################################################
 ## SQL HELPER
@@ -767,8 +830,6 @@ generate_transcript_biotype_percentage <- function(projects_used,
   gc()
   
 }
-
-
 
 
 generate_recount3_tpm <- function(projects_used,
