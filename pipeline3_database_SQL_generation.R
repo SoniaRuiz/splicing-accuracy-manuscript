@@ -3,55 +3,7 @@
 ## LOAD DATA DEPENDENCIES
 ##########################################
 
-# if (!exists("CNC_CDTS_CONS_gr")) {
-#   print("Loading the 'CNC_CDTS_CONS_gr' file...")
-#   load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
-#   print("'CNC_CDTS_CONS_gr' file loaded!")
-# } else {
-#   print("'CNC_CDTS_CONS_gr' file already loaded!")
-# }
-# 
-# ## GET INFO FROM MANE
-# if ( !exists("hg_mane_transcripts") ) {
-# 
-#   print("Loading the 'hg_MANE' file...")
-#   hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
-#                                               "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
-#   hg_MANE_tidy <- hg_MANE %>%
-#     as_tibble() %>%
-#     dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
-#                   -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
-#     mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
-#     drop_na()
-# 
-#   hg_mane_transcripts <- hg_MANE_tidy %>%
-#     dplyr::filter(type == "transcript") %>%
-#     distinct(transcript_id) %>%
-#     mutate(MANE = T)
-# } else {
-#   print("'hg_mane_transcripts' file already loaded!")
-# }
-# 
-# # GET INFO FROM THE HG38
-# if ( !exists("hg38_transcripts") ) {
-# 
-#   print("Loading the 'hg38' file...")
-# 
-#   if ( !exists("hg38") ) {
-#     hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
-#                                              "/Homo_sapiens.GRCh38.105.chr.gtf"))
-#   }
-# 
-#   hg38_transcripts <- hg38 %>%
-#     as_tibble() %>%
-#     dplyr::filter(type == "transcript") %>%
-#     dplyr::select(transcript_id, transcript_support_level) %>%
-#     mutate(transcript_support_level = str_sub(string = transcript_support_level,
-#                                               start = 1,
-#                                               end = 1))
-# } else {
-#   print("'hg38_transcripts' file already loaded!")
-# }
+
 
 
 ## Remove the tables -----------------------------------------------------------
@@ -119,11 +71,51 @@ create_metadata_table <- function(database_path,
         break;
       }
       
-      if (metadata %>% nrow() >= min_samples) {
+      if ( metadata %>% nrow() >= min_samples ) {
         
         
         #print(metadata$gtex.smtsd %>% unique())
         #print(metadata %>% distinct(gtex.sampid) %>% nrow())
+        if ( str_detect(string = main_project,pattern = "age") ) {
+          
+          for (age_cluster in (metadata$gtex.age %>% as.character())) {
+            
+            # age_cluster =  (metadata$gtex.age %>% as.character())[1]
+            print(age_cluster)
+            switch(age_cluster, 
+                   '20-29' = {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- "20-39"
+                   },
+                   '30-39' = {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- "20-39"
+                   },
+                   '40-49' = {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- "40-59"
+                   },
+                   '50-59' = {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- "40-59"
+                   },
+                   '60-69' = {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- "60-79"
+                   },
+                   '70-79' = {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- "60-79"
+                   },
+                   {
+                     indx <- which(metadata$gtex.age == age_cluster)
+                     metadata[indx, "gtex.smtsd"] <- NA
+                     print('not found')
+                   }
+            )
+          }
+        }
+        
         
         df_project_metadata <- data.frame(age = metadata$gtex.age %>% as.character(),
                                           rin = metadata$gtex.smrin %>% as.double(),
@@ -155,7 +147,7 @@ create_metadata_table <- function(database_path,
   if (df_metadata %>% 
       dplyr::count(cluster) %>%
       pull(n) %>% 
-      min() < 70) {
+      min() < 70 && main_project == "splicing") {
     print("ERROR! Minimum number of samples have not been considered!")
   }
   
@@ -178,7 +170,55 @@ create_master_tables <- function(database_path,
                                  gtf_version) {
   
   
+  if (!exists("CNC_CDTS_CONS_gr")) {
+    print("Loading the 'CNC_CDTS_CONS_gr' file...")
+    load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
+    print("'CNC_CDTS_CONS_gr' file loaded!")
+  } else {
+    print("'CNC_CDTS_CONS_gr' file already loaded!")
+  }
   
+  ## GET INFO FROM MANE
+  if ( !exists("hg_mane_transcripts") ) {
+    
+    print("Loading the 'hg_MANE' file...")
+    hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
+                                                "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
+    hg_MANE_tidy <- hg_MANE %>%
+      as_tibble() %>%
+      dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
+                    -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+      mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
+      drop_na()
+    
+    hg_mane_transcripts <- hg_MANE_tidy %>%
+      dplyr::filter(type == "transcript") %>%
+      distinct(transcript_id) %>%
+      mutate(MANE = T)
+  } else {
+    print("'hg_mane_transcripts' file already loaded!")
+  }
+  
+  # GET INFO FROM THE HG38
+  if ( !exists("hg38_transcripts") ) {
+    
+    print("Loading the 'hg38' file...")
+    
+    if ( !exists("hg38") ) {
+      hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
+                                               "/Homo_sapiens.GRCh38.105.chr.gtf"))
+    }
+    
+    hg38_transcripts <- hg38 %>%
+      as_tibble() %>%
+      dplyr::filter(type == "transcript") %>%
+      dplyr::select(transcript_id, transcript_support_level) %>%
+      mutate(transcript_support_level = str_sub(string = transcript_support_level,
+                                                start = 1,
+                                                end = 1))
+  } else {
+    print("'hg38_transcripts' file already loaded!")
+  }
   
   ##########################################
   ## LOAD AND TIDY THE PAIR-WISE DISTANCES
@@ -276,8 +316,7 @@ create_master_tables <- function(database_path,
   
   saveRDS(object = df_introns_introverse %>%
             distinct(ref_junID, .keep_all = T),
-          file = paste0(getwd(), "/database/v", gtf_version, "/",
-                        main_project, "/df_all_introns_database.rds"))
+          file = paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/df_all_introns_database.rds"))
   
   
   
@@ -585,6 +624,7 @@ create_master_tables <- function(database_path,
     filter( !(ref_junID %in% df_all_introns_tidy$ref_junID) ) %>%
     distinct(novel_junID, .keep_all = T)
   
+  novel_jxn_minor_introns %>% nrow()
   
   ######################################
   ## INTRONS - POPULATE THE TABLE
@@ -647,7 +687,7 @@ create_master_tables <- function(database_path,
   
   
   
-  print("'Intron' table populated!")
+  print(paste0(Sys.time(), " - 'intron' table populated! ", df_all_introns_tidy_final %>% nrow(), " introns inserted."))
   
   ## CREATE INDEX TO SPEED UP QUERIES ------------------------------------------
   query <- paste0("CREATE UNIQUE INDEX 'index_intron' ON 'intron'(ref_junID)");
@@ -696,7 +736,6 @@ create_master_tables <- function(database_path,
   
   df_all_novels_tidy <- all_split_reads_tidy %>%
     mutate(novel_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
-  
   
   
   df_all_novels_tidy <- df_all_novels_tidy %>%
@@ -774,7 +813,8 @@ create_master_tables <- function(database_path,
                      value = df_all_novels_tidy_final)
   
   
-  print("'Novel' table populated!")
+  print(paste0(Sys.time(), " - 'novel' table populated - ", 
+               df_all_novels_tidy_final %>% nrow(), " junctions inserted!"))
   
 }
 
@@ -964,15 +1004,12 @@ create_cluster_tables <- function(database_path,
   
   for (project_id in all_projects) {
     
-    # project_id <- all_projects[15]
+    # project_id <- all_projects[1]
     
     print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
     
-    clusters <- df_metadata %>%
-      dplyr::filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
+    clusters <- readRDS(file = paste0(base_folder, "/base_data/", project_id, "_clusters_used.rds"))
     
     for (cluster_id in clusters) { 
       
@@ -1056,7 +1093,7 @@ create_cluster_tables <- function(database_path,
         df_novel_merged %>% as_tibble()
         
         
-        ## QC data - NO '*' within the ID ---------------------------------------------
+        ## TIDY data - NO '*' within the ID ---------------------------------------------
         df_novel_merged <- df_novel_merged %>% 
           rowwise() %>%
           mutate(ref_junID = ifelse(str_detect(string = ref_junID, pattern = "\\*"), 
@@ -1234,10 +1271,10 @@ create_cluster_tables <- function(database_path,
           ## GET THE GENE TPM
           #####################################
           
-          if ( file.exists( paste0(base_folder, "results/tpm/",
+          if ( file.exists( paste0(base_folder, "/tpm/",
                                    "/", project_id, "_", cluster_id, "_tpm.rds")) ) {
             
-            tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
+            tpm <- readRDS(file = paste0(base_folder, "/tpm/",
                                          "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
               dplyr::select(gene_id = gene, all_of(samples))
             
@@ -1266,6 +1303,7 @@ create_cluster_tables <- function(database_path,
               left_join(y = tpm_tidy,
                         by = c("transcript_id" = "transcript_id")) %>% 
               dplyr::rename(gene_tpm = tpm_median)
+            
           }
           
           
@@ -1320,7 +1358,7 @@ create_cluster_tables <- function(database_path,
                           novel_sum_counts INTEGER NOT NULL, 
                           MSR_D DOUBLE NOT NULL, 
                           MSR_A DOUBLE NOT NULL, 
-                          
+                          gene_tpm DOUBLE,
                           transcript_id INTEGER NOT NULL, 
                           FOREIGN KEY (ref_junID, novel_junID) REFERENCES novel (ref_junID, novel_junID),
                           FOREIGN KEY (transcript_id) REFERENCES 'transcript' (id))")
@@ -1525,7 +1563,7 @@ create_cluster_tables <- function(database_path,
                           MSR_D DOUBLE NOT NULL, 
                           MSR_A DOUBLE NOT NULL, 
                           ref_type TEXT NOT NULL, 
-                          
+                          gene_tpm DOUBLE,
                           transcript_id INTEGER NOT NULL,
                           FOREIGN KEY (ref_junID) REFERENCES intron (ref_junID),
                           FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")

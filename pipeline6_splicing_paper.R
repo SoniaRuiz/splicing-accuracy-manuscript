@@ -6,20 +6,21 @@ library(biomaRt)
 library(DBI)
 
 ####################################################
-## GENERATE SPLICING DATABASE ######################
+## CONNECT TO THE SPLICING DATABASE ################
 ####################################################
 
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper.R")
 
 ## CONNECT TO THE DATABASE ------------------------------
 
+setwd("~/PROJECTS/splicing-project-recount3/")
 gtf_version <- 105
 main_project <- "splicing"
 # database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
 #                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
 getwd()
-database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
-database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
+database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project,
+                          "/", main_project, ".sqlite")
 
 
 con <- dbConnect(RSQLite::SQLite(), database_path)
@@ -40,7 +41,8 @@ get_mode <- function(data) {
 
 
 ########################################
-## FUNCTIONS
+## FUNCTIONS - produce figures for the
+## paper
 ########################################
 
 
@@ -54,6 +56,8 @@ get_database_stats <- function() {
   query <- paste0("SELECT * from 'master'")
   db_metadata <- dbGetQuery(con, query) %>% as_tibble()
   
+  
+  ## Methods: number of samples by RIN number
   db_metadata %>% nrow() 
   
   db_metadata %>%
@@ -79,42 +83,80 @@ get_database_stats <- function() {
   db_introns %>% distinct(ref_junID) %>% nrow()
   db_introns %>%
     dplyr::count(misspliced)
-  
-  db_introns %>%
-    dplyr::count(transcript_id)
-  
-  
-  
-  
+ 
   query <- paste0("SELECT * from 'novel'")
-  novel <- dbGetQuery(con, query) 
+  db_novel <- dbGetQuery(con, query) 
   
-  
+  db_novel %>% 
+    dplyr::count(novel_type)
   
   ## Novel junctions exceed in X fold to annotated introns
   (db_novel %>% distinct(novel_junID) %>% nrow()) / (db_introns %>% distinct(ref_junID) %>% nrow())
   
   ## Percentage of mis-spliced introns
-  ((db_introns %>%
+  (((db_introns %>%
       dplyr::count(misspliced) %>%
       filter(misspliced == 1) %>%
       pull(n)) * 100 ) /
-  (db_introns %>% distinct(ref_junID) %>% nrow()) 
+  (db_introns %>% distinct(ref_junID) %>% nrow())) %>%
+    round(digits = 1)
+  
   
   ## Collectively, we detected X novel junctions
-  novel %>% distinct(novel_junID) %>% nrow()
+  db_novel %>% distinct(novel_junID) %>% nrow()
   
   
   ## equating to 12 novel junctions per an annotated junction.
-  (novel %>% distinct(novel_junID) %>% nrow()) / (db_introns %>%
+  ((novel %>% distinct(novel_junID) %>% nrow()) / (db_introns %>%
                                                   dplyr::count(misspliced) %>%
                                                   filter(misspliced == 1) %>%
-                                                  pull(n))
+                                                  pull(n))) %>%
+    round()
   
   
+  ## After accounting for sample number, we found that the highest numbers of unique 
+  ## novel junctions were identified in X tissue with the lowest numbers in Y tissue, 
+  
+  
+  db_metadata_tidy <- db_metadata %>%
+    dplyr::group_by(cluster) %>%
+    mutate(n=n()) %>%
+    dplyr::select(SRA_project,cluster,n) %>%
+    distinct( SRA_project, cluster, .keep_all = T)
+  
+  
+  df_novel_jxn_count <- map_df( (db_metadata_tidy$SRA_project %>% unique()), function (project_id)  {
+    
+    # project_id <- (db_metadata_tidy$SRA_project %>% unique())[1]
+    all_clusters <- db_metadata_tidy %>%
+      filter(SRA_project == project_id) %>%
+      pull(cluster) %>%
+      unique()
+    
+    map_df(all_clusters, function (cluster_id)  {
+      
+      # cluster_id <- all_clusters[1]
+      query <- paste0("SELECT COUNT(DISTINCT novel_junID) FROM '", cluster_id, "_", project_id, "_misspliced'")
+      novel_junctions <- dbGetQuery(con, query) %>% as.integer()
+      
+      return(data.frame(cluster = cluster_id,
+                        n_novel = novel_junctions))
+    })
+    
+  })
+    
+  
+  db_metadata_tidy %>%
+    inner_join(y = df_novel_jxn_count,
+               by = "cluster")
+    
+  
+  db_metadata_tidy %>%
+    inner_join(y = df_novel_jxn_count,
+               by = "cluster") %>% 
+    mutate(n_novel_sample = n_novel/n) %>% 
+    arrange(n_novel_sample)
 }
-
-
 
 get_contamination_rates_all_tissues <- function () {
 
@@ -127,11 +169,12 @@ get_contamination_rates_all_tissues <- function () {
   df_metadata <- dbGetQuery(con, query) 
   all_projects <- df_metadata$SRA_project %>% unique()
   
+  contamination_file <- paste0(getwd(), "/results/_paper/results/contamination_rates.rds")
   
-  if ( !file.exists( paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/contamination_rates.rds") )) {
+  if ( !file.exists(contamination_file) ) {
     
     
-    df_contamination <- map_df(all_projects[1:3], function(project_id) {
+    df_contamination <- map_df(all_projects, function(project_id) {
       
       # project_id <- all_projects[1]
       # project_id <- all_projects[12]
@@ -157,12 +200,10 @@ get_contamination_rates_all_tissues <- function () {
           # version <- versions[1]
           print(paste0("v", version))
           
-          if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/",
-                                 project_id, "/v", version, "/", main_project, "/base_data/",
+          if (file.exists(paste0(getwd(), "/results/", project_id, "/v", version, "/", main_project, "/base_data/",
                                  project_id, "_", cluster, "_all_split_reads.rds"))) {
             
-            data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/",
-                               project_id, "/v", version, "/", main_project, "/base_data/",
+            data_old <- paste0(getwd(), "/results/", project_id, "/v", version, "/", main_project, "/base_data/",
                                project_id, "_", cluster, "_all_split_reads.rds")
             
             ## ENSEMBL v97
@@ -176,8 +217,7 @@ get_contamination_rates_all_tissues <- function () {
               filter(type %in% c("novel_donor", "novel_acceptor"))
             
             ## ENSEMBL v105
-            df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/",
-                                            project_id, "/v105/", main_project, "/base_data/",
+            df_new <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v105/", main_project, "/base_data/",
                                             project_id, "_", cluster, "_all_split_reads.rds")) %>%
               as_tibble()
             db_introns_new <- df_new %>%
@@ -190,28 +230,30 @@ get_contamination_rates_all_tissues <- function () {
             rm(df_new)
             
             
-            in_annotation <- db_introns_new %>%
-              filter(junID %in% db_novel_old$junID) %>% 
+            # in_annotation <- db_introns_new %>%
+            #   filter(junID %in% db_novel_old$junID) %>% 
+            #   distinct(junID, .keep_all = T)
+            in_annotation <- db_novel_old %>%
+              filter(junID %in% db_introns_new$junID) %>% 
               distinct(junID, .keep_all = T)
             in_annotation %>% nrow() %>% print()
             
-            out_annotation <- db_novel_new %>%
-              filter(junID %in% db_introns_old$junID) %>% 
+            out_annotation <- db_introns_old %>%
+              filter( !(junID %in% db_introns_new$junID) ) %>% 
               distinct(junID, .keep_all = T) 
             out_annotation %>% nrow() %>% print()
             
-            keep_annotation <- db_novel_new %>%
-              filter(junID %in% db_novel_old$junID) %>% 
-              distinct(junID, .keep_all = T) 
-            keep_annotation %>% nrow() %>% print()
-            
-            label <- NULL
+            # keep_annotation <- db_novel_new %>%
+            #   filter(junID %in% db_novel_old$junID) %>% 
+            #   distinct(junID, .keep_all = T) 
+            # keep_annotation %>% nrow() %>% print()
+        
             
             label <- paste0("Ensembl_v", version, " (", dates, ")")
             
             
-            (in_annotation %>% nrow()) / (in_annotation %>% nrow() +
-                                                  keep_annotation %>% nrow()) * 100
+            # (in_annotation %>% nrow()) / (in_annotation %>% nrow() +
+            #                                       keep_annotation %>% nrow()) * 100
             
             return(data.frame(tissue = cluster,
                               contamination_rates = label,
@@ -226,14 +268,14 @@ get_contamination_rates_all_tissues <- function () {
     })
     
     
-    contamination_path <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/")
+    contamination_path <- paste0(getwd(), "/results/")
     dir.create(file.path(contamination_path), recursive = TRUE, showWarnings = T)
     saveRDS(object = df_contamination,
             file = paste0(contamination_path, "/contamination_rates.rds"))
     
     
   } else {
-    df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/contamination_rates.rds"))
+    df_contamination <- readRDS(file = contamination_file)
   }
   
   
@@ -253,52 +295,60 @@ get_contamination_rates_all_tissues <- function () {
   
   ## GETTING CONTAMINATION RATES - % OF INDIVIDUALS
   ggplot(data = df_contamination_tidy) +
-    #geom_bar(data = novel_104, mapping = aes(x = novel_p_individuals, y = ..count..), stat = "count", color = "black") +
     geom_bar(mapping = aes(x = tissue, y = prop, fill = type), 
              stat = "identity", position = "identity") + 
     coord_flip() +
     ylab("contamination rates (%)") +
     xlab(" ") +
-    #ggtitle(paste0("Contamination rates in Ensembl v97 vs v105")) +
-    #scale_y_continuous(breaks = c(0,0.3,0.6,0.9)) +
-    #scale_x_binned() +
-    #scale_x_continuous(breaks = c(10,20,30,40,50,60,70,80,90,100))+
-    scale_fill_manual(values = c("#440154FF","#FDE725FF"),
+    scale_fill_manual(values = c("#0D0887FF","#F79044FF"),
                       breaks = c("in_annotation", "out_annotation"),
                       labels = c("introns entring annotation", "introns exiting annotation")) +
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          axis.text.x = element_text(colour = "black", size = "10"),
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          axis.text.x = element_text(colour = "black", size = "12"),
           legend.position = "top",
-          axis.text.y = element_text(#color = colours,
-            #                          angle = 70, 
-            vjust = 0.5,
-            hjust = 1)
+          axis.text.y = element_text(vjust = 0.5,
+                                     hjust = 1)
     ) +
     guides(fill = guide_legend(title = NULL, ncol = 1, nrow = 2)) %>%
     return()
   
-  figures_path <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper/figures/")
-  dir.create(file.path(contamination_path), recursive = TRUE, showWarnings = T)
+  figures_path <- paste0(getwd(), "/results/_paper/figures/")
+  dir.create(file.path(figures_path), recursive = TRUE, showWarnings = T)
   file_name <- paste0(figures_path, "/contamination_rates_all_tissues")
   
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
+  
+  
+  #########
   ## Stats
+  #########
+  
+  
+  # We found that across all tissues, on average only 0.8% (1.22-0.54 %) 
+  ## of junctions defined as novel donor or acceptor junctions using Ensembl v97 
+  ## were reclassified as annotated junctions in v105
+  
   df_contamination_tidy %>%
-    group_by(type) %>%
+    filter(type == "in_annotation") %>% 
     mutate(average_prop = prop %>% mean()) %>%
-    ungroup() %>%
-    arrange(type, desc(prop)) %>%
-    print(n=90)
+    arrange(desc(prop))
   
   
-
+  ## Furthermore, these findings strongly suggest that the vast majority of novel donor 
+  ## and acceptor junctions are generated through mis-splicing events, with on average only 
+  ## < X% being explained by contamination with junctions originating from stable transcripts.
+  
+  df_contamination_tidy %>%
+    filter(type == "in_annotation") %>% 
+    mutate(average_prop = prop %>% mean())
+  
   
   rm(df_contamination)
   gc()
@@ -316,23 +366,22 @@ get_contamination_rates_FCTX <- function () {
   
   project_id <- "BRAIN"
   cluster <- "Brain - Frontal Cortex (BA9)"
-  versions <- c("76", "81", "90", "97", "104")
+  reference_gtf_version <- 105
+  gtf_versions <- c("76", "81", "90", "97", "104")
   dates <- c("Jul-2014", "Jul-2015", "Jul-2017", "May-2019", "Mar-2021")
   
-  if ( !file.exists( paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
-                            project_id, "/contamination_rates.rds") ) ) {
+  if ( !file.exists( paste0(getwd(), "/results/", project_id, "/v", reference_gtf_version, "/", main_project,
+                            "/", cluster, "_contamination_rates.rds") ) ) {
     
-    df_contamination <- map_df(versions, function(gtf_version) {
+    df_contamination <- map_df(gtf_versions, function(gtf_version) {
           
-      # version <- versions[1]
+      # version <- gtf_versions[1]
       print(paste0("v", gtf_version))
       
-      if ( file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
-                              project_id, "/v", gtf_version, "/", main_project, "/base_data/",
+      if ( file.exists(paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/",
                               project_id, "_", cluster, "_all_split_reads.rds")) ) {
         
-        data_old <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
-                           project_id, "/v", gtf_version, "/", main_project, "/base_data/",
+        data_old <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/",
                            project_id, "_", cluster, "_all_split_reads.rds")
         
         ## ENSEMBL old
@@ -344,8 +393,7 @@ get_contamination_rates_FCTX <- function () {
           filter(type %in% c("novel_donor", "novel_acceptor"))
         
         ## ENSEMBL v105
-        df_new <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
-                                        project_id, "/v105/", main_project, "/base_data/",
+        df_new <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v105/", main_project, "/base_data/",
                                         project_id, "_", cluster, "_all_split_reads.rds") ) %>% as_tibble()
         
         db_introns_new <- df_new %>%
@@ -395,15 +443,14 @@ get_contamination_rates_FCTX <- function () {
     })
     
     
-    contamination_path <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
-                                 project_id, "/")
-    saveRDS(object = df_contamination,
-            file = paste0(contamination_path, "/contamination_rates.rds"))
+    file_name <- paste0(getwd(), "/results/", project_id, "/v", reference_gtf_version, "/", main_project,
+                        "/", cluster, "_contamination_rates.rds")
+    saveRDS(object = df_contamination, file = file_name)
     
     
   } else {
-    df_contamination <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/results/", 
-                                              project_id, "/v105/", main_project, "/contamination_rates.rds") )
+    df_contamination <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", reference_gtf_version, "/", main_project,
+                                              "/", cluster, "_contamination_rates.rds"))
   }
   
   
@@ -432,19 +479,16 @@ get_contamination_rates_FCTX <- function () {
     #ggtitle(paste0("Brain - Frontal Cortex (BA9)\nContamination rates compared with Ensembl v105")) +
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
           legend.position = NULL,
-          axis.text.y = element_text(#angle = 50, 
-            vjust = 0.5,
-            hjust = 1)) +
+          axis.text.y = element_text(vjust = 0.5,hjust = 1)) +
     guides(fill = "none")
   
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/contamination_rates_FCTX_lineplot")
+  file_name <- paste0(getwd(), "/results/_paper/figures/contamination_rates_FCTX_lineplot")
   ggplot2::ggsave(paste0(file_name, ".svg"),  width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"),  width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -474,8 +518,7 @@ get_contamination_rates_FCTX <- function () {
             hjust = 1)) +
     guides(fill = "none")
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/contamination_rates_FCTX")
+  file_name <- paste0(getwd(), "/results/_paper/figures/contamination_rates_FCTX")
   ggplot2::ggsave(paste0(file_name, ".svg"),  width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"),  width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -492,11 +535,10 @@ get_unique_donor_acceptor_jxn <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/unique_donor_acceptor_jxn.rds")
+  file_name <- paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_jxn.rds")
 
  
-  if ( ! file.exists(file_name) )  {
+  if ( !file.exists(file_name) )  {
     
     df_proportions <- map_df(all_projects, function(project_id) {
       
@@ -578,14 +620,15 @@ get_unique_donor_acceptor_jxn <- function() {
     })
     
     ## Save results --------------------------------------------------------------------------
-    saveRDS(object = df_proportions,file = file_name)
+    figures_path <- paste0(getwd(), "/results/_paper/results/")
+    dir.create(file.path(figures_path), recursive = TRUE, showWarnings = T)
+    
+    saveRDS(object = df_proportions, file = file_name)
     write.csv(x = df_proportions,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                          main_project, "/results/unique_donor_acceptor_jxn.csv"),
+              file = paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_jxn.csv"),
               row.names = F)
   } else {
-    df_proportions <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                                            main_project, "/results/unique_donor_acceptor_jxn.rds"))
+    df_proportions <- read.csv(file = paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_jxn.csv"))
     
     df_proportions %>%
       arrange(desc(annotated_prop))
@@ -597,6 +640,22 @@ get_unique_donor_acceptor_jxn <- function() {
   ## STATS
   ###################
   
+  ## We found that novel donor and acceptor junctions consistently accounted for 
+  ## the majority of unique junctions detected (X%, range), 
+  
+  (df_proportions %>% 
+    pull(donor_prop) %>% 
+    mean() + df_proportions %>% 
+    pull(acceptor_prop) %>% 
+    mean()) * 100
+  
+  
+  df_proportions %>%
+    mutate(novel_prop = (donor_prop + acceptor_prop) * 100) %>%
+    arrange(desc(novel_prop))
+  
+  ## While we detected an average of 241,044 unique annotated junctions across all tissues, 
+  ## unique novel donor and acceptor junctions averaged 249,366 and 360,400 respectively. 
   
   df_proportions %>% 
     pull(annotated_junc) %>% 
@@ -612,6 +671,13 @@ get_unique_donor_acceptor_jxn <- function() {
   ######################
   ## VIOLIN PLOT
   ######################
+  
+  df_proportions <- df_proportions %>%
+    dplyr::select(tissue, 
+                  donor = donor_prop, 
+                  acceptor = acceptor_prop, 
+                  annotated_intron = annotated_prop) %>%
+    tidyr::gather(key = "type", value = "prop", -tissue ) 
   
   df_proportions_violin <- df_proportions %>%
     filter(type != "annotated_intron") %>%
@@ -633,22 +699,31 @@ get_unique_donor_acceptor_jxn <- function() {
           legend.position = "top") +
     scale_x_discrete( breaks = c( "acceptor", "donor"),# "annotated_intron"),
                         labels = c( "novel acceptor", "novel donor")) +
-    scale_fill_manual(values = c( "#4393c3", "#f4a582"),
+    scale_fill_manual(values = c("#440154FF","#35B779FF"),
                       breaks = c( "acceptor", "donor"),# "annotated_intron"),
                       labels = c( "novel acceptor", "novel donor")) + #, "annotated intron")) +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, 
-                               nrow = 1))
+                               nrow = 1))+
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.text.x = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          strip.text = element_text(colour = "black", size = "10"), 
+          legend.text = element_text(colour = "black", size = "10"),
+          plot.caption = element_text(colour = "black", size = "10"),
+          plot.title = element_text(colour = "black", size = "10"),
+          legend.title = element_text(colour = "black", size = "10"),
+          legend.position = "top") 
   
   
   
   ## Save the figure 3
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/percent_unique_donor_acceptor_violin")
+  file_name <- paste0(getwd(), "/results/_paper/figures/percent_unique_donor_acceptor_violin")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), 
-                  width = 183, height = 183, units = "mm", dpi = 300)
+                  width = 183, height = 150, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), 
-                  width = 183, height = 183, units = "mm", dpi = 300)
+                  width = 150, height = 150, units = "mm", dpi = 300)
   
   ######################
   ## BAR PLOT
@@ -725,10 +800,7 @@ get_unique_donor_acceptor_reads <- function() {
   df_metadata <- dbGetQuery(con, query) 
   all_projects <- df_metadata$SRA_project %>% unique()
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/unique_donor_acceptor_reads.rds")
-  
-
+  file_name <- paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_reads.rds")
   
   if ( !file.exists(file_name) )  {
      
@@ -838,20 +910,25 @@ get_unique_donor_acceptor_reads <- function() {
   ## SOME STATS
   ###################
   
+  ## we found that novel donor and acceptor junctions together accounted 
+  ## for only 0.3 – 0.4% of all junction reads whereas annotated junctions 
+  ## accounted for 99.4% - X% of junction reads across all tissues evaluated 
+  
   df_mean_counts %>%
     filter(type == "annotated") %>%
     pull(prop_counts ) %>% 
-    mean()
-  df_mean_counts %>%
-    filter(type == "acceptor") %>%
-    pull(prop_counts ) %>% 
-    mean()
-  df_mean_counts %>%
-    filter(type == "donor") %>%
-    pull(prop_counts ) %>% 
-    mean()
+    sort()
   
+  df_mean_counts %>%
+    filter(type != "annotated") %>%
+    group_by(tissue) %>%
+    mutate(sum_prop_counts = prop_counts %>% sum()) %>% 
+    ungroup() %>%
+    distinct(tissue, .keep_all = T) %>%
+    pull(sum_prop_counts) %>% 
+    sort()
   
+
   ######################
   ## VIOLIN PLOT
   ######################
@@ -877,17 +954,26 @@ get_unique_donor_acceptor_reads <- function() {
           legend.position = "top") +
     scale_x_discrete( breaks = c( "acceptor", "donor"),# "annotated_intron"),
                       labels = c( "novel acceptor", "novel donor")) +
-    scale_fill_manual(values = c( "#4393c3", "#f4a582"),
-                      breaks = c( "acceptor", "donor"),# "annotated_intron"),
-                      labels = c( "novel acceptor", "novel donor")) + #, "annotated intron")) +
+    scale_fill_manual(values = c("#440154FF","#35B779FF"),
+                    breaks = c( "acceptor", "donor"),# "annotated_intron"),
+                    labels = c( "novel acceptor", "novel donor")) + #, "annotated intron")) +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, 
-                               nrow = 1))
+                               nrow = 1))+
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.text.x = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          strip.text = element_text(colour = "black", size = "10"), 
+          legend.text = element_text(colour = "black", size = "10"),
+          plot.caption = element_text(colour = "black", size = "10"),
+          plot.title = element_text(colour = "black", size = "10"),
+          legend.title = element_text(colour = "black", size = "10"),
+          legend.position = "top") 
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/unique_donor_acceptor_reads_violin")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/unique_donor_acceptor_reads_violin")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 150, height = 150, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 150, height = 150, units = "mm", dpi = 300)
   
   #####################
   ## BAR PLOT
@@ -975,7 +1061,7 @@ get_mean_read_count_FTCX <- function() {
   db_novel <- dbGetQuery(con, query) %>% as_tibble()
   
   
-  df_read_count <- map_df(SRA_projects[-c(10,12)], function(project_id) {
+  df_read_count <- map_df(SRA_projects, function(project_id) {
     
     # project_id <- SRA_projects[1]
     
@@ -1031,12 +1117,468 @@ get_mean_read_count_FTCX <- function() {
   
   
   
-  write.csv(x = df_read_count,
-            file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                          main_project, "/results/df_read_count.csv"),
+  write.csv(x = df_read_count %>%
+              relocate(tissue),
+            file = paste0(getwd(), "/results/_paper/05_supplementary_data_read_count.csv"),
             row.names = F)
 
  
+  
+  ## Focusing on frontal cortex, we found that this equated to a median read count 
+  ## of 2,700 for annotated junctions with novel donor or acceptor events having a 
+  ## median read count of only 2 in both cases. 
+  
+  df_read_count %>%
+    filter(tissue == "Brain - Frontal Cortex (BA9)")
+  
+}
+
+get_maxentscan_score <- function() {
+  
+  
+  ############################
+  ## CONNECT TO THE DATABASE
+  ############################
+  
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) 
+  all_projects <- df_metadata$SRA_project %>% unique()
+  
+  
+  
+  file_name <- paste0(getwd(), "/results/_paper/results/df_mes.rds")
+  
+  if ( !file.exists(file_name) )  {
+    
+    df_mes <- map_df(all_projects, function(project_id) {
+      
+      #############################
+      ## GET THE CLUSTERS
+      #############################
+      
+      print(paste0(Sys.time(), " - ", project_id))
+      
+      # clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
+      #                                        project_id, "/raw_data/all_clusters_used.rds"))
+      
+      all_clusters <- df_metadata %>%
+        filter(SRA_project == project_id) %>%
+        distinct(cluster) %>%
+        pull()
+      
+      print(all_clusters)
+      
+      map_df(all_clusters, function(cluster_id) {
+        
+        ## Print the tissue
+        print(paste0(Sys.time(), " - ", cluster_id))
+        
+        samples <- df_metadata %>%
+          dplyr::count(cluster) %>%
+          filter(cluster == cluster_id) %>% 
+          pull(n)
+        
+        
+        ####################
+        ## GET THE INTRONS
+        ####################
+        
+        #query <- paste0("SELECT ref_junID, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+        #introns <- dbGetQuery(con, query) %>% as_tibble()
+        
+        query <- paste0("SELECT DISTINCT ref_junID, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
+        introns <- dbGetQuery(con, query) %>% as_tibble() #rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+        
+        query <- paste0("SELECT ref_junID, ref_ss5score, ref_ss3score FROM 'intron' WHERE ref_junID IN (",
+                        paste(introns$ref_junID, collapse = ","),")")
+        introns <- introns %>%
+          left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                    by = "ref_junID") %>% 
+          as_tibble() 
+        
+        
+        ###########################
+        ## GET THE NOVEL JUNCTIONS
+        ###########################
+        
+        query <- paste0("SELECT ref_junID, novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+        novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
+        
+        query <- paste0("SELECT novel_junID, novel_type, novel_ss5score, novel_ss3score FROM 'novel' WHERE novel_junID IN (", 
+                        paste(novel_junctions$novel_junID, collapse = ","), ")")
+        novel_junctions <- novel_junctions %>%
+          left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                    by = "novel_junID") %>% 
+          as_tibble() 
+        
+        
+        ###########################
+        ## MERGE THE DATA AND RETURN
+        ###########################
+        
+        df_merged <- introns %>% 
+          dplyr::select(ref_junID, ref_ss5score, ref_ss3score, ref_type) %>%
+          left_join(y = novel_junctions %>% 
+                      dplyr::select(ref_junID, novel_junID, 
+                                    novel_ss5score, novel_ss3score, 
+                                    novel_type),
+                    by = "ref_junID")  %>%
+          mutate(diff_ss5score = ref_ss5score - novel_ss5score,
+                 diff_ss3score = ref_ss3score - novel_ss3score,
+                 tissue = cluster_id)
+        
+        df_merged %>% return()
+        
+      })
+    })
+    
+    saveRDS(object = df_mes %>%
+              filter(ref_type != "never") %>%
+              distinct(novel_junID, .keep_all = T) %>% 
+              as_tibble(), file = file_name)
+    
+  } else {
+    df_mes <- readRDS(file = file_name) %>% as_tibble()
+  }
+  
+  
+  df_mes <- df_mes %>%
+    filter(ref_type != "never") %>%
+    distinct(novel_junID, .keep_all = T)
+  
+  
+  
+  #############################
+  ## COMBINED FIGURES 
+  ## MAXENTSCAN score & DISTANCES
+  #############################
+  
+  
+  ## ss5score ----------------------------------------------------------
+  
+  df_5ss <- df_mes %>% 
+    filter(novel_type == "novel_donor") %>%
+    dplyr::select(intron = ref_ss5score, novel_donor = novel_ss5score) %>%
+    gather(key = "junction_type", value = "ss5score")
+  
+  ss5plot <- ggplot(df_5ss, aes(ss5score, fill = junction_type)) +
+    geom_density(alpha = 0.8) +
+    ylim(c(0, 0.3)) +
+    xlim(c(-40, 20)) +
+    theme_light() +
+    scale_fill_manual(values = c("#A41F9AFF", "#EF7F4FFF"), 
+                      breaks=c("intron", "novel_donor"),
+                      labels=c("intron  ", "novel donor")) +
+    theme(axis.line = element_line(colour = "black" ),
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top") +
+    xlab("5' splice site MES score") +
+    guides(fill = guide_legend(title = element_blank(),
+                               ncol = 2, nrow = 1))
+  
+  ss5plot
+  file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss5plot")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  ## ss3score -----------------------------------------------------------
+  
+  df_3ss <- df_mes %>% 
+    filter(novel_type == "novel_acceptor") %>%
+    dplyr::select(intron = ref_ss3score, novel_acceptor = novel_ss3score) %>%
+    gather(key = "junction_type", value = "ss3score")
+  
+  ss3plot <- ggplot(df_3ss, 
+                    aes(ss3score, fill = junction_type)) +
+    geom_density(alpha = 0.8) +
+    ylim(c(0, 0.3)) +
+    xlim(c(-40, 20)) +
+    theme_light() +
+    scale_fill_manual(values = c("#A41F9AFF", "#0D0887FF"), 
+                      breaks = c("intron", "novel_acceptor"),
+                      labels = c("intron  ", "novel acceptor")) +
+    theme(axis.line = element_line(colour = "black" ),
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top") +
+    xlab("3' splice site MES score") +
+    guides(fill = guide_legend(title = element_blank(), ncol = 2, nrow = 1))
+  
+  
+  ss3plot
+  file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss3plot")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  ## COMBO
+  
+  ggpubr::ggarrange( ss5plot, 
+                     ss3plot, 
+                     labels = c("a", "b"),
+                     ncol = 2, nrow = 1)
+  file_name <- paste0(getwd(), "/results/_paper/figures/MES_combo_supplementary")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
+  
+  
+  ## Delta MES -----------------------------------------------------------
+  
+  
+  df_delta_5ss <- df_mes %>%
+    filter(novel_type == "novel_donor") %>% 
+    dplyr::select(diff_ss5score) %>%
+    tidyr::gather(key = "type", value = "MES") 
+  
+  
+  ## Plot
+  deltaplot5ss <- ggplot(data = df_delta_5ss) +
+    geom_density(mapping = aes(x = MES,
+                               fill = type)) +
+    geom_vline(xintercept = 0) +
+    xlab("Delta MaxEntScan 5'ss score") +
+    xlim(c(-40, 65)) +
+    ylim(c(0, 0.11)) +
+    theme_light() +
+    scale_color_viridis_d() +
+    scale_fill_manual(values =  c("#35B779FF"),
+                      breaks = c("diff_ss5score"),
+                      labels = c("Delta MES 5'ss")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
+  
+  deltaplot5ss
+  
+ 
+  df_delta_3ss <- df_mes %>%
+    filter(novel_type == "novel_acceptor") %>% 
+    dplyr::select(diff_ss3score) %>%
+    tidyr::gather(key = "type", value = "MES") 
+  
+  deltaplot3ss <- ggplot(data = df_delta_3ss) +
+    geom_density(mapping = aes(x = MES, fill = type)) +
+    geom_vline(xintercept = 0) +
+    xlab("Delta MaxEntScan 3'ss score") +
+    xlim(c(-40, 65)) +
+    ylim(c(0, 0.11)) +
+    theme_light() +
+    scale_color_viridis_d() +
+    scale_fill_manual(values =  c("#440154FF"),
+                      breaks = c("diff_ss3score"),
+                      labels = c("Delta MES 3'ss")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
+  
+  deltaplot3ss
+  
+  
+  
+  ##############
+  ## COMBO
+  ##############
+  
+  ggpubr::ggarrange( deltaplot5ss, 
+                     deltaplot3ss, 
+                     labels = c("a", "b"),
+                     ncol = 2, 
+                     nrow = 1)
+  file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_combo")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
+  
+  
+  ##############
+  ## STATS
+  ##############
+  
+  ## As would be expected, we found that the majority of novel 5’ and 3’ splice sites were 
+  ## weaker than the corresponding annotated site with 82.5% of novel 5’ 
+ 
+  
+  query <- paste0("SELECT * from 'novel'")
+  db_novel <- dbGetQuery(con, query) 
+  
+ 
+  ((df_mes %>% 
+    filter(novel_type == "novel_donor") %>%
+    dplyr::select(intron_MES = ref_ss5score, novel_donor_MES = novel_ss5score) %>%
+    mutate(MES_diff = intron_MES - novel_donor_MES) %>%
+    pull(MES_diff) %>% 
+    sign() %>% 
+    table() %>% as.data.frame() %>%
+    filter(. != -1) %>%
+    pull(Freq) %>%
+    sum) * 100) / ( db_novel %>% 
+                      dplyr::count(novel_type) %>%
+                      filter(novel_type == "novel_donor") %>%
+                      pull(n) )
+ 
+
+
+  
+  ## and 85.2% of novel 3’ sites having positive delta MES scores
+  
+  ((df_mes %>% 
+      filter(novel_type == "novel_acceptor") %>%
+      dplyr::select(intron_MES = ref_ss5score, novel_acceptor_MES = novel_ss3score) %>%
+      mutate(MES_diff = intron_MES - novel_acceptor_MES) %>%
+      pull(MES_diff) %>% 
+      sign() %>% 
+      table() %>% as.data.frame() %>%
+      filter(. != -1) %>%
+      pull(Freq) %>%
+      sum) * 100) / ( db_novel %>% 
+                        dplyr::count(novel_type) %>%
+                        filter(novel_type == "novel_acceptor") %>%
+                        pull(n) )
+  
+  
+  
+  ## 
+  
+  ## Interestingly, this analysis demonstrated that novel 5’ splice sites had a modal delta value which was very close to zero
+  
+  df_mes %>% 
+    filter(novel_type == "novel_donor") %>%
+    dplyr::select(intron_MES = ref_ss5score, novel_donor_MES = novel_ss5score) %>%
+    mutate(MES_diff = intron_MES - novel_donor_MES) %>%
+    pull(MES_diff) %>%
+    get_mode()
+  
+  df_mes %>% 
+    filter(novel_type == "novel_donor") %>%
+    dplyr::select(intron_MES = ref_ss5score, novel_donor_MES = novel_ss5score) %>%
+    mutate(MES_diff = intron_MES - novel_donor_MES) %>%
+    pull(MES_diff) %>%
+    summary()
+  
+  ((df_mes %>% 
+      filter(novel_type == "novel_donor") %>%
+      dplyr::select(intron_MES = ref_ss5score, novel_donor_MES = novel_ss5score) %>%
+      mutate(MES_diff = intron_MES - novel_donor_MES) %>%
+      pull(MES_diff) %>% 
+      sign() %>% 
+      table() %>% 
+      as.data.frame() %>%
+      filter(. == 0) %>%
+      pull(Freq)) * 100) / ( db_novel %>% 
+                        dplyr::count(novel_type) %>%
+                        filter(novel_type == "novel_donor") %>%
+                        pull(n) )
+  
+  
+  ## The modal delta value for novel 3’ splice sites was higher 
+  df_mes %>% 
+    filter(novel_type == "novel_acceptor") %>%
+    dplyr::select(intron_MES = ref_ss5score, novel_acceptor_MES = novel_ss3score) %>%
+    mutate(MES_diff = intron_MES - novel_acceptor_MES) %>%
+    pull(MES_diff) %>%
+    get_mode()
+  
+  df_mes %>% 
+    filter(novel_type == "novel_acceptor") %>%
+    dplyr::select(intron_MES = ref_ss5score, novel_acceptor_MES = novel_ss3score) %>%
+    mutate(MES_diff = intron_MES - novel_acceptor_MES) %>%
+    pull(MES_diff) %>%
+    summary()
+  
+  
+  ((df_mes %>% 
+      filter(novel_type == "novel_acceptor") %>%
+      dplyr::select(intron_MES = ref_ss5score, novel_acceptor_MES = novel_ss3score) %>%
+      mutate(MES_diff = intron_MES - novel_acceptor_MES) %>%
+      pull(MES_diff) %>% 
+      sign() %>% 
+      table() %>% 
+      as.data.frame() %>%
+      filter(. == 0) %>%
+      pull(Freq)) * 100) / ( db_novel %>% 
+                               dplyr::count(novel_type) %>%
+                               filter(novel_type == "novel_acceptor") %>%
+                               pull(n) )
+  
+  df_delta_3ss$MES %>% min
+  df_delta_3ss$MES %>% max
+  
+}
+
+get_modulo_fctx_PC <- function() {
+  
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) 
+  
+  
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
+  reference_gtf_version <- 105
+  
+
+  
+  query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (", paste(introns$novel_junID, collapse = ","),")")
+  introns <- introns %>%
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+               by = "novel_junID") %>% as_tibble() 
+  
+  
+  
+  df_novel_tidy <- introns %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " "))
+  
+  df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
+                                    levels = c("novel donor", "novel acceptor"))
+  
+  
+  ###############################
+  ## PROTEIN CODING
+  ###############################
+  
+  
+  query <- paste0("SELECT ref_junID, protein_coding, lncRNA FROM 'intron'")
+  df_master_introns <- dbGetQuery(con, query) %>% as_tibble()
+  
+  df_novel_tidy <- introns %>%
+    inner_join(df_master_introns,
+               by = "ref_junID") %>%
+    filter(protein_coding == 0) %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " "))
+  
+  df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
+                                    levels = c("novel donor", "novel acceptor"))
+
+  
+  ###############################
+  ## GET THE MODULO
+  ###############################
+  
+  df_novel_tidy %>%
+    mutate(modulo3 = abs(distance %% 3)) %>%
+    dplyr::count(modulo3) %>%
+    mutate(n_prop = n / (df_novel_tidy$novel_junID %>% unique() %>% length()))
+  
+  
+  
   
 }
 
@@ -1051,8 +1593,7 @@ get_modulo_basic_multiple_tissue <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
-  file_path <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/df_modulo_basic_tissues_100bpfilter.rds")
+  file_path <- paste0(getwd(), "/results/_paper/results/df_modulo_basic_tissues_100bpfilter.rds")
   
   if ( !file.exists(file_path) )  {
     
@@ -1077,9 +1618,6 @@ get_modulo_basic_multiple_tissue <- function() {
           filter(cluster == cluster_id) %>% 
           pull(n)
         
-        
-        
-        
         query <- paste0("SELECT novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
         introns <- dbGetQuery(con, query) %>% as_tibble()
         query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
@@ -1102,7 +1640,7 @@ get_modulo_basic_multiple_tissue <- function() {
         
         
         df_novel_tidy <- introns %>%
-          filter(abs(distance) <= 100) %>%
+          #filter(abs(distance) <= 100) %>%
           mutate(novel_type = str_replace(string = novel_type,
                                           pattern = "_",
                                           replacement = " ")) %>%
@@ -1133,7 +1671,7 @@ get_modulo_basic_multiple_tissue <- function() {
   
   
   ################
-  ## VIOLIN PLOT
+  ## DENSITY PLOT
   ################
   
   library(ggridges)
@@ -1143,7 +1681,7 @@ get_modulo_basic_multiple_tissue <- function() {
   
   ggplot(df_modulo_tissues, aes(x = freq, y = modulo, fill = modulo)) +
     geom_density_ridges_gradient() +
-    scale_fill_viridis_d(name = "Percentage Mod3:", option = "D") +
+    scale_fill_viridis_d(name = "Percentage Mod3:", option = "C") +
     #labs(title = 'Modulo3 of the distances to annotated splice sites')+
     ylab("Modulo3 of the distance") +
     xlab("Percentage of novel junctions") +
@@ -1165,8 +1703,7 @@ get_modulo_basic_multiple_tissue <- function() {
     guides(fill = guide_legend(title = "Modulo3 type: "))
   
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/modulo3_alltissues_density")
+  file_name <- paste0(getwd(), "/results/_paper/figures/modulo3_alltissues_density")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 80, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
   
@@ -1544,299 +2081,7 @@ get_modulo_complete_multiple_tissue <- function() {
   
 }
 
-get_maxentscan_score <- function() {
-  
-  ############################
-  ## CONNECT TO THE DATABASE
-  ############################
-  
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
-  all_projects <- df_metadata$SRA_project %>% unique()
-  
-  
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/df_mes.rds")
-  
-  if ( !file.exists(file_name) )  {
-    df_mes <- map_df(all_projects, function(project_id) {
-      
-      #############################
-      ## GET THE CLUSTERS
-      #############################
-      
-      print(paste0(Sys.time(), " - ", project_id))
-      
-      # clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
-      #                                        project_id, "/raw_data/all_clusters_used.rds"))
-      
-      all_clusters <- df_metadata %>%
-        filter(SRA_project == project_id) %>%
-        distinct(cluster) %>%
-        pull()
-      
-      print(all_clusters)
-      
-      map_df(all_clusters, function(cluster_id) {
-        
-        ## Print the tissue
-        print(paste0(Sys.time(), " - ", cluster_id))
-        
-        samples <- df_metadata %>%
-          dplyr::count(cluster) %>%
-          filter(cluster == cluster_id) %>% 
-          pull(n)
-        
-        
-        ####################
-        ## GET THE INTRONS
-        ####################
-        
-        #query <- paste0("SELECT ref_junID, ref_type FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
-        #introns <- dbGetQuery(con, query) %>% as_tibble()
-        
-        query <- paste0("SELECT DISTINCT ref_junID, ref_type FROM '", cluster_id, "_", project_id, "_misspliced'")
-        introns <- dbGetQuery(con, query) %>% as_tibble() #rbind(introns, dbGetQuery(con, query) %>% as_tibble())
-        
-        query <- paste0("SELECT ref_junID, ref_ss5score, ref_ss3score FROM 'intron' WHERE ref_junID IN (",
-                        paste(introns$ref_junID, collapse = ","),")")
-        introns <- introns %>%
-          left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                    by = "ref_junID") %>% 
-          as_tibble() 
-        
-        
-        ###########################
-        ## GET THE NOVEL JUNCTIONS
-        ###########################
-        
-        query <- paste0("SELECT ref_junID, novel_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
-        novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
-        
-        query <- paste0("SELECT novel_junID, novel_type, novel_ss5score, novel_ss3score FROM 'novel' WHERE novel_junID IN (", 
-                        paste(novel_junctions$novel_junID, collapse = ","), ")")
-        novel_junctions <- novel_junctions %>%
-          left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                    by = "novel_junID") %>% 
-          as_tibble() 
-        
-        
-        ###########################
-        ## MERGE THE DATA AND RETURN
-        ###########################
-        
-        df_merged <- introns %>% 
-          dplyr::select(ref_junID, ref_ss5score, ref_ss3score, ref_type) %>%
-          left_join(y = novel_junctions %>% 
-                      dplyr::select(ref_junID, novel_junID, 
-                                    novel_ss5score, novel_ss3score, 
-                                    novel_type),
-                    by = "ref_junID")  %>%
-          mutate(diff_ss5score = ref_ss5score - novel_ss5score,
-                 diff_ss3score = ref_ss3score - novel_ss3score,
-                 tissue = cluster_id)
-        
-        df_merged %>% return()
-        
-      })
-    })
-    saveRDS(object = df_mes %>% as_tibble(), file = file_name)
-  } else {
-    df_mes <- readRDS(file = file_name) %>% as_tibble()
-  }
-  
-  
-  df_mes <- df_mes %>%
-    filter(ref_type != "never") %>%
-    distinct(novel_junID, .keep_all = T)
-  
-  
-  
-  #############################
-  ## COMBINED FIGURES 
-  ## MAXENTSCAN score & DISTANCES
-  #############################
-  
-  
-  ## ss5score ----------------------------------------------------------
-  
-  df_5ss <- df_mes %>% 
-    filter(novel_type == "novel_donor") %>%
-    dplyr::select(intron = ref_ss5score, novel_donor = novel_ss5score) %>%
-    gather(key = "junction_type", value = "ss5score")
-  
-  ss5plot <- ggplot(df_5ss, aes(ss5score, fill = junction_type)) +
-    geom_density(alpha = 0.8) +
-    ylim(c(0, 0.3)) +
-    xlim(c(-40, 20)) +
-    theme_light() +
-    scale_fill_manual(values = c("#A41F9AFF", "#EF7F4FFF"), 
-                      breaks=c("intron", "novel_donor"),
-                      labels=c("intron  ", "novel donor")) +
-    theme(axis.line = element_line(colour = "black" ),
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top") +
-    xlab("5' splice site MES score") +
-    guides(fill = guide_legend(title = element_blank(),
-                               ncol = 2, nrow = 1))
-  
-  ss5plot
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/panel2_ss5plot")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  ## ss3score -----------------------------------------------------------
-  
-  df_3ss <- df_mes %>% 
-    filter(novel_type == "novel_acceptor") %>%
-    dplyr::select(intron = ref_ss3score, novel_acceptor = novel_ss3score) %>%
-    gather(key = "junction_type", value = "ss3score")
-  
-  ss3plot <- ggplot(df_3ss, 
-                    aes(ss3score, fill = junction_type)) +
-    geom_density(alpha = 0.8) +
-    ylim(c(0, 0.3)) +
-    xlim(c(-40, 20)) +
-    theme_light() +
-    scale_fill_manual(values = c("#A41F9AFF", "#0D0887FF"), 
-                      breaks = c("intron", "novel_acceptor"),
-                      labels = c("intron  ", "novel acceptor")) +
-    theme(axis.line = element_line(colour = "black" ),
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top") +
-    xlab("3' splice site MES score") +
-    guides(fill = guide_legend(title = element_blank(), ncol = 2, nrow = 1))
-  
-  
-  ss3plot
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/panel2_ss3plot")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  ## COMBO
-  
-  ggpubr::ggarrange( ss5plot, 
-                     ss3plot, 
-                     labels = c("a", "b"),
-                     ncol = 2, nrow = 1)
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/MES_combo_supplementary")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 360, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 360, height = 183, units = "mm", dpi = 300)
-  
-  
-  ## Delta MES -----------------------------------------------------------
-  
-  
-  df_delta_5ss <- df_mes %>%
-    filter(novel_type == "novel_donor") %>% 
-    dplyr::select(diff_ss5score) %>%
-    tidyr::gather(key = "type", value = "MES") 
-  
-  
-  ## Plot
-  deltaplot5ss <- ggplot(data = df_delta_5ss) +
-    geom_density(mapping = aes(x = MES,
-                               fill = type), 
-                 alpha = 0.8) +
-    geom_vline(xintercept = 0) +
-    xlab("Delta MaxEntScan 5'ss score") +
-    xlim(c(-40, 65)) +
-    ylim(c(0, 0.11)) +
-    theme_light() +
-    scale_color_viridis_d() +
-    scale_fill_manual(values =  c("#EF7F4FFF"),
-                      breaks = c("diff_ss5score"),
-                      labels = c("Delta MES 5'ss")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
-  
-  deltaplot5ss
-  
-  
-  df_delta_3ss <- df_mes %>%
-    filter(novel_type == "novel_acceptor") %>% 
-    dplyr::select(diff_ss3score) %>%
-    tidyr::gather(key = "type", value = "MES") 
-  
-  deltaplot3ss <- ggplot(data = df_delta_3ss) +
-    geom_density(mapping = aes(x = MES, fill = type), 
-                 alpha = 0.8) +
-    geom_vline(xintercept = 0) +
-    xlab("Delta MaxEntScan 3'ss score") +
-    xlim(c(-40, 65)) +
-    ylim(c(0, 0.11)) +
-    theme_light() +
-    scale_color_viridis_d() +
-    scale_fill_manual(values =  c("#0D0887FF"),
-                      breaks = c("diff_ss3score"),
-                      labels = c("Delta MES 3'ss")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
-  
-  deltaplot3ss
-  
-  
-  
-  ##############
-  ## COMBO
-  ##############
-  
-  ggpubr::ggarrange( deltaplot5ss, 
-                     deltaplot3ss, 
-                     labels = c("a", "b"),
-                     ncol = 2, 
-                     nrow = 1)
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/MES_delta_combo")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
-  
-  
-  ##############
-  ## STATS
-  ##############
-  
-  ## Novel donor - i.e. 5'ss
-  ((df_delta_5ss %>%
-      filter(MES < 0) %>% nrow()) * 100) / (df_delta_5ss %>% nrow())
-  ((df_delta_5ss %>%
-      filter(MES >= 0) %>% nrow()) * 100) / (df_delta_5ss %>% nrow())
-  df_delta_5ss$MES %>% min
-  df_delta_5ss$MES %>% max
-  
-  
-  ## Novel acceptor - i.e. 3'ss
-  ((df_delta_3ss %>%
-      filter(MES < 0) %>% nrow()) * 100) / (df_delta_3ss %>% nrow())
-  ((df_delta_3ss %>%
-      filter(MES >= 0) %>% nrow()) * 100) / (df_delta_3ss %>% nrow())
- 
-  df_delta_3ss$MES %>% min
-  df_delta_3ss$MES %>% max
-  
-}
+
 
 get_junc_length <- function() {
   
@@ -2012,8 +2257,7 @@ get_distances <- function() {
   plot_all <- plot_all / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/distances_FCTX")
+  file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -2045,9 +2289,6 @@ get_distances <- function() {
   #################################
   ## GENERATE PLOT ################
   #################################
-  
-  df_novel_tidy %>% filter(type_PC == "protein coding (PC)") %>% distinct(ref_junID) %>% nrow()
-  
   
   plot_PC <- ggplot(data = df_novel_tidy %>% 
                       filter(type_PC == "protein coding (PC)")) + 
@@ -2095,8 +2336,7 @@ get_distances <- function() {
   plot_PC <- plot_PC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   plot_PC
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/FCTX_distancesPC")
+  file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesPC")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
   
@@ -2139,8 +2379,7 @@ get_distances <- function() {
   plot_NPC <- plot_NPC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   plot_NPC
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/FCTX_distancesNPC_lncRNA")
+  file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesNPC_lncRNA")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
   
@@ -2153,7 +2392,7 @@ get_distances <- function() {
                             plot_PC,
                             plot_NPC,
                             common.legend = T,
-                            labels = c("d", "e"),
+                            labels = c("c", "d"),
                             align = "v",
                             ncol = 2,
                             nrow = 1)
@@ -2162,11 +2401,18 @@ get_distances <- function() {
   plot
 
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/distances_FCTX_all")
+  file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX_all")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 369, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
 
+  
+  #########################################
+  ## STATS
+  #########################################
+  
+  df_novel_tidy %>% 
+    distinct(ref_junID, .keep_all = T) %>%
+    dplyr::count(type_PC)
 
 }
 
@@ -2205,6 +2451,62 @@ get_MSR_FCTX <- function()  {
   introns
   
   print(paste0(Sys.time(), " - ", introns %>% nrow(), " - introns!"))
+  
+  
+  
+  ###########################
+  ## PLOT ALL INTRONS
+  ###########################
+  
+  df_all_introns_tidy <- introns %>%
+    dplyr::select(ref_junID, MSR_D, MSR_A) %>%
+    gather(key = "MSR_type", value = "MSR", -ref_junID)
+  
+  
+  df_all_introns_tidy$MSR_type = factor(df_all_introns_tidy$MSR_type, 
+                                        levels = c("MSR_D", "MSR_A"))
+  
+  df_all_introns_tidy$MSR_type %>% unique
+  
+  df_all_introns_tidy <- df_all_introns_tidy %>%
+    mutate(percentile_group = case_when(MSR == 0 ~ "0",
+                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
+                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
+                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
+                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
+                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
+  
+  df_all_introns_tidy$percentile_group = factor(df_all_introns_tidy$percentile_group, 
+                                                levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
+  
+  plotMSR <- ggplot(data = df_all_introns_tidy) + 
+    geom_bar(aes(x = percentile_group,
+                 fill = MSR_type),
+             position = "dodge")+
+    ggtitle("All annotated introns") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("Number of annotated introns") +
+    ggforce::facet_zoom(ylim=c(0,2500), split = TRUE) +
+    #ylim(c(0,23000))+
+    theme_light() +
+    scale_fill_manual(values = c("#35B779FF","#440154FF"),
+                      breaks = c("MSR_D","MSR_A"),
+                      labels = c("MSR Donor","MSR Acceptor")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "8"),
+          
+          axis.title = element_text(colour = "black", size = "10"),
+          strip.text =  element_text(colour = "black", size = "10"),
+          plot.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top",
+          axis.text.x = element_text(hjust = 0.5, vjust = 1)) +
+    guides(fill = guide_legend(title = NULL,
+                               ncol = 2, 
+                               nrow = 1))
+  
+  plotMSR
   
   ##############################################################################
   ## CORRECT BY MEAN COVERAGE
@@ -2287,8 +2589,7 @@ get_MSR_FCTX <- function()  {
                     labels = c("a", "b"),
                     common.legend = T)
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/MSR_FCTX_subsampling")
+  file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_subsampling")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -2346,105 +2647,245 @@ get_MSR_FCTX <- function()  {
     pull(MSR) %>%
     summary()
   
-  ###########################
-  ## PLOT MIS-SPLICING RATIO 
-  ###########################
-
- 
   
-  plotMSR_PC <- ggplot(data = df_introns_biotype %>% 
-                         filter(biotype == "PC")) + 
-    #geom_density(aes(x = MSR, fill = MSR_type), alpha = 0.8) +
-    ggforce::facet_zoom(ylim=c(0,100)) +
-    geom_bar(aes(x = MSR,  fill = MSR_type), 
-             stat = "bin", 
-             bins = 50,
-             position = "dodge")  +
-    ggtitle("Protein-coding") +
-    xlab("Mis-splicing ratio") +
-    ylab("Intron count") +
-    #ylim(c(0,20000)) +
+  ###########################
+  ## PLOT BY MSR GROUP
+  ###########################
+  
+  df_introns_biotype_tidy <- df_introns_biotype %>%
+    group_by(biotype, MSR_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    mutate(percentile_group = case_when(MSR == 0 ~ "0",
+                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
+                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
+                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
+                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
+                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
+  
+  df_introns_biotype_tidy$MSR_type = factor(df_introns_biotype_tidy$MSR_type, 
+                                                            levels = c("MSR_D","MSR_A"))
+  df_introns_biotype_tidy$percentile_group = factor(df_introns_biotype_tidy$percentile_group, 
+                                                    levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
+  
+  df_introns_biotype_tidy$biotype = factor(df_introns_biotype_tidy$biotype, 
+                                                    levels = c("PC","non PC"))
+  
+  plotMSR_donor <- ggplot(data = df_introns_biotype_tidy %>% 
+           filter(MSR_type == "MSR_D")) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge")+
+    ggtitle("MSR Donor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("Number of annotated introns") +
+    ylim(c(0,23000))+
     theme_light() +
-    scale_fill_manual(values = c("#35B779FF","#440154FF"),
-                      breaks = c("MSR_D","MSR_A"),
-                      labels = c("MSR_Donor","MSR_Acceptor")) +
+    scale_fill_manual(values = c("#6B1D81FF","#FEB37BFF"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding","Non-protein-coding")) +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text =  element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top") +
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          strip.text =  element_text(colour = "black", size = "10"),
+          plot.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top",
+          axis.text.x = element_text(#angle = 20, 
+                                     hjust = 0.5,
+                                     vjust = 1)) +
     guides(fill = guide_legend(title = NULL,
-                               ncol = 2, 
-                               nrow = 1))
+                               ncol = 2, nrow = 1))
   
-  plotMSR_PC
-  print(paste0(Sys.time(), " - saving plot..."))
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/MSR_PC_FCTX")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
-
-    
   ## Non-protein-coding
-  plotMSR_NPC <- ggplot(data = df_introns_biotype %>% 
-                          filter(biotype == "non PC")) + 
-    ggforce::facet_zoom(ylim=c(0,100)) +
-    geom_bar(aes(x = MSR,  fill = MSR_type), 
-             stat = "bin", 
-             bins = 50,
-             position = "dodge")  +
-    #geom_freqpoly(mapping = aes(x = MSR,  colour = MSR_type), 
-    #         stat = "bin", 
-    #         bins = 100,
-    #         position = "dodge")  +
-    #ggforce::facet_zoom(xlim=c(0,0.02)) +
-    #facet_wrap(vars(type_PC)) +
-    ggtitle("Non protein-coding") +
-    xlab("Mis-splicing ratio") +
-    ylab("Intron count") +
-    #ylim(c(0,25000)) +
+  plotMSR_acceptor <- ggplot(data = df_introns_biotype_tidy %>% 
+                          filter(MSR_type == "MSR_A")) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge")+
+    ggtitle("MSR Acceptor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("Number of annotated introns") +
+    ylim(c(0,23000))+
     theme_light() +
-    scale_fill_manual(values = c("#35B779FF","#440154FF"),
-                      breaks = c("MSR_D","MSR_A"),
-                      labels = c("MSR_Donor","MSR_Acceptor")) +
+    scale_fill_manual(values = c("#6B1D81FF","#FEB37BFF"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding","Non-protein-coding")) +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text =  element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top") +
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "10"),
+          strip.text =  element_text(colour = "black", size = "10"),
+          plot.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(size = "10"),
+          legend.title = element_text(size = "10"),
+          legend.position = "top",
+          axis.text.x = element_text(#angle = 20, 
+                                     hjust = 0.5,
+                                     vjust = 1)) +
     guides(fill = guide_legend(title = NULL,
-                               ncol = 2, 
-                               nrow = 1))
-  plotMSR_NPC
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/MSR_NPC_FCTX")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
+                               ncol = 2, nrow = 1))
   
   
-  ggpubr::ggarrange(plotMSR_PC,
-                    plotMSR_NPC,
-                    #labels = c("a", "d"),
-                    common.legend = T)
+  ggpubr::ggarrange(plotMSR,
+                    ggpubr::ggarrange(plotMSR_donor,
+                                      plotMSR_acceptor,
+                                      nrow = 1,
+                                      ncol = 2,
+                                      common.legend = T,
+                                      labels = c("b", "c")),
+                    nrow = 2,
+                    labels = c("a"),
+                    common.legend = T
+                    )
+  
+   
+  
   
   print(paste0(Sys.time(), " - saving plot..."))
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/MSR_FCTX")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_final")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 160, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 160, units = "mm", dpi = 300)
+  
+  # ###########################
+  # ## PLOT MIS-SPLICING RATIO 
+  # ###########################
+  # 
+  # 
+  # 
+  # plotMSR_PC <- ggplot(data = df_introns_biotype %>% 
+  #                        filter(biotype == "PC")) + 
+  #   #geom_density(aes(x = MSR, fill = MSR_type), alpha = 0.8) +
+  #   ggforce::facet_zoom(ylim=c(0,100)) +
+  #   geom_bar(aes(x = MSR,  fill = MSR_type), 
+  #            stat = "bin", 
+  #            bins = 50,
+  #            position = "dodge")  +
+  #   ggtitle("Protein-coding") +
+  #   xlab("Mis-splicing ratio") +
+  #   ylab("Intron count") +
+  #   #ylim(c(0,20000)) +
+  #   theme_light() +
+  #   scale_fill_manual(values = c("#35B779FF","#440154FF"),
+  #                     breaks = c("MSR_D","MSR_A"),
+  #                     labels = c("MSR_Donor","MSR_Acceptor")) +
+  #   theme(axis.line = element_line(colour = "black"), 
+  #         axis.text = element_text(colour = "black", size = "12"),
+  #         axis.title = element_text(colour = "black", size = "12"),
+  #         strip.text =  element_text(colour = "black", size = "12"),
+  #         plot.title = element_text(colour = "black", size = "12"),
+  #         legend.text = element_text(size = "12"),
+  #         legend.title = element_text(size = "12"),
+  #         legend.position = "top") +
+  #   guides(fill = guide_legend(title = NULL,
+  #                              ncol = 2, 
+  #                              nrow = 1))
+  # 
+  # plotMSR_PC
+  # print(paste0(Sys.time(), " - saving plot..."))
+  # file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
+  #                     main_project, "/figures/MSR_PC_FCTX")
+  # ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  # ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
+  # 
+  #   
+  # ## Non-protein-coding
+  # plotMSR_NPC <- ggplot(data = df_introns_biotype %>% 
+  #                         filter(biotype == "non PC")) + 
+  #   ggforce::facet_zoom(ylim=c(0,100)) +
+  #   geom_bar(aes(x = MSR,  fill = MSR_type), 
+  #            stat = "bin", 
+  #            bins = 50,
+  #            position = "dodge")  +
+  #   #geom_freqpoly(mapping = aes(x = MSR,  colour = MSR_type), 
+  #   #         stat = "bin", 
+  #   #         bins = 100,
+  #   #         position = "dodge")  +
+  #   #ggforce::facet_zoom(xlim=c(0,0.02)) +
+  #   #facet_wrap(vars(type_PC)) +
+  #   ggtitle("Non protein-coding") +
+  #   xlab("Mis-splicing ratio") +
+  #   ylab("Intron count") +
+  #   #ylim(c(0,25000)) +
+  #   theme_light() +
+  #   scale_fill_manual(values = c("#35B779FF","#440154FF"),
+  #                     breaks = c("MSR_D","MSR_A"),
+  #                     labels = c("MSR_Donor","MSR_Acceptor")) +
+  #   theme(axis.line = element_line(colour = "black"), 
+  #         axis.text = element_text(colour = "black", size = "12"),
+  #         axis.title = element_text(colour = "black", size = "12"),
+  #         strip.text =  element_text(colour = "black", size = "12"),
+  #         plot.title = element_text(colour = "black", size = "12"),
+  #         legend.text = element_text(size = "12"),
+  #         legend.title = element_text(size = "12"),
+  #         legend.position = "top") +
+  #   guides(fill = guide_legend(title = NULL,
+  #                              ncol = 2, 
+  #                              nrow = 1))
+  # plotMSR_NPC
+  # 
+  # file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
+  #                     main_project, "/figures/MSR_NPC_FCTX")
+  # ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  # ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
+  # 
+  # 
+  # ggpubr::ggarrange(plotMSR_PC,
+  #                   plotMSR_NPC,
+  #                   #labels = c("a", "d"),
+  #                   common.legend = T)
+  # 
+  # print(paste0(Sys.time(), " - saving plot..."))
+  # file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
+  #                     main_project, "/figures/MSR_FCTX")
+  # ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  # ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
   
   
   ####################################
   ## STATS
   ####################################
+  
+  
+  ## 1. We started by focusing on frontal cortex and observed that while splicing errors are detected 
+  ## infrequently with the MSRD and MSRA values highly skewed towards low values, there was considerable 
+  ## variation across introns (MSRA interquartile range = XXXXX; MSRD interquartile range = XXXX)
+  
+  introns %>%
+    pull(MSR_D) %>% 
+    IQR()
+  
+  
+  introns %>%
+    pull(MSR_A) %>% 
+    IQR()
+  
+  
+  ## 2. Furthermore, consistent with the overall higher detection of novel acceptor as compared to novel donor junctions,
+  ## we observed a significant difference in the MSRD and MSRA density plots (paired Wilcoxon rank sum test with continuity 
+  ## correction, pval = 4.76e-09). 
+  
+  wilcox.test(x = introns %>% pull(MSR_D),
+              y = introns %>% pull(MSR_A),
+              alternative = "less",
+              paired = T,
+              correct = T)
+  
+  wilcox.test(x = df_introns_biotype %>% filter(MSR_type == "MSR_D") %>% pull(MSR),
+              y = df_introns_biotype %>% filter(MSR_type == "MSR_A") %>% pull(MSR),
+              alternative = "less",
+              paired = T,
+              correct = T)
+  
+  
+  ## 3. Given that NMD activity would be expected to reduce the detection of splicing errors amongst mRNA transcripts, 
+  ## we separately assessed mis-splicing of annotated introns solely used in protein-coding transcripts (N=35,726 based 
+  ## on Ensembl v105) and those that were exclusively used in non-coding transcripts (N=8,945 based on Ensembl v105).
+  
+  introns %>% filter(protein_coding == 100) %>% distinct(ref_junID) %>% nrow()
+  introns %>% filter(protein_coding == 0) %>% distinct(ref_junID) %>% nrow()
+  
+  df_introns_biotype %>% filter(biotype == "PC") %>% distinct(ref_junID) %>% nrow()
+  df_introns_biotype %>% filter(biotype == "non PC") %>% distinct(ref_junID) %>% nrow()
+  
   
   ## 1. Splicing noise occurs more commonly at acceptor than at donor splice sites 
   ## regardless of whether the intron is exclusively used in protein-coding 
@@ -2525,8 +2966,7 @@ get_MSR_tissues <- function()  {
   ## LOAD/GENERATE DATA
   ############################
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/MSR_all_tissues.rds")
+  file_name <- paste0(paste0(getwd(), "/results/_paper/results/MSR_all_tissues.rds"))
   
   
   if ( !file.exists(file_name) ) {
@@ -2773,6 +3213,26 @@ get_lm_single_tissue <- function() {
   cluster_id <- "Brain - Frontal Cortex (BA9)"
   
   
+  ###################################
+  ## GET TPM
+  
+  base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
+  samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
+                                        "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+  
+  
+  tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
+                               "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
+    dplyr::select(gene_id = gene, all_of(samples_used))
+  
+  
+  tpm <- tpm  %>%
+    dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
+    dplyr::select(gene_id, tpm_median) 
+  
+  #######################################
+  
+  
   query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
   introns <- dbGetQuery(con, query) %>% as_tibble()
   query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_misspliced'")
@@ -2782,17 +3242,14 @@ get_lm_single_tissue <- function() {
                   ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, 
                   protein_coding
                   FROM 'intron' 
-                  WHERE ref_junID IN (",
-                  paste(introns$ref_junID, collapse = ","),")")
+                  WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),")")
   introns <- introns %>%
     left_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = "ref_junID") %>% 
     as_tibble() 
   
   ## JOIN WITH TRANSCRIPT DATA
-  query <- paste0("SELECT *
-                  FROM 'transcript' WHERE id IN (",
-                  paste(introns$transcript_id, collapse = ","),")")
+  query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
   introns <- introns %>%
     left_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = c("transcript_id" = "id")) %>% 
@@ -2802,7 +3259,7 @@ get_lm_single_tissue <- function() {
   ## JOIN WITH GENE DATA
   query <- paste0("SELECT *
                   FROM 'gene' WHERE id IN (",
-                  paste(introns$gene_id, collapse = ","),")")
+                  base::paste(introns$gene_id, collapse = ","),")")
   introns <- introns %>%
     left_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = c("gene_id" = "id")) %>% 
@@ -2814,9 +3271,12 @@ get_lm_single_tissue <- function() {
   #########################
   
   idb <- introns %>%
-    as.data.frame() %>%
-    dplyr::distinct(ref_junID, .keep_all = T) %>%
-    dplyr::rename(intron_length = ref_length,
+    left_join(y = tpm,
+              by = c("gene_id.y"="gene_id")) %>% 
+    dplyr::select(-gene_id) %>%
+    dplyr::rename(gene_tpm = tpm_median) %>%
+    dplyr::select(ref_junID,
+                  intron_length = ref_length,
                   intron_5ss_score = ref_ss5score,
                   intron_3ss_score = ref_ss3score,
                   gene_length = gene_width,
@@ -2826,7 +3286,24 @@ get_lm_single_tissue <- function() {
                   CDTS_3ss = ref_CDTS3score,
                   protein_coding = protein_coding,
                   mean_phastCons20way_5ss = ref_cons5score,
-                  mean_phastCons20way_3ss = ref_cons3score)
+                  mean_phastCons20way_3ss = ref_cons3score,
+                  MSR_D,
+                  MSR_A)
+  
+  # idb <- introns %>%
+  #   as.data.frame() %>%
+  #   dplyr::distinct(ref_junID, .keep_all = T) %>%
+  #   dplyr::rename(intron_length = ref_length,
+  #                 intron_5ss_score = ref_ss5score,
+  #                 intron_3ss_score = ref_ss3score,
+  #                 gene_length = gene_width,
+  #                 gene_tpm = gene_tpm,
+  #                 gene_num_transcripts = n_transcripts,
+  #                 CDTS_5ss = ref_CDTS5score,
+  #                 CDTS_3ss = ref_CDTS3score,
+  #                 protein_coding = protein_coding,
+  #                 mean_phastCons20way_5ss = ref_cons5score,
+  #                 mean_phastCons20way_3ss = ref_cons3score)
   
   
   #########################
@@ -2963,48 +3440,22 @@ get_lm_single_tissue <- function() {
   
   
   
-  # 
-  # 
-  # 
-  # 
-  # 
-  # 
-  # 
-  # annotate("text",
-  #          y = c(1.65, 2.65, 3.65, 4.65, 5.65, 6.65, 7.65, 8.65, 9.65, 10.65, 11.65),
-  #          x = -0.0025, 
-  #          label = c( paste("pval",( summary(fit_donor)$coefficients[,4] %>% 
-  #                                      as_tibble() %>%
-  #                                      
-  #                                      mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":") ),
-  #          family = "", 
-  #          fontface = 1, 
-  #          size=3,
-  #          colour = c("#35B779FF") )  +
-  #   annotate("text",
-  #            y = c(1.25, 2.25, 3.25, 4.25, 5.25, 6.25, 7.25, 8.25, 9.25, 10.25, 11.25),
-  #            x = -0.0025, 
-  #            label = c( paste("pval",(summary(fit_acceptor)$coefficients[,4] %>% 
-  #                                       as_tibble() %>%
-  #                                       mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
-  #            family = "", 
-  #            fontface = 1, 
-  #            size=3,
-  #            colour = c("#440154FF") )
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/lm_FTCX")
+  file_name <- paste0(getwd(), "/results/_paper/figures/lm_FTCX")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
-  # if (save_results) {
-  #   plotLM
-  #   filename <- paste0(folder_name, "/images/lm_MSR.png")
-  #   ggplot2::ggsave(filename = filename, 
-  #                   width = 183, height = 183, units = "mm", dpi = 300)
-  # } else {
-  #   plot %>% return()
-  # }
   
+  
+  ############################################
+  ## STATS
+  ############################################
+  
+  ## Interestingly, the effect sizes for sequence conservation were 
+  ## much larger (XXXXXXXXX) than those associated with CDTS scores. 
+  rstatix::wilcox_effsize(data = idb %>% 
+                            filter(biotype == "PC") %>%
+                            mutate(MSR_type = MSR_type %>% as.factor()),
+                          formula = MSR ~ MSR_type,
+                          paired = T)
 }
 
 get_common_introns_across_tissues <- function () {
@@ -3060,8 +3511,7 @@ get_common_introns_across_tissues <- function () {
   query <- paste0("SELECT * FROM 'intron' WHERE ref_junID IN (", paste(common_introns$ref_junID, collapse = ","), ")")
   introns <- dbGetQuery(con, query) %>% as_tibble()
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/common_introns.rds")
+  file_name <- paste0(getwd(), "/results/_paper/results/common_introns.rds")
   saveRDS(object = introns, file = file_name)
   
 }
@@ -3074,8 +3524,7 @@ get_estimate_variance_across_tissues <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   ## LOAD COMMON INTRONS
-  common_introns <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                                          main_project, "/results/common_introns.rds"))
+  common_introns <- readRDS(file = paste0(getwd(), "/results/_paper/results/common_introns.rds"))
 
   ################################
   ## QUERY THE DATABASE PER TISSUE
@@ -3083,6 +3532,8 @@ get_estimate_variance_across_tissues <- function() {
 
   df_estimates <- map_df(all_projects, function(project_id) {
     
+    
+    # project_id <- all_projects[1]
     print(paste0(Sys.time(), " - ", project_id))
     
     #############################
@@ -3096,11 +3547,30 @@ get_estimate_variance_across_tissues <- function() {
     
     map_df(all_clusters, function(cluster_id) {
  
+      # cluster_id <- all_clusters[1]
       print(cluster_id)
       
-      query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+      
+      ###################################
+      ## GET TPM
+      
+      base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
+      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
+                                            "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+    
+      tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
+                                   "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
+        dplyr::select(gene_id = gene, all_of(samples_used))
+      
+      tpm <- tpm  %>%
+        dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
+        dplyr::select(gene_id, gene_tpm = tpm_median) 
+      
+      ##################################
+      
+      query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm FROM '", cluster_id, "_", project_id, "_misspliced'")
+      query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_misspliced'")
       introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
       
       query <- paste0("SELECT ref_junID, ref_length AS intron_length, ref_ss5score AS intron_5ss_score, 
@@ -3109,7 +3579,7 @@ get_estimate_variance_across_tissues <- function() {
                       ref_cons3score AS mean_phastCons20way_3ss, 
                       ref_CDTS5score AS CDTS_5ss, 
                       ref_CDTS3score AS CDTS_3ss, 
-                      protein_coding, gene_id 
+                      protein_coding, transcript_id 
                       FROM 'intron' WHERE ref_junID IN (",
                       paste(introns$ref_junID, collapse = ","),")")
       introns <- merge(x = introns,
@@ -3119,20 +3589,46 @@ get_estimate_variance_across_tissues <- function() {
         as_tibble() 
       
       
-      query <- paste0("SELECT id, n_transcripts AS gene_num_transcripts, 
-                      gene_width AS gene_length, gene_name FROM 'gene' WHERE id IN (",
-                      paste(introns$gene_id, collapse = ","),")")
-      introns <- merge(x = introns,
-                       y = dbGetQuery(con, query) %>% as_tibble(),
-                       by.x = "gene_id",
-                       by.y = "id",
-                       all.x = T) %>% 
+      ## JOIN WITH TRANSCRIPT DATA
+      query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
+      introns <- introns %>%
+        left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                  by = c("transcript_id" = "id")) %>% 
         as_tibble() 
       
       
+      ## JOIN WITH GENE DATA
+      query <- paste0("SELECT *
+                  FROM 'gene' WHERE id IN (",
+                      base::paste(introns$gene_id, collapse = ","),")")
+      introns <- introns %>%
+        left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                  by = c("gene_id" = "id")) %>% 
+        as_tibble()  %>%
+        dplyr::rename(gene_length = gene_width)
+      
+      # query <- paste0("SELECT id, n_transcripts AS gene_num_transcripts, 
+      #                 gene_width AS gene_length, gene_name FROM 'gene' WHERE id IN (",
+      #                 paste(introns$gene_id, collapse = ","),")")
+      # introns <- merge(x = introns,
+      #                  y = dbGetQuery(con, query) %>% as_tibble(),
+      #                  by.x = "gene_id",
+      #                  by.y = "id",
+      #                  all.x = T) %>% 
+      #   as_tibble() 
+      
+      
+      ## JOIN WITH TPM DATA
+      introns <- introns %>%
+        left_join(y = tpm,
+                  by = c("gene_id.y" = "gene_id"))
+      
+      introns <- introns %>%
+        dplyr::rename(gene_num_transcripts = n_transcripts )
+      
       model <- lm(MSR_D ~ 
                     intron_length + 
-                    intron_5ss_score *
+                    intron_5ss_score +
                     intron_3ss_score +
                     gene_tpm +
                     gene_length +
@@ -3144,34 +3640,37 @@ get_estimate_variance_across_tissues <- function() {
                     mean_phastCons20way_3ss,  
                   data = introns)
       
-      
-      #model %>% summary() %>% print()
       #MSR_Donor_list[[tissue]] <- model
       
-      
-      #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
-      #model$coefficients[-ind_sign] <- 0
-      
-      MSR_Donor <- data.frame(tissue = cluster_id,
+      MSR_Donor <- data.frame(feature = cluster_id,
                               intron_length = model$coefficients["intron_length"] %>% unname(),
                               intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
                               intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
                               gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
                               gene_length = model$coefficients["gene_length"] %>% unname(),
                               #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
-                              protein_coding = model$coefficients["protein_coding"] %>% unname(),
+                              
                               gene_num_transcripts = model$coefficients["gene_num_transcripts"] %>% unname(),
+                              protein_coding = model$coefficients["protein_coding"] %>% unname(),
                               CDTS_5ss = model$coefficients["CDTS_5ss"] %>% unname(),
                               CDTS_3ss  = model$coefficients["CDTS_3ss"] %>% unname(),
                               mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
-                              mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname(),
-                              pval = ((model %>% summary())$coefficients  %>% as.data.frame())[,4])
+                              mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname())
       
+      
+      
+      model %>% summary() %>% print()
+      MSR_Donor %>% mutate(type = "MSR_Donor")
+      
+      MSR_Donor <- cbind(MSR_Donor %>%
+              gather(key = feature, value = estimate),
+            pval = ((model %>% summary())$coefficients  %>% as.data.frame())[-1,4]) %>%
+        mutate(tissue = cluster_id)
       
       ## Acceptor
       model <- lm(MSR_A ~
                     intron_length + 
-                    intron_5ss_score *
+                    intron_5ss_score +
                     intron_3ss_score +
                     gene_tpm +
                     gene_length +
@@ -3184,29 +3683,37 @@ get_estimate_variance_across_tissues <- function() {
                     mean_phastCons20way_5ss +
                     mean_phastCons20way_3ss,  
                   data = introns)
-      #model %>% summary() %>% print()
+      #
       #MSR_Acceptor_list[[tissue]] <- model
       
       #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
       #model$coefficients[-ind_sign] <- 0
       
-      MSR_Acceptor <- data.frame(tissue = cluster_id,
+      MSR_Acceptor <- data.frame(feature = cluster_id,
                                  intron_length = model$coefficients["intron_length"] %>% unname(),
                                  intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
                                  intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
                                  gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
                                  gene_length = model$coefficients["gene_length"] %>% unname(),
                                  #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
-                                 protein_coding = model$coefficients["protein_coding"] %>% unname(),
+                                 
                                  gene_num_transcripts = model$coefficients["gene_num_transcripts"] %>% unname(),
+                                 protein_coding = model$coefficients["protein_coding"] %>% unname(),
                                  CDTS_5ss = model$coefficients["CDTS_5ss"] %>% unname(),
                                  CDTS_3ss  = model$coefficients["CDTS_3ss"] %>% unname(),
                                  mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
-                                 mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname(),
-                                 pval = ((model %>% summary())$coefficients  %>% as.data.frame())[,4])
+                                 mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname())
       
-      return(rbind(MSR_Donor %>% mutate(type = "MSR_Donor"), 
-                   MSR_Acceptor %>% mutate(type = "MSR_Acceptor")))
+      model %>% summary() %>% print()
+      model$coefficients
+      
+      MSR_Acceptor <- cbind(MSR_Acceptor %>%
+                           gather(key = feature, value = estimate),
+                         pval = ((model %>% summary())$coefficients  %>% as.data.frame())[-1,4]) %>%
+        mutate(tissue = cluster_id)
+      
+      return( rbind(MSR_Donor %>% mutate(type = "MSR_Donor"), 
+                    MSR_Acceptor %>% mutate(type = "MSR_Acceptor")) )
       
     })
   })
@@ -3216,8 +3723,7 @@ get_estimate_variance_across_tissues <- function() {
   ## SAVE RESULTS
   #############################
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/results/variance_estimate_tissues.rds")
+  file_name <- paste0(getwd(), "/results/_paper/results/variance_estimate_tissues.rds")
   saveRDS(object = df_estimates, file = file_name)
   
 }
@@ -3225,21 +3731,111 @@ get_estimate_variance_across_tissues <- function() {
 plot_estimate_variance_across_tissues <- function() {
   
 
-  df_estimate <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                                       main_project, "/results/variance_estimate_tissues.rds")) %>%
+  df_estimate <- readRDS(file = paste0(getwd(), "/results/_paper/results/variance_estimate_tissues.rds")) %>%
     group_by(type) %>%
     mutate(pval_corrected = p.adjust(pval)) %>%
-    filter(pval_corrected <= 0.05) %>%
-    dplyr::select(-c(pval, pval_corrected))
+    ungroup()
+  
+  
+  ## Interestingly, this analysis also demonstrated that while the effect of sequence conservation on splicing 
+  ## noise was always significant, its effect size was variable (XXXXXrange of betas, Figure). 
+  
+  ## Donor - pval
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Donor") %>%
+    ungroup() %>%
+    pull(pval_corrected) %>% summary()
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Donor") %>%
+    ungroup() %>%
+    pull(pval_corrected) %>% summary()
+  
+  
+  ## Acceptor - pval
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Acceptor") %>%
+    ungroup() %>%
+    pull(pval_corrected) %>% summary()
+
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Acceptor") %>%
+    ungroup() %>%
+    pull(pval_corrected) %>% summary()
+  
+  
+  
+  
+  
+  ## Donor - effect size
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Donor") %>%
+    ungroup() %>%
+    pull(estimate) %>% summary()
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Donor") %>%
+    ungroup()  %>%
+    pull(estimate) %>% summary()
+  
+  
+  ## Acceptor - effect size
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Acceptor") %>%
+    ungroup()%>%
+    pull(estimate) %>% summary()
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Acceptor") %>%
+    ungroup() %>%
+    pull(estimate) %>% summary()
  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  df_estimate <- df_estimate %>%
+    group_by(type) %>%
+    filter(pval_corrected <= 0.05) %>%
+    ungroup() %>%
+    dplyr::select(-c(pval, pval_corrected))
+  
   MSR_Donor <- df_estimate %>%
     filter(type == "MSR_Donor") %>%
     mutate(type = "MSR Donor") %>%
-    distinct(tissue, .keep_all = T)
+    spread(key=feature, value= estimate)
   MSR_Acceptor <- df_estimate %>%
     filter(type == "MSR_Acceptor") %>%
     mutate(type = "MSR Acceptor") %>%
-    distinct(tissue, .keep_all = T)
+    spread(key=feature, value= estimate)
   
   #############################
   ## PLOT - ESTIMATE VARIANCE
@@ -3286,7 +3882,7 @@ plot_estimate_variance_across_tissues <- function() {
   plotTissues5ssLM <- ggplot(data = MSR_Donor_tidy, aes(tissue, feature)) + 
     geom_boxplot() +
     coord_flip() +
-    facet_col(vars(type)) +
+    ggforce::facet_col(vars(type)) +
     #ggtitle(graph_title) +
     ylab("Distribution of the significant beta values (p.adjust<0.05)") +
     xlab(" ") +
@@ -3307,8 +3903,7 @@ plot_estimate_variance_across_tissues <- function() {
   
   
   plotTissues5ssLM
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/lm_donor_alltissues")
+  file_name <- paste0(getwd(), "/results/_paper/figures/lm_donor_alltissues")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
   
@@ -3317,7 +3912,7 @@ plot_estimate_variance_across_tissues <- function() {
   plotTissues3ssLM <- ggplot(data = MSR_Acceptor_tidy, aes(tissue, feature)) + 
     geom_boxplot() +
     coord_flip() +
-    facet_col(vars(type)) +
+    ggforce::facet_col(vars(type)) +
     #ggtitle(graph_title) +
     ylab("Distribution of the significant beta values (p.adjust<0.05)") +
     xlab(" ") +
@@ -3336,86 +3931,148 @@ plot_estimate_variance_across_tissues <- function() {
   
   
   plotTissues3ssLM
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/lm_accepor_alltissues")
+  file_name <- paste0(getwd(), "/results/_paper/figures/lm_accepor_alltissues")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
+  
+  
+  #######################################
+  ## TISSUES WITH THE MOST EXTREME CONSERVATION
+  #######################################
+  
+  ## Donor - cons 5'ss (desc) and (asc)
+  df_estimate %>%
+    filter(type == "MSR_Donor",
+           feature == "mean_phastCons20way_5ss") %>%
+    arrange(desc(estimate)) %>%
+    distinct(tissue, .keep_all = T)
+  df_estimate %>%
+    filter(type == "MSR_Donor",
+           feature == "mean_phastCons20way_5ss") %>%
+    arrange(estimate) %>%
+    distinct(tissue, .keep_all = T)
+  
+  
+  ## Donor - cons 3'ss (desc) and (asc)
+  df_estimate %>%
+    filter(type == "MSR_Donor",
+           feature == "mean_phastCons20way_3ss") %>%
+    arrange(desc(estimate)) %>%
+    distinct(tissue, .keep_all = T)
+  df_estimate %>%
+    filter(type == "MSR_Donor",
+           feature == "mean_phastCons20way_3ss") %>%
+    arrange(estimate) %>%
+    distinct(tissue, .keep_all = T)
+  
+  
+  ## Acceptor - cons 5'ss (desc) and (asc)
+  df_estimate %>%
+    dplyr::select(tissue, mean_phastCons20way_5ss, type) %>%
+    filter(type == "MSR_Acceptor") %>%
+    arrange(desc(mean_phastCons20way_5ss)) %>%
+    distinct(tissue, .keep_all = T)
+  df_estimate %>%
+    dplyr::select(tissue, mean_phastCons20way_5ss, type) %>%
+    filter(type == "MSR_Acceptor") %>%
+    arrange(mean_phastCons20way_5ss) %>%
+    distinct(tissue, .keep_all = T)
+  
+  
+  ## Donor - cons 3'ss (desc) and (asc)
+  df_estimate %>%
+    dplyr::select(tissue, mean_phastCons20way_3ss, type) %>%
+    filter(type == "MSR_Acceptor") %>%
+    arrange(desc(mean_phastCons20way_3ss)) %>%
+    distinct(tissue, .keep_all = T)
+  df_estimate %>%
+    dplyr::select(tissue, mean_phastCons20way_3ss, type) %>%
+    filter(type == "MSR_Acceptor") %>%
+    arrange(mean_phastCons20way_3ss) %>%
+    distinct(tissue, .keep_all = T)
+  
 }
+
 
 #################################
 ## SOMATIC MUTATIONS - SKIN
 #################################
 
-compare_skin_tissues_somatic_mutations <- function() {
+
+# project_id1 = "SKIN"
+# cluster_id1 = "Skin - Sun Exposed (Lower leg)"
+# project_id2 = "SKIN"
+# cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)"
+# stats = F
+# 
+# 
+# project_id1 = "BRAIN"
+# cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)"
+# project_id2 = "PANCREAS"
+# cluster_id2 = "Pancreas"
+
+compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
+                                              cluster_id1 = "Skin - Sun Exposed (Lower leg)",
+                                              project_id2 = "SKIN",
+                                              cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)",
+                                              stats = F) {
   
-  project_id <- "SKIN"
-  tables <- c("Skin - Sun Exposed (Lower leg)",
-              "Skin - Not Sun Exposed (Suprapubic)")
+  tables <- c(paste0(cluster_id1, "_", project_id1), 
+              paste0(cluster_id2, "_", project_id2)) #c("Skin - Sun Exposed (Lower leg)", "Skin - Not Sun Exposed (Suprapubic)")
   
   
-  if ( !file.exists("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/SKIN/v105/age_subsampled_project/results/somatic_mutations_comparison.rds") ) {
+  if ( !file.exists(paste0(getwd(), "/results/_paper/results/somatic_mutations_subsampled_", 
+                           project_id1, "_", project_id2, ".rds")) ) {
     
-    skin_introns <- map_df(tables, function(cluster_id) {
+    database_introns <- map_df(tables, function(table) {
       
-      # cluster_id <- tables[1]
-      query <- paste0("SELECT DISTINCT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals, gene_id FROM '", 
-                      cluster_id, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT DISTINCT ref_junID, MSR_D,  MSR_A, ref_type, ref_sum_counts, ref_n_individuals, gene_id FROM '", 
-                      cluster_id, "_", project_id, "_misspliced'")
-      introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+      # table <- tables[1]
+      query <- paste0("SELECT DISTINCT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id FROM '", 
+                      table, "_nevermisspliced'")
+      df_introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT DISTINCT ref_junID, MSR_D,  MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id FROM '", 
+                      table, "_misspliced'")
+      df_introns <- rbind(df_introns, dbGetQuery(con, query) %>% as_tibble())
       
       query <- paste0("SELECT DISTINCT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
                   ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, 
                   protein_coding, lncRNA FROM 'intron' WHERE ref_junID IN (",
-                      paste(introns$ref_junID, collapse = ","),")")
-      introns <- introns %>%
+                      paste(df_introns$ref_junID, collapse = ","),")")
+      df_introns <- df_introns %>%
         left_join(y = dbGetQuery(con, query) %>% as_tibble(),
                   by = "ref_junID") %>% 
         as_tibble() 
       
+      ## MERGE WITH TRANSCRIPTS
+      query <- paste0("SELECT * 
+                      FROM 'transcript' WHERE id IN (",
+                      paste(df_introns$transcript_id, collapse = ","),")")
+      df_introns <- df_introns %>%
+        left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                  by = c("transcript_id" = "id")) %>% 
+        as_tibble() 
       
-      query <- paste0("SELECT id, n_transcripts, gene_width, gene_name 
+      
+      ## MERGE WITH GENES
+      query <- paste0("SELECT * 
                       FROM 'gene' WHERE id IN (",
-                      paste(introns$gene_id, collapse = ","),")")
-      introns <- introns %>%
+                      paste(df_introns$gene_id, collapse = ","),")")
+      df_introns <- df_introns %>%
         left_join(y = dbGetQuery(con, query) %>% as_tibble(),
                   by = c("gene_id" = "id")) %>% 
         as_tibble() 
       
-      introns %>%
-        mutate(tissue = cluster_id)
+      
+      ## Add cluster_info and return
+      df_introns %>%
+        mutate(tissue = table) %>%
+        return()
       
     } )
     
     
-    query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
-    introns <- dbGetQuery(con, query) %>% as_tibble()
-    query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_misspliced'")
-    introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
-    
-    query <- paste0("SELECT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
-                  ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, 
-                  protein_coding
-                  FROM 'intron' 
-                  WHERE ref_junID IN (",
-                    paste(introns$ref_junID, collapse = ","),")")
-    introns <- introns %>%
-      left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                by = "ref_junID") %>% 
-      as_tibble() 
-    
-    
-    query <- paste0("SELECT id, n_transcripts, gene_width, gene_name 
-                  FROM 'gene' WHERE id IN (",
-                    paste(introns$gene_id, collapse = ","),")")
-    introns <- introns %>%
-      left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                by = c("gene_id" = "id")) %>% 
-      as_tibble() 
-    
     ## TIDY DATAFRAME
-    df_skin_tidy <- skin_introns %>%
+    df_database_introns_tidy <- database_introns %>%
       mutate(tissue = tissue %>% as.factor()) %>%
       group_by(tissue) %>%
       distinct(ref_junID, .keep_all = T) %>%
@@ -3423,41 +4080,52 @@ compare_skin_tissues_somatic_mutations <- function() {
       group_by(tissue, ref_junID) %>%
       mutate(mean_coverage = ref_sum_counts/ref_n_individuals) %>%
       mutate(mean_coverage = mean_coverage %>% log10()) %>%
-      ungroup()
+      ungroup()  
     
-    saveRDS(object = df_skin_tidy,
-            file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/SKIN/v105/age_subsampled_project/results/skin_introns.rds")
+    saveRDS(object = df_database_introns_tidy,
+            file = paste0(getwd(), "/results/_paper/results/introns_", project_id1, "_", project_id2, ".rds"))
     
     ###########################
     ## SUBSAMPLING
     ###########################
     
+    ## Choose only common intron across the two tissues
+    data_combined <- df_database_introns_tidy %>%
+      group_by(tissue) %>%
+      distinct(ref_junID, .keep_all = T) %>%
+      ungroup() %>%
+      group_by(ref_junID) %>%
+      mutate(n = n()) %>%
+      ungroup() %>%
+      #dplyr::select(tissue, mean_coverage, ref_junID, n) %>%
+      filter(n == 2) %>%
+      dplyr::select(-n)
+    
+    data_combined$tissue %>% unique
+    data_combined$mean_coverage %>% summary
+    
+    
+    print(paste0(Sys.time(), " - subsampling..."))
     ## SUBSAMPLE BY MEAN COVERAGE
     ## Subsampling introns to control by similarity in mean read coverage
     m.out <- MatchIt::matchit(tissue ~ mean_coverage, 
-                              data = df_skin_tidy, 
-                              distance = df_skin_tidy$mean_coverage,
+                              data = data_combined, 
+                              distance = data_combined$mean_coverage,
                               method = "nearest", 
-                              caliper = c(mean_coverage = 0.005), 
+                              caliper = .005, 
                               std.caliper = FALSE)
     subsample <- MatchIt::match.data(m.out)
     subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(tissue)
     
     saveRDS(object = subsample,
-            file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/SKIN/v105/age_subsampled_project/results/somatic_mutations_comparison.rds")
-  } else {
-    df_skin_tidy <- readRDS(file = "/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/SKIN/v105/age_subsampled_project/results/skin_introns.rds")
-    subsample <- readRDS("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/SKIN/v105/age_subsampled_project/results/somatic_mutations_comparison.rds")
+            file = paste0(getwd(), "/results/_paper/results/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
     
-    subsample %>%
-      dplyr::select(-distance, -weights, -subclass) %>%
-      inner_join(y = skin_introns %>%
-                   dplyr::select(ref_junID,
-                                 gene_id, ref_length, ref_ss5score, ref_ss3score,
-                                 ref_cons5score, ref_cons3score, ref_CDTS5score,
-                                 ref_CDTS3score,
-                                 n_transcripts, gene_width),
-                 by = "ref_junID")
+    print(paste0(Sys.time(), " - subsampling finished!"))
+  } else {
+    
+    df_database_introns_tidy <- readRDS(file = paste0(getwd(), "/results/_paper/results/introns_", project_id1, "_", project_id2, ".rds"))
+    subsample <- readRDS(paste0(getwd(), "/results/_paper/results/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
+    
   }
   
   ##########################
@@ -3465,7 +4133,7 @@ compare_skin_tissues_somatic_mutations <- function() {
   ##########################
   
   ## VISUALISE MEAN READ COVERAGE BEFORE SUBSAMPLING
-  plot_coverage_bf <- ggplot(data = df_skin_tidy %>% distinct(ref_junID,.keep_all = T)) +
+  plot_coverage_bf <- ggplot(data = df_database_introns_tidy %>% distinct(ref_junID,.keep_all = T)) +
     geom_density(mapping = aes(x = mean_coverage, fill = tissue), alpha = 0.8) +
     ggtitle("Before subsampling") +
     theme(legend.position = "top",
@@ -3491,8 +4159,7 @@ compare_skin_tissues_somatic_mutations <- function() {
                     plot_coverage_af,
                     labels = c("a", "b"),
                     common.legend = T)
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/skin_somatic_mutations_coverage")
+  file_name <- paste0(getwd(), "/results/_paper/figures/", project_id1, "_", project_id2, "_somatic_mutations_coverage")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -3514,11 +4181,12 @@ compare_skin_tissues_somatic_mutations <- function() {
     filter(ref_junID %in% common_introns$ref_junID)
   
   df_coverage$tissue = factor(df_coverage$tissue, 
-                              levels = c("Skin - Sun Exposed (Lower leg)",
-                                          "Skin - Not Sun Exposed (Suprapubic)"))
+                              levels = c(paste0(cluster_id1, "_", project_id1),
+                                         paste0(cluster_id2, "_", project_id2)))
   
-  df_coverage %>%
-    dplyr::count(tissue)
+  
+  df_coverage %>% dplyr::count(tissue)
+  
   
   df_coverage <- df_coverage %>%
     dplyr::select(ref_junID, tissue, MSR_D, MSR_A) %>%
@@ -3536,12 +4204,12 @@ compare_skin_tissues_somatic_mutations <- function() {
   ################################
   
   plotSKIN_sunexposed <- ggplot(data = df_coverage %>% 
-                         filter(tissue == "Skin - Sun Exposed (Lower leg)")) + 
+                         filter(tissue == paste0(cluster_id1, "_", project_id1))) + 
     geom_bar(aes(x = MSR,  fill = MSR_type), 
              stat = "bin", 
              bins = 30,
              position = "dodge")  +
-    ggtitle("Skin - Sun Exposed (Lower leg)") +
+    ggtitle(paste0(cluster_id1)) +
     xlab("Mis-splicing ratio") +
     ylab("Intron count") +
     theme_light() +
@@ -3565,13 +4233,13 @@ compare_skin_tissues_somatic_mutations <- function() {
   
   ## SKIN Non-Sunexposed
   plotSKIN_nonexposed <- ggplot(data = df_coverage %>% 
-                          filter(tissue == "Skin - Not Sun Exposed (Suprapubic)")) + 
+                          filter(tissue == paste0(cluster_id2, "_", project_id2))) + 
     #geom_density(aes(x = MSR, fill = MSR_type), alpha = 0.8) +
     geom_bar(aes(x = MSR,  fill = MSR_type), 
              stat = "bin", 
              bins = 30,
              position = "dodge") +
-    ggtitle("Skin - Not Sun Exposed (Suprapubic)") +
+    ggtitle(cluster_id2) +
     xlab("Mis-splicing ratio") +
     ylab("Intron count") +
     ylim(c(0,25000)) +
@@ -3598,8 +4266,7 @@ compare_skin_tissues_somatic_mutations <- function() {
                     #labels = c("a", "d"),
                     common.legend = T)
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/skin_somatic_mutations_MSR")
+  file_name <- paste0(getwd(), "/results/_paper/figures/", project_id1, "_", project_id2, "_somatic_mutations_MSR")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
@@ -3607,197 +4274,467 @@ compare_skin_tissues_somatic_mutations <- function() {
   ## STATS
   ####################################
 
-  df_coverage %>% filter(tissue == "Skin - Sun Exposed (Lower leg)", MSR_type == "MSR_D") %>% pull(MSR) %>% summary
-  df_coverage %>% filter(tissue == "Skin - Not Sun Exposed (Suprapubic)", MSR_type == "MSR_D") %>% pull(MSR) %>% summary
+  if (stats) {
+    
+    df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_D") %>% pull(MSR) %>% summary
+    df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_D") %>% pull(MSR) %>% summary
+    
+    ## 1. Splicing noise is more frequent in introns from non-protein coding transcripts 
+    ## than in introns from protein-coding transcripts even after correcting by mean read coverage
+    
+    ## splicing noise at the donor is more frequent in introns from NPC vs "Skin - Sun Exposed (Lower leg)" 
+    wilcox.test(x = df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_D") %>% pull(MSR),
+                y = df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_D") %>% pull(MSR),
+                #alternative = "greater",
+                paired = T,
+                correct = T)
+    rstatix::wilcox_effsize(data = df_coverage %>% 
+                              filter(MSR_type == "MSR_D")%>%
+                              mutate(tissue = tissue %>% as.factor()),
+                            formula = MSR ~ tissue,
+                            paired = T)
+    
+    
+    df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_A") %>% pull(MSR) %>% summary
+    df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_A") %>% pull(MSR) %>% summary
+    
+    ## splicing noise at the acceptor is more frequent in introns from NPC vs PC 
+    wilcox.test(x = df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_A") %>% pull(MSR),
+                y = df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_A") %>% pull(MSR),
+                #alternative = "greater",
+                paired = T,
+                correct = T)
+    rstatix::wilcox_effsize(data = df_coverage %>% 
+                              filter(MSR_type == "MSR_A")%>%
+                              mutate(tissue = tissue %>% as.factor()),
+                            formula = MSR ~ tissue,
+                            paired = T)
+    
+    
+    
+    # ####################################
+    # ## LM
+    # ####################################
+    # 
+    # df_coverage %>%
+    #   inner_join(y = skin_introns %>%
+    #                dplyr::select(ref_junID,
+    #                              gene_id, ref_length, ref_ss5score, ref_ss3score,
+    #                              ref_cons5score, ref_cons3score, ref_CDTS5score,
+    #                              ref_CDTS3score,
+    #                              protein_coding, n_transcripts, gene_width, gene_name),
+    #              by = "ref_junID")
+    # 
+    # 
+    # 
+    # #########################
+    # ## TIDY DATA
+    # #########################
+    # 
+    # idb <- introns %>%
+    #   as.data.frame() %>%
+    #   dplyr::distinct(ref_junID, .keep_all = T) %>%
+    #   dplyr::rename(intron_length = ref_length,
+    #                 intron_5ss_score = ref_ss5score,
+    #                 intron_3ss_score = ref_ss3score,
+    #                 gene_length = gene_width,
+    #                 gene_tpm = gene_tpm,
+    #                 gene_num_transcripts = n_transcripts,
+    #                 CDTS_5ss = ref_CDTS5score,
+    #                 CDTS_3ss = ref_CDTS3score,
+    #                 protein_coding = protein_coding,
+    #                 mean_phastCons20way_5ss = ref_cons5score,
+    #                 mean_phastCons20way_3ss = ref_cons3score)
+    # 
+    # 
+    # #########################
+    # ## LINEAR MODELS
+    # #########################
+    # 
+    # 
+    # fit_donor <- lm(MSR_D ~ 
+    #                   intron_length +
+    #                   intron_5ss_score + 
+    #                   intron_3ss_score +
+    #                   gene_length +
+    #                   gene_tpm +
+    #                   gene_num_transcripts +
+    #                   protein_coding +
+    #                   CDTS_5ss +
+    #                   CDTS_3ss +
+    #                   mean_phastCons20way_5ss +
+    #                   mean_phastCons20way_3ss, 
+    #                 data = idb)
+    # 
+    # 
+    # # fit_donor$coefficients[names(fit_donor$coefficients)[summary(fit_donor)$coefficients[,4] < 0.05]]  
+    # 
+    # fit_acceptor <- lm(MSR_A ~ 
+    #                      intron_length + 
+    #                      intron_5ss_score + 
+    #                      intron_3ss_score +
+    #                      gene_length +
+    #                      gene_tpm +
+    #                      gene_num_transcripts +
+    #                      protein_coding +
+    #                      CDTS_5ss +
+    #                      CDTS_3ss +
+    #                      mean_phastCons20way_5ss +
+    #                      mean_phastCons20way_3ss, 
+    #                    data = idb)
+    # fit_acceptor %>% summary()
+    # 
+    # model_names <- c("MSR_Donor", "MSR_Acceptor")
+    # 
+    # 
+    # coef_names <- c("Intron Length" = "intron_length",
+    #                 "Intron 5'ss MES score" = "intron_5ss_score",
+    #                 "Intron 3'ss MES score" = "intron_3ss_score", 
+    #                 #"Inter. 5'ss & 3'ss MES score" = "intron_5ss_score:intron_3ss_score", 
+    #                 #"Intron Type u2" = "u2_intronTRUE",
+    #                 #"Intron ClinVar mutation" = "clinvarTRUE",
+    #                 "Gene Length" = "gene_length",
+    #                 "Gene TPM" = "gene_tpm",
+    #                 "Gene num. transcripts" = "gene_num_transcripts",
+    #                 "CDTS 5'ss" = "CDTS_5ss",
+    #                 "CDTS 3'ss" = "CDTS_3ss",
+    #                 "Cons 5'ss" = "mean_phastCons20way_5ss",
+    #                 "Cons 3'ss" = "mean_phastCons20way_3ss",
+    #                 "Protein coding" = "protein_coding")
+    # 
+    # plotLM <- jtools::plot_summs(fit_donor, 
+    #                              fit_acceptor,
+    #                              #scale = TRUE, 
+    #                              #robust = T,
+    #                              #n.sd = 2,
+    #                              #pvals = TRUE,
+    #                              legend.title = "",
+    #                              #plot.distributions = TRUE,
+    #                              ci_level = 0.95,
+    #                              coefs = coef_names,
+    #                              colors = c("#35B779FF","#440154FF"),
+    #                              model.names = model_names,
+    #                              plot.distributions = T,
+    #                              rescale.distributions = T,
+    #                              
+    #                              point.shape = T
+    # ) + 
+    #   theme_minimal() + 
+    #   theme(axis.line = element_line(colour = "black"), 
+    #         axis.text.x = element_text(colour = "black", size = "12"),
+    #         axis.text.y = element_text(colour = "black", size = "12"),
+    #         axis.title = element_text(colour = "black", size = "12"),
+    #         legend.text = element_text(colour = "black", size = "12"),
+    #         legend.title = element_text(colour = "black", size = "12"),
+    #         legend.position = "top",
+    #         panel.grid.major.x = element_blank(),
+    #         panel.grid.major.y = element_blank(),
+    #         axis.ticks = element_line(colour = "black", size = 2)) +  
+    #   ylab("Covariates") +
+    #   geom_hline(yintercept = seq(from = 0,
+    #                               to = length((fit_donor$coefficients %>% names)[-1]) + .5,
+    #                               by = 1)) +
+    #   guides(colour = guide_legend(#title = NULL,
+    #     ncol = 2, 
+    #     nrow = 1))     +
+    #   scale_x_continuous(breaks = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025),
+    #                      labels = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025))
+    # 
+    # plotLM 
+    # plotLM +
+    #   annotate("text",
+    #            y = c(1.65, 2.65, 3.65, 4.65, 5.65, 6.65, 7.65, 8.65, 9.65, 10.65, 11.65),
+    #            x = -0.0025, 
+    #            label = c( paste("pval",(summary(fit_donor)$coefficients[,4] %>% 
+    #                                       as_tibble() %>%
+    #                                       mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
+    #            family = "", 
+    #            fontface = 1, 
+    #            size=3,
+    #            colour = c("#35B779FF") )  +
+    #   annotate("text",
+    #            y = c(1.25, 2.25, 3.25, 4.25, 5.25, 6.25, 7.25, 8.25, 9.25, 10.25, 11.25),
+    #            x = -0.0025, 
+    #            label = c( paste("pval",(summary(fit_acceptor)$coefficients[,4] %>% 
+    #                                       as_tibble() %>%
+    #                                       mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
+    #            family = "", 
+    #            fontface = 1, 
+    #            size=3,
+    #            colour = c("#440154FF") )
+    # 
+    # file_name <- paste0(getwd(), "/results/_paper/figures/lm_FTCX")
+    # ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+    # ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  }
+}
+
+
+#################################
+## AQR AND U2AF1
+#################################
+
+plot_data_AQR_U2AF1 <- function() {
   
-  ## 1. Splicing noise is more frequent in introns from non-protein coding transcripts 
-  ## than in introns from protein-coding transcripts even after correcting by mean read coverage
-  
-  ## splicing noise at the donor is more frequent in introns from NPC vs "Skin - Sun Exposed (Lower leg)" 
-  wilcox.test(x = df_coverage %>% filter(tissue == "Skin - Sun Exposed (Lower leg)", MSR_type == "MSR_D") %>% pull(MSR),
-              y = df_coverage %>% filter(tissue == "Skin - Not Sun Exposed (Suprapubic)", MSR_type == "MSR_D") %>% pull(MSR),
-              #alternative = "greater",
-              paired = T,
-              correct = T)
-  rstatix::wilcox_effsize(data = df_coverage %>% 
-                            filter(MSR_type == "MSR_D")%>%
-                            mutate(tissue = tissue %>% as.factor()),
-                          formula = MSR ~ tissue,
-                          paired = T)
   
   
-  df_coverage %>% filter(tissue == "Skin - Sun Exposed (Lower leg)", MSR_type == "MSR_A") %>% pull(MSR) %>% summary
-  df_coverage %>% filter(tissue == "Skin - Not Sun Exposed (Suprapubic)", MSR_type == "MSR_A") %>% pull(MSR) %>% summary
+  ## All plots only contain common introns across RBP projects 
   
-  ## splicing noise at the acceptor is more frequent in introns from NPC vs PC 
-  wilcox.test(x = df_coverage %>% filter(tissue == "Skin - Sun Exposed (Lower leg)", MSR_type == "MSR_A") %>% pull(MSR),
-              y = df_coverage %>% filter(tissue == "Skin - Not Sun Exposed (Suprapubic)", MSR_type == "MSR_A") %>% pull(MSR),
-              #alternative = "greater",
-              paired = T,
-              correct = T)
-  rstatix::wilcox_effsize(data = df_coverage %>% 
-                            filter(MSR_type == "MSR_A")%>%
-                            mutate(tissue = tissue %>% as.factor()),
-                          formula = MSR ~ tissue,
-                          paired = T)
+  overwrite = F
+  num_cores = 10 
+  global_common_introns_path = paste0(getwd(), "/code/variables/global_common_introns_filtered.rds")
+  global_common_novel_path = paste0(getwd(), "/code/variables/global_common_novel_filtered.rds")
+  
+  RBPs_path <- path.expand("/home/grocamora/RytenLab-Research/03-ENCODE_RBP_Automatization/RBPs")
   
   
+  ################################################
+  ## LOAD COMMON INTRONS
+  ################################################
   
-  ####################################
-  ## LM
-  ####################################
-  
-  df_coverage %>%
-    inner_join(y = skin_introns %>%
-                 dplyr::select(ref_junID,
-                               gene_id, ref_length, ref_ss5score, ref_ss3score,
-                               ref_cons5score, ref_cons3score, ref_CDTS5score,
-                               ref_CDTS3score,
-                               protein_coding, n_transcripts, gene_width, gene_name),
-               by = "ref_junID")
-  
-  
-  
-  #########################
-  ## TIDY DATA
-  #########################
-  
-  idb <- introns %>%
-    as.data.frame() %>%
-    dplyr::distinct(ref_junID, .keep_all = T) %>%
-    dplyr::rename(intron_length = ref_length,
-                  intron_5ss_score = ref_ss5score,
-                  intron_3ss_score = ref_ss3score,
-                  gene_length = gene_width,
-                  gene_tpm = gene_tpm,
-                  gene_num_transcripts = n_transcripts,
-                  CDTS_5ss = ref_CDTS5score,
-                  CDTS_3ss = ref_CDTS3score,
-                  protein_coding = protein_coding,
-                  mean_phastCons20way_5ss = ref_cons5score,
-                  mean_phastCons20way_3ss = ref_cons3score)
+  # Load global common introns
+  if(!file.exists(global_common_introns_path)){
+    global_common_introns <- generateCommonIntronsParallel(studied_RBPs = target_RBPs, 
+                                                           RBP_path = RBPs_path, 
+                                                           metadata = metadata_RBPs, 
+                                                           required_clusters = required_clusters, 
+                                                           file_output = global_common_introns_path, 
+                                                           overwrite = overwrite, 
+                                                           num_cores = num_cores)
+  }else{
+    global_common_introns <- readRDS(global_common_introns_path)
+  }
   
   
-  #########################
-  ## LINEAR MODELS
-  #########################
+  # Load global common novel
+  if(!file.exists(global_common_novel_path)){
+    common_ref_coordinates <- global_common_introns %>% pull(ref_coordinates) %>% unique
+    global_common_novel <- generateCommonNovelParallel(target_RBPs, common_ref_coordinates, RBPs_path, 
+                                                       metadata_RBPs, required_clusters, global_common_novel_path, 
+                                                       overwrite, num_cores)
+  }else{
+    global_common_novel <- readRDS(global_common_novel_path)
+  }
+  
+  scales::show_col(colours = viridis::viridis_pal(option = "A")(n = 20))
+  scales::show_col(colours = viridis::viridis_pal(option = "B")(n = 20))
+  scales::show_col(colours = viridis::viridis_pal(option = "C")(n = 20))
+  scales::show_col(colours = viridis::viridis_pal(option = "D")(n = 20))
+  
+  #################################################
+  ## PLOT AQR AND U2AF1
+  #################################################
   
   
-  fit_donor <- lm(MSR_D ~ 
-                    intron_length +
-                    intron_5ss_score + 
-                    intron_3ss_score +
-                    gene_length +
-                    gene_tpm +
-                    gene_num_transcripts +
-                    protein_coding +
-                    CDTS_5ss +
-                    CDTS_3ss +
-                    mean_phastCons20way_5ss +
-                    mean_phastCons20way_3ss, 
-                  data = idb)
+  target_RBPs = c("AQR", "U2AF1")
+  
+  RBP_intron <- global_common_introns %>% filter(target_gene %in% target_RBPs)
+  RBP_novel <- global_common_novel %>% filter(target_gene %in% target_RBPs)
   
   
-  # fit_donor$coefficients[names(fit_donor$coefficients)[summary(fit_donor)$coefficients[,4] < 0.05]]  
+  RBP_intron <- RBP_intron %>%
+    mutate(cluster = ifelse(cluster == "case", "gene knockdown", "control"))%>%
+    mutate(cluster = factor(cluster, levels = c("control", "gene knockdown")))
+  RBP_novel <- RBP_novel %>%
+    mutate(cluster = ifelse(cluster == "case", "gene knockdown", "control")) %>%
+    mutate(cluster = factor(cluster, levels = c("gene knockdown","control" )))
   
-  fit_acceptor <- lm(MSR_A ~ 
-                       intron_length + 
-                       intron_5ss_score + 
-                       intron_3ss_score +
-                       gene_length +
-                       gene_tpm +
-                       gene_num_transcripts +
-                       protein_coding +
-                       CDTS_5ss +
-                       CDTS_3ss +
-                       mean_phastCons20way_5ss +
-                       mean_phastCons20way_3ss, 
-                     data = idb)
-  fit_acceptor %>% summary()
+  ## DISTANCES
   
-  model_names <- c("MSR_Donor", "MSR_Acceptor")
+  limit_bp = 30
   
-  
-  coef_names <- c("Intron Length" = "intron_length",
-                  "Intron 5'ss MES score" = "intron_5ss_score",
-                  "Intron 3'ss MES score" = "intron_3ss_score", 
-                  #"Inter. 5'ss & 3'ss MES score" = "intron_5ss_score:intron_3ss_score", 
-                  #"Intron Type u2" = "u2_intronTRUE",
-                  #"Intron ClinVar mutation" = "clinvarTRUE",
-                  "Gene Length" = "gene_length",
-                  "Gene TPM" = "gene_tpm",
-                  "Gene num. transcripts" = "gene_num_transcripts",
-                  "CDTS 5'ss" = "CDTS_5ss",
-                  "CDTS 3'ss" = "CDTS_3ss",
-                  "Cons 5'ss" = "mean_phastCons20way_5ss",
-                  "Cons 3'ss" = "mean_phastCons20way_3ss",
-                  "Protein coding" = "protein_coding")
-  
-  plotLM <- jtools::plot_summs(fit_donor, 
-                               fit_acceptor,
-                               #scale = TRUE, 
-                               #robust = T,
-                               #n.sd = 2,
-                               #pvals = TRUE,
-                               legend.title = "",
-                               #plot.distributions = TRUE,
-                               ci_level = 0.95,
-                               coefs = coef_names,
-                               colors = c("#35B779FF","#440154FF"),
-                               model.names = model_names,
-                               plot.distributions = T,
-                               rescale.distributions = T,
-                               
-                               point.shape = T
-  ) + 
-    theme_minimal() + 
+  plot_aqr_u2af1 <- ggplot(RBP_novel %>%
+                             mutate(novel_type = str_replace(string = novel_type,
+                                                             pattern = "_",
+                                                             replacement = " ")) %>% 
+                             mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
+                             filter(abs(distance) < limit_bp)) + 
+    geom_histogram(aes(x = distance, fill = cluster),
+                   bins = 60, 
+                   binwidth = 1, 
+                   position = "identity", 
+                   alpha = 1, 
+                   color = "black", 
+                   linewidth = 0.1) +
+    #facet_grid(vars(target_gene))+
+    scale_x_continuous(expand = expansion(mult = c(0, 0)), 
+                       limits = c((limit_bp * -1), limit_bp), 
+                       breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
+    
+    scale_fill_manual(values = c("#B6308BFF","#F7E225FF"),
+                      breaks = c("gene knockdown", "control"),
+                      labels = c("gene knockdown  ", "control")) +
+    
+    labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
+    ggforce::facet_col(vars(novel_type), 
+                       labeller = labeller(novel_type = c("novel_donor" = "Novel donor", "novel_acceptor" = "Novel acceptor"))) +
+    facet_wrap(novel_type~target_gene) +
+    guides(fill = guide_legend(title = "Sample type: ", #title = "Junction category & Strand",
+                               #override.aes = list(size = 3),
+                               ncol = 2, nrow = 1 )) +
+    theme_light() +
     theme(axis.line = element_line(colour = "black"), 
-          axis.text.x = element_text(colour = "black", size = "12"),
-          axis.text.y = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(colour = "black", size = "12"),
-          legend.title = element_text(colour = "black", size = "12"),
-          legend.position = "top",
-          panel.grid.major.x = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2)) +  
-    ylab("Covariates") +
-    geom_hline(yintercept = seq(from = 0,
-                                to = length((fit_donor$coefficients %>% names)[-1]) + .5,
-                                by = 1)) +
-    guides(colour = guide_legend(#title = NULL,
-      ncol = 2, 
-      nrow = 1))     +
-    scale_x_continuous(breaks = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025),
-                       labels = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025))
+          axis.text = element_text(colour = "black", size = "11"),
+          axis.text.x = element_text(colour = "black", size = "11"),
+          axis.title = element_text(colour = "black", size = "11"),
+          strip.text = element_text(colour = "black", size = "11"), 
+          legend.text = element_text(colour = "black", size = "11"),
+          plot.caption = element_text(colour = "black", size = "11"),
+          plot.title = element_text(colour = "black", size = "11"),
+          legend.title = element_text(colour = "black", size = "11"),
+          legend.position = "top") 
   
-  plotLM 
-  plotLM +
-    annotate("text",
-             y = c(1.65, 2.65, 3.65, 4.65, 5.65, 6.65, 7.65, 8.65, 9.65, 10.65, 11.65),
-             x = -0.0025, 
-             label = c( paste("pval",(summary(fit_donor)$coefficients[,4] %>% 
-                                        as_tibble() %>%
-                                        mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
-             family = "", 
-             fontface = 1, 
-             size=3,
-             colour = c("#35B779FF") )  +
-    annotate("text",
-             y = c(1.25, 2.25, 3.25, 4.25, 5.25, 6.25, 7.25, 8.25, 9.25, 10.25, 11.25),
-             x = -0.0025, 
-             label = c( paste("pval",(summary(fit_acceptor)$coefficients[,4] %>% 
-                                        as_tibble() %>%
-                                        mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
-             family = "", 
-             fontface = 1, 
-             size=3,
-             colour = c("#440154FF") )
   
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/lm_FTCX")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  distance_rectangle <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
+    geom_text(aes(x = 15, y = 30),  size = 6, label = "exon") +
+    geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = -15, y = 50),  size = 6, label = "intron") +
+    theme_void()
+  
+  
+  plot_aqr_u2af1 / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
+  
+  ggsave(file = paste0(getwd(), "/code/images/distance_stacked_AQR_U2AF1.png"), 
+         width = 183, height = 150, dpi = 300, units = "mm")
+  
+  
+  
+  ## DISTANCES LONGER
+  
+  limit_bp = 200
+  
+  plot_aqr_u2af1 <- ggplot(RBP_novel %>%
+                             filter(target_gene == "AQR") %>%
+                             mutate(novel_type = str_replace(string = novel_type,
+                                                             pattern = "_",
+                                                             replacement = " ")) %>% 
+                             mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
+                             filter(abs(distance) < limit_bp)) + 
+    geom_histogram(aes(x = distance, fill = cluster),
+                   bins = 60, 
+                   binwidth = 1, 
+                   position = "identity", 
+                   alpha = 1, 
+                   color = "black", 
+                   linewidth = 0.1) +
+    #facet_grid(vars(target_gene))+
+    scale_x_continuous(expand = expansion(mult = c(0, 0)), 
+                       limits = c((limit_bp * -1), limit_bp), 
+                       breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
+    scale_fill_manual(values = c("#B6308BFF","#F7E225FF"),
+                      breaks = c("gene knockdown", "control"),
+                      labels = c("gene knockdown  ", "control")) +
+    labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
+    #ggtitle(paste0("Distance to the annotated intron - ", target_RBP)) + 
+    facet_grid(vars(novel_type), 
+               labeller = labeller(novel_type = c("novel donor" = "Novel donor", "novel acceptor" = "Novel acceptor"))) +
+    facet_grid(vars(novel_type)) +
+    guides(fill = guide_legend(title = "Sample type: ", #title = "Junction category & Strand",
+                               override.aes = list(size = 3),
+                               ncol = 2, nrow = 1 )) +
+    theme_light() +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "11"),
+          axis.text.x = element_text(colour = "black", size = "11"),
+          axis.title = element_text(colour = "black", size = "11"),
+          strip.text = element_text(colour = "black", size = "11"), 
+          legend.text = element_text(colour = "black", size = "11"),
+          plot.caption = element_text(colour = "black", size = "11"),
+          plot.title = element_text(colour = "black", size = "11"),
+          legend.title = element_text(colour = "black", size = "11"),
+          legend.position = "top") 
+  
+  
+  distance_rectangle <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
+    geom_text(aes(x = 100, y = 30),  size = 5, label = "exon") +
+    geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = -100, y = 48),  size = 5, label = "intron") +
+    theme_void()
+  
+  
+  plot_aqr_u2af1 / (distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
+  
+  ggsave(file = paste0(getwd(), "/code/images/distance_stacked_AQR_200bp.png"), 
+         width = 183, height = 100, dpi = 300, units = "mm")
+  
+  
+  ## DELTA MES
+  
+  MES_gene <- "AQR"
+  
+  RBP_merged <- RBP_novel %>% 
+    dplyr::select(novel_coordinates, ref_junID, cluster, novel_ss5score, novel_ss3score, target_gene) %>%
+    left_join(RBP_intron %>% 
+                dplyr::select(ref_junID, ref_ss5score, ref_ss3score) %>% distinct(),
+              by = "ref_junID") %>%
+    mutate(delta_ss5score = ref_ss5score - novel_ss5score,
+           delta_ss3score = ref_ss3score - novel_ss3score)
+  
+  RBP_delta <- RBP_merged %>%
+    filter(target_gene == MES_gene) %>% 
+    dplyr::select(-target_gene) %>%
+    gather(key = "delta_type", value = "delta", delta_ss5score, delta_ss3score) %>%
+    filter(delta != 0) %>%
+    mutate(delta_type = ifelse(delta_type == "delta_ss5score", "delta MES 5'ss", "delta MES 3'ss")) %>%
+    mutate(delta_type = delta_type %>% as.factor()) %>%
+    mutate(delta_type = relevel(delta_type, ref = "delta MES 5'ss"))
+  
+  ggplot(RBP_delta %>%
+           filter()) +
+    geom_density(aes(x = delta, fill = cluster), alpha = 0.8, linewidth = 0.3, adjust = 1) +
+    geom_vline(xintercept = 0) +
+    scale_x_continuous(expand = c(0, 0)) +
+    scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  
+    
+    scale_fill_manual(values = c("#B6308BFF","#F7E225FF"),
+                      breaks = c("gene knockdown", "control"),
+                      labels = c("gene knockdown  ", "control")) +
+    #viridis::scale_fill_viridis(discrete = T, begin = 0.15, end = 0.75, name = "", labels = cluster_labels) +
+    #ggtitle(paste0("Delta MaxEntScan scores - ", target_RBP)) + 
+    labs(x = "Delta MaxEntScan score", y = "Density") +
+    facet_wrap(vars(delta_type), 
+               labeller = labeller(delta_type = c("delta MES 5'ss" = "Delta MES 5'ss", "delta MES 3'ss" = "Delta MES 3'ss"))) +
+    theme_light() +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "11"),
+          axis.text.x = element_text(colour = "black", size = "11"),
+          axis.title = element_text(colour = "black", size = "11"),
+          strip.text = element_text(colour = "black", size = "11"), 
+          legend.text = element_text(colour = "black", size = "11"),
+          plot.caption = element_text(colour = "black", size = "11"),
+          plot.title = element_text(colour = "black", size = "11"),
+          legend.title = element_text(colour = "black", size = "11"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = "Sample type: ",
+                               ncol = 2, nrow = 1 )) 
+  #custom_gg_theme + theme(legend.key = element_rect(color = "black", linewidth = .05))
+  
+  ggsave(file = paste0(getwd(),"/code/images/delta_MaxEntScan_",MES_gene,".png"), 
+         width = 183, height = 100, dpi = 300, units = "mm")
+  
+  
+  
+  
+  ## This analysis identified a significant reduction (pval) in the strength of the novel 3’ss compared 
+  ## to paired annotated sites in case versus control samples, suggesting that the spliceosome was no 
+  ## longer able to distinguish between splicing signals accurately at acceptor sites. 
+  
+  
+  ## the alternative has to be greater as a weaker novel splice site will produce higher delta MES values
+  wilcox.test(x = RBP_delta %>%
+                filter(cluster == "gene knockdown",
+                       delta_type == "delta MES 3'ss") %>%
+                pull(delta),
+              y = RBP_delta %>%
+                filter(cluster == "control",
+                       delta_type == "delta MES 3'ss") %>%
+                pull(delta),
+              alternative = "greater")
+  
+  
 }
 
 #################################
@@ -3814,8 +4751,7 @@ plot_GO_Enrichment <- function() {
   project_id <- "BRAIN"
   
   ## Read data.frame containing only common introns across age groups in BRAIN
-  folder_results <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
-                           gtf_version, "/age_subsampled/")
+  folder_results <- paste0(getwd(), "/database/v", gtf_version, "/age_subsampled/")
   
   ## MSR_D
   file_name <- paste0(folder_results, "/results/df_MSRD_common_introns_", project_id,".rds")
@@ -4064,4 +5000,8 @@ prepare_gtex_samples <- function() {
 ##################################
 
 
+compare_tissues_somatic_mutations(project_id1 = "BRAIN",
+                                  cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)",
+                                  project_id2 = "BLOOD",
+                                  cluster_id2 = "Whole Blood")
   

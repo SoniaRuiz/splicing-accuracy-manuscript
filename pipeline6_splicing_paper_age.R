@@ -9,17 +9,15 @@ library(DBI)
 
 
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
-
+setwd("~/PROJECTS/splicing-project-recount3/")
 
 gtf_version <- 105
 main_project <- "age_subsampled"
-database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
-                        gtf_version, "/", main_project, "/", main_project, ".sqlite")
+database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
 con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
-all_projects <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
-age_projects <- all_projects
+age_projects <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
 
 
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification_helper.R")
@@ -38,20 +36,18 @@ age_stratification_get_stats <- function() {
   db_metadata %>% nrow() 
   
   db_metadata %>%
-    dplyr::count(region) %>%
-    print(n = 50)
+    dplyr::count(cluster)
   
   db_metadata %>%
-    dplyr::count(SRA_project) %>%
-    print(n = 50)
+    dplyr::count(SRA_project) 
   
   
   db_metadata %>%
     group_by(SRA_project) %>%
-    distinct(cluster, .keep_all = T)%>%
-    dplyr::select(SRA_project,cluster)%>%
-    print(n = 60) %>%
-    write.csv(file = paste0("~/PROJECTS/splicing-project-results/splicing-recount3-projects/body_sites_tissues.csv"), row.names = FALSE)
+    distinct(cluster, .keep_all = T) %>%
+    dplyr::select(SRA_project,cluster) %>%
+    #print(n = 60) %>%
+    write.csv(file = paste0(getwd(), "/results/_paper/results/", main_project, "_body_sites_tissues.csv"), row.names = FALSE)
   
   db_metadata %>%
     group_by(SRA_project) %>%
@@ -70,7 +66,7 @@ age_stratification_get_stats <- function() {
     group_by(SRA_project) %>%
     mutate(nsamples = n()) %>%
     filter(nsamples >= 70) %>%
-    distinct(region, .keep_all = T) 
+    distinct(cluster, .keep_all = T) 
   
   query <- paste0("SELECT * from 'intron'")
   db_introns <- dbGetQuery(con, query) %>% as_tibble()
@@ -79,7 +75,7 @@ age_stratification_get_stats <- function() {
     dplyr::count(misspliced)
   
   db_introns %>%
-    dplyr::count(gene_id)
+    dplyr::count()
   
   query <- paste0("SELECT * from 'novel'")
   novel <- dbGetQuery(con, query) 
@@ -92,11 +88,8 @@ age_stratification_get_stats <- function() {
 ## BASIC PLOTS
 ##################################
 
-age_stratification_plot_distances <- function(df = NULL,
-                                              project_id = "MUSCLE",
-                                              age_groups = c("60-79", "40-59", "20-39"),
-                                              distance_limit = 30,
-                                              QC = F) {
+age_stratification_plot_distances <- function(distance_bp = 30) {
+  
   
   #######################################
   ## CONNECT TO THE DATABASE
@@ -107,11 +100,12 @@ age_stratification_plot_distances <- function(df = NULL,
   query <- paste0("SELECT * FROM 'master'")
   df_metadata <- dbGetQuery(con, query)
   
+  #all_projects <- df_metadata$SRA_project %>% unique()
+  all_projects <- "BRAIN"
   
-  
-  df_age_distances <- map_df(project_id, function(project_id) {
+  df_age_distances <- map_df(all_projects, function(project_id) {
     
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
+    # project_id <- (all_projects)[1]
     
     print(paste0(Sys.time(), " --> ", project_id))
     
@@ -121,6 +115,7 @@ age_stratification_plot_distances <- function(df = NULL,
       pull()
     
     df_age_groups <- map_df(age_groups, function(age_group) {
+      
       # age_group <- age_groups[1]
       print(paste0(Sys.time(), " --> ", age_group))
       
@@ -231,8 +226,8 @@ age_stratification_plot_distances <- function(df = NULL,
   
   plot_distances <- ggplot(data = df_age_distances_common) + 
     geom_histogram(aes(x = distance, fill = sample_type),
-                   alpha = 0.8,
-                   bins = distance_limit * 2,
+                   alpha = 0.6,
+                   bins = distance_bp * 2,
                    binwidth = 1,
                    position = "identity"
     ) +
@@ -241,8 +236,8 @@ age_stratification_plot_distances <- function(df = NULL,
     xlab("Distance to the reference intron (in bp)") +
     ylab("Number of unique novel junctions") +
     theme_light() +
-    scale_x_continuous(limits = c((distance_limit * -1), distance_limit),
-                       breaks = c((distance_limit * -1), (round(distance_limit / 2) * -1), 0, round(distance_limit / 2), distance_limit)) +
+    scale_x_continuous(limits = c((distance_bp * -1), distance_bp),
+                       breaks = c((distance_bp * -1), (round(distance_bp / 2) * -1), 0, round(distance_bp / 2), distance_bp)) +
     
     scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
                       labels = c("20-39", "40-59", "60-79"),
@@ -265,10 +260,10 @@ age_stratification_plot_distances <- function(df = NULL,
   
   
   distance_rectangle <- ggplot() +
-    geom_rect(aes(xmin = 0, xmax = distance_limit, ymin = 1, ymax = 100),
+    geom_rect(aes(xmin = 0, xmax = distance_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
     geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
-    geom_rect(aes(xmin = (distance_limit)*-1, xmax = 0, ymin = 49, ymax = 51),
+    geom_rect(aes(xmin = (distance_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
     geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
     theme_void()
@@ -277,9 +272,10 @@ age_stratification_plot_distances <- function(df = NULL,
   plot_distances / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   
 
-  folder_image <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/figures/")
+  folder_image <- paste0(getwd(), "/recount3/_paper/figures/")
   dir.create(file.path(folder_image), recursive = TRUE, showWarnings = T)
-  ggplot2::ggsave(filename = paste0(folder_image, "/panel4_age_distances_",project_id,".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_image, "/", main_project, "_distances_", project_id, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_image, "/", main_project, "_distances_", project_id, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
 }
 
@@ -452,7 +448,7 @@ age_stratification_plot_distances_proportion <- function(age_levels = c("60-79",
   ## CONNECT TO THE DATABASE
   #######################################
   
-  con <- dbConnect(RSQLite::SQLite(), "./database/age-stratification.sqlite")
+  con <- dbConnect(RSQLite::SQLite(), database_path)
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
   df_metadata <- dbGetQuery(con, query)
@@ -609,7 +605,7 @@ age_stratification_mode_distances <- function(age_groups,
   ## CONNECT TO THE DATABASE
   #######################################
   
-  con <- dbConnect(RSQLite::SQLite(), "./database/age-stratification.sqlite")
+  con <- dbConnect(RSQLite::SQLite(), database_path)
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
   df_metadata <- dbGetQuery(con, query)
@@ -1367,24 +1363,24 @@ age_stratification_plot_MSR_across_tissues <- function(age_projects = c("BRAIN",
 ####################################
 
 age_stratification_MSR_changing_with_age <- function(database_path,
-                                                     age_projects = NULL,
                                                      gtf_version) {
   
   
   ## CONNECT TO THE DATABASE
-  con <- dbConnect(RSQLite::SQLite(), database_path) # "~/PROJECTS/splicing-project-recount3/database/v105/age_subsampled/age_subsampled_3tissues.sqlite"
+  con <- dbConnect(RSQLite::SQLite(), database_path) 
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
+  
   df_metadata <- dbGetQuery(con, query) %>%
     group_by(SRA_project) %>%
     mutate(nsamples = n()) %>%
     filter(nsamples >= 70)
   
-  df_metadata %>%
-    write.csv(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", 
-                            gtf_version, "/", main_project, "/results/", 
-                            main_project, "_database_metadata.csv"), 
-              row.names = FALSE)
+  # df_metadata %>%
+  #   write.csv(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", 
+  #                           gtf_version, "/", main_project, "/results/", 
+  #                           main_project, "_database_metadata.csv"), 
+  #             row.names = FALSE)
   
   age_groups <- df_metadata$cluster %>% unique()
   
@@ -1394,29 +1390,28 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   
   
-  folder_results <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", 
-                           gtf_version, "/", main_project, "/results/")
+  folder_results <- paste0(getwd(), "/results/_paper/results/")
   dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
   
   
   if ( (age_projects %>% length()) > 1) {
-    file_name <- paste0(folder_results, "/df_MSRD_common_introns_all_projects.rds")
+    file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
   } else {
-    file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
+    file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
   }
   
   if ( ! file.exists(file_name) ) {
     
     df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
       
-      # project_id <- (df_metadata$SRA_project %>% unique())[1]
+      # project_id <- age_projects[1]
       
       print(paste0(Sys.time(), " --> ", project_id))
       
       age_groups <- df_metadata %>%
         filter(SRA_project == project_id) %>%
         distinct(cluster) %>%
-        pull()
+        pull(cluster)
       
       df_age_groups <- map_df(age_groups, function(age_group) {
         # age_group <- age_groups[1]
@@ -1480,6 +1475,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
     ## Get common introns across age groups per tissue
     df_common_introns <- df_age_groups_all_introns %>%
+      as_tibble() %>%
       group_by(project_id, sample_type) %>%
       distinct(ref_junID, .keep_all = T) %>%
       ungroup() %>%
@@ -1491,9 +1487,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
     ## Save data.frame containing only common introns 
     if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/common_introns_all_projects.rds")
+      file_name <- paste0(folder_results, "/", main_project, "_common_introns_all_projects.rds")
     } else {
-      file_name <- paste0(folder_results, "/common_introns_", project_id, ".rds")
+      file_name <- paste0(folder_results, "/", main_project, "_common_introns_", project_id, ".rds")
     }
     saveRDS(object = df_common_introns, file = file_name)
     
@@ -1520,9 +1516,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
       as_tibble()
     
     if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/df_MSRD_common_introns_all_projects.rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
     } else {
-      file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
     }
     saveRDS(object = df_MSRD, file = file_name)
     # df_MSRD <- readRDS(file = file_name)
@@ -1539,9 +1535,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
       as_tibble()
     
     if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/df_MSRA_common_introns_all_projects.rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
     } else {
-      file_name <- paste0(folder_results, "/df_MSRA_common_introns_", project_id,".rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
     }
     saveRDS(object = df_MSRA, file = file_name)
     # df_MSRA <- readRDS(file = file_name)
@@ -1551,18 +1547,18 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
     ## MSR_D
     if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/df_MSRD_common_introns_all_projects.rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
     } else {
-      file_name <- paste0(folder_results, "/df_MSRD_common_introns_", project_id,".rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
     }
     df_MSRD <- readRDS(file = file_name)
     
     
     ## MSR_A
     if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/df_MSRA_common_introns_all_projects.rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
     } else {
-      file_name <- paste0(folder_results, "/df_MSRA_common_introns_", project_id,".rds")
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
     }
     df_MSRA <- readRDS(file = file_name)
   }
@@ -1577,9 +1573,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
 
   
   if ( (age_projects %>% length()) > 1) {
-    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_all_projects.rds")
+    file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
   } else {
-    file_name <- paste0(folder_results, "/df_wilcoxon_effsize_paired_", project_id,".rds")
+    file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_", project_id,".rds")
   }
   
   if ( file.exists(file_name) ) {
@@ -1590,7 +1586,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
     df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
       
-      # MSR_type <- "MSR_D"
+      # MSR_type <- "MSR Donor"
       print( paste0( "Getting data from: '", MSR_type, "'..." ) )
 
       # tendency_type <- "increasing"
@@ -1632,9 +1628,8 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                                              #              alternative = wilcox_alternative,
                                              #              paired = T))$p.value))
           
-          r_effect1 <-
-            rstatix::wilcox_effsize(data = df_introns %>%
-                                      dplyr::select(`20-39`,`60-79`) %>%
+          r_effect1 <- rstatix::wilcox_effsize(data = df_introns %>%
+                                                 dplyr::select(`20-39`,`60-79`) %>%
                                       gather(key = age, MSR) %>%
                                       dplyr::select(age, MSR),
                                     formula = MSR ~ age) %>%

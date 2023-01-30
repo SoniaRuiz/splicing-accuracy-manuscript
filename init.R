@@ -16,7 +16,7 @@ setwd("~/PROJECTS/splicing-project-recount3/")
 dependencies_folder <- paste0(getwd(), "/../introverse-app/database_generation/dependencies/")
 
 # source(paste0(getwd(), "/pipeline3_junction_pairing.R"))
-# source(paste0(getwd(), "/pipeline3_database_SQL_helper.R"))
+ source(paste0(getwd(), "/pipeline3_database_SQL_helper.R"))
 # source(paste0(getwd(), "/pipeline3_database_SQL_generation.R"))
 
 
@@ -289,7 +289,7 @@ tidy_recount3_data_per_tissue <- function(projects_used,
     # project_id <- projects_used[31]
     
     folder_results <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", 
-                             main_project, "/base_data/")
+                             main_project, "/base_data/unique/")
     dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
     
     print(paste0(Sys.time(), " - getting junction data from recount3 - '", project_id, "' tissue..."))
@@ -299,8 +299,10 @@ tidy_recount3_data_per_tissue <- function(projects_used,
       project_home = "data_sources/gtex",
       organism = "human",
       annotation = "gencode_v29",
+      jxn_format = "UNIQUE",
       type = "jxn"
     )
+    gc()
     
     #################################
     ## GET METADATA
@@ -323,7 +325,7 @@ tidy_recount3_data_per_tissue <- function(projects_used,
     
     clusters_ID <- rse$gtex.smtsd %>% unique()
     clusters_used <- NULL
-    gc()
+
     
     for (cluster_id in clusters_ID) {
       
@@ -391,10 +393,6 @@ tidy_recount3_data_per_tissue <- function(projects_used,
           print("ERROR! The split reads do not meet the minimum filtering criteria.")
           break;
         }
-        # if (setdiff(counts$i, all_split_reads$index) %>% length() > 0) {
-        #   print("ERROR! The split reads are not identical.")
-        #   break;
-        # }
         
         ## Check how much memory this object uses
         print(object.size(all_split_reads %>% data.table::as.data.table()), units = "GB")
@@ -420,7 +418,6 @@ tidy_recount3_data_per_tissue <- function(projects_used,
     rm(rse)
     gc()
   }
-  
   
   saveRDS(object = all_projects_used, 
           file = paste0(folder_results, "/all_projects_used.rds"))
@@ -524,323 +521,7 @@ junction_pairing <- function(projects_used,
 }
 
 
-tidy_data_pior_sql <- function (projects_used, 
-                                gtf_version,
-                                all_clusters = NULL,
-                                main_project) {
-  
-  
-  print(paste0(Sys.time(), " - loading base data ..."))
-  
-  ## Load base recount3 object containing the GTEx v8 split reads passing the QC criteria
-  all_split_reads_details_w_symbol_reduced_keep_gr <- readRDS(file = paste0(getwd(), "/database/v", gtf_version, 
-                                                                            "/all_split_reads_gtex_recount3_", gtf_version, "_tidy.rds"))
-  all_split_reads_details_w_symbol_reduced_keep_gr %>% nrow()
-  
-  ############################################
-  ## Discard all junctions from 
-  ## EXCLUDE ME samples
-  ############################################
-  
-  all_split_reads_details_all_tissues <- readRDS(file = paste0(getwd(), "/database/v", gtf_version, "/", main_project, 
-                                                               "/all_split_reads_details_all_tissues.rds"))
-  
-  all_split_reads_details_all_tissues %>% nrow()
-  all_split_reads_details_all_tissues %>% head()
-  
-  ## This should be zero
-  if ( setdiff(all_split_reads_details_all_tissues$junID, 
-               all_split_reads_details_w_symbol_reduced_keep_gr$junID) %>% 
-       length() > 0) {
-    print("ERROR! Some of the annotated split reads are not found within the base tidied recount3 object.")
-    break;
-  }
-  
-  
-  # ## These are the junctions from EXCLUDE ME samples
-  setdiff(all_split_reads_details_w_symbol_reduced_keep_gr$junID, 
-          all_split_reads_details_all_tissues$junID) %>% unique %>% length()
-  
-  # ## Stats
-  # all_split_reads_details %>% as.data.table() %>% dplyr::count(type)
-  # all_split_reads_details %>% distinct(junID) %>% nrow()
-  
-  ############################################
-  ## QC
-  ############################################ 
-  
-  ## Remove potential * in the junID of the reference introns
-  ind <- which(str_detect(string = all_split_reads_details_w_symbol_reduced_keep_gr$junID, pattern = "\\*"))
-  if (ind %>% length() > 0) {
-    all_split_reads_details_w_symbol_reduced_keep_gr[ind, "junID"] <- str_replace(string = all_split_reads_details_w_symbol_reduced_keep_gr[ind, "junID"]$junID, 
-                                                                                  pattern = "\\*", 
-                                                                                  replacement = all_split_reads_details_w_symbol_reduced_keep_gr[ind, "strand"]$strand %>% as.character() )
-    any(str_detect(all_split_reads_details_w_symbol_reduced_keep_gr$junID, pattern = "\\*")) %>% print()
-  }
-  
-  
-  ## Remove potential * in the junID of the reference introns
-  ind <- which(str_detect(string = all_split_reads_details_all_tissues$junID, pattern = "\\*"))
-  if (ind %>% length() > 0) {
-    all_split_reads_details_all_tissues[ind, "junID"] <- str_replace(string = all_split_reads_details_all_tissues[ind, "junID"]$junID, 
-                                                                     pattern = "\\*", 
-                                                                     replacement = all_split_reads_details_all_tissues[ind, "strand"]$strand %>% as.character() )
-    any(str_detect(all_split_reads_details_all_tissues$junID, pattern = "\\*")) %>% print()
-  }
-  
-  
-  ##########################################
-  ## Load all distances pairings
-  ##########################################
-  
-  df_all_distances_pairings_raw <- readRDS(file = paste0(getwd(), "/database/v", gtf_version, "/",
-                                                         main_project, "/all_distances_pairings_all_tissues.rds"))
-  
-  ## QC
-  ## Remove potential * in the junID of the reference introns
-  ind <- which(str_detect(string = df_all_distances_pairings_raw$ref_junID, pattern = "\\*"))
-  if (ind %>% length() > 0) {
-    df_all_distances_pairings_raw[ind, "ref_junID"] <- str_replace(string = df_all_distances_pairings_raw[ind, "ref_junID"]$ref_junID, 
-                                                                   pattern = "\\*", 
-                                                                   replacement = df_all_distances_pairings_raw[ind, "ref_strand"]$ref_strand %>% as.character())
-    any(str_detect(df_all_distances_pairings_raw$ref_junID, pattern = "\\*")) %>% print()
-  }
-  ## Remove potential * in the junID of the novel junctions
-  ind <- which(str_detect(string = df_all_distances_pairings_raw$novel_junID, pattern = "\\*"))
-  if (ind %>% length() > 0) {
-    df_all_distances_pairings_raw[ind, "novel_junID"] <- str_replace(string = df_all_distances_pairings_raw[ind, "novel_junID"]$novel_junID, 
-                                                                     pattern = "\\*", 
-                                                                     replacement = df_all_distances_pairings_raw[ind, "novel_strand"]$novel_strand  %>% as.character())
-    any(str_detect(df_all_distances_pairings_raw$novel_junID, pattern = "\\*")) %>% print()
-  }
-  
-  
-  ##########################################
-  ## Get never mis-spliced
-  #########################################
-  
-  df_never_misspliced <- get_intron_never_misspliced(projects_used = projects_used,
-                                                     all_clusters = all_clusters,
-                                                     main_project = main_project)
-  
-  if ( any(str_detect(df_never_misspliced$ref_junID, pattern = "\\*")) ) {
-    
-    print("ERROR! Some junctions contain a '*' in their IDs")
-    break;
-  }
-  
-  ## Remove the introns paired with novel junctions (i.e. mis-spliced)
-  df_never_misspliced_tidy <- df_never_misspliced %>%
-    dplyr::filter(!(ref_junID %in% df_all_distances_pairings_raw$ref_junID)) %>%
-    as_tibble()
-  
-  df_never_misspliced_tidy %>% distinct(ref_junID) %>% as_tibble()
-  
-  
-  ############################################
-  ## GET all not paired
-  ############################################ 
-  
-  # df_all_novel_raw_tidy
-  df_not_paired <- all_split_reads_details_all_tissues %>%
-    as.data.table() %>%
-    dplyr::filter(!(junID %in% c(df_all_distances_pairings_raw$ref_junID,
-                                 df_all_distances_pairings_raw$novel_junID)))
-  
-  ## These are all the non-paired, including the never mis-spliced. Thus, GTEx 'splicing' data: [768,646 - 56,090 = 730125]
-  df_not_paired %>% 
-    distinct(junID)
-  
-  ## Check them by category
-  df_not_paired %>%
-    distinct(junID, .keep_all = T) %>%
-    dplyr::count(type)
-  
-  
-  if (any(str_detect(df_never_misspliced_tidy$ref_junID, pattern = "\\*")) |
-      any(str_detect(df_not_paired$junID, pattern = "\\*"))) {
-    print("ERROR!")
-  }
-  
-  ## All never mis-spliced should be categorised as not paired.
-  ## Thus, this should be zero
-  setdiff(df_never_misspliced_tidy$ref_junID, 
-          df_not_paired %>% dplyr::filter(type == "annotated") %>% pull(junID))
-  
-  df_not_paired_tidy <- df_not_paired %>%
-    dplyr::filter(!(junID %in% df_never_misspliced_tidy$ref_junID)) %>%
-    distinct(junID, .keep_all = T) %>%
-    as_tibble()
-  
-  df_not_paired_tidy %>%
-    distinct(junID, .keep_all = T) %>%
-    dplyr::count(type)
-  df_not_paired_tidy %>% distinct(junID)
-  
-  
-  ## This should be zero
-  if ( intersect(df_not_paired_tidy$junID, 
-                 df_all_distances_pairings_raw$novel_junID) %>% length() > 0 ) {
-    print("ERROR!")
-  }
-  
-  
-  df_all_distances_pairings_raw %>% distinct(novel_junID) %>% nrow() +
-    df_all_distances_pairings_raw %>% distinct(ref_junID) %>% nrow() +
-    df_never_misspliced_tidy %>% distinct(ref_junID) %>% nrow()
-  
-  ##########################################
-  ## Remove ambiguous junctions
-  ##########################################
-  
-  
-  ## All these should be zero
-  if( intersect(df_not_paired_tidy$junID, df_all_distances_pairings_raw$novel_junID) %>% length() > 0 |
-      intersect(df_not_paired_tidy$junID, df_all_distances_pairings_raw$ref_junID) %>% length() > 0 |
-      intersect(df_not_paired_tidy$junID, df_never_misspliced_tidy$ref_junID) %>% length() > 0) {
-    print("ERROR!")
-  }
-  
-  
-  ## 1. Obtain the ambiguous junctions
-  
-  df_ambiguous_novel <- df_all_distances_pairings_raw %>%
-    dplyr::filter(!(novel_junID %in% df_not_paired_tidy$junID),
-                  !(ref_junID %in% df_not_paired_tidy$junID),
-                  !(ref_junID %in% df_never_misspliced_tidy$ref_junID)) %>%
-    dplyr::group_by(novel_junID) %>%
-    mutate(distances_sd = distance %>% sd()) %>%
-    dplyr::filter(distances_sd > 0)
-  
-  
-  df_ambiguous_novel %>% ungroup() %>% distinct(novel_junID)
-  df_ambiguous_novel %>% ungroup() %>% distinct(ref_junID)
-  
-  
-  ## 2. Remove ambiguous junctions
-  
-  df_all_distances_pairings_raw_tidy <- df_all_distances_pairings_raw %>%
-    dplyr::filter(!(novel_junID %in% df_ambiguous_novel$novel_junID)) %>%
-    as.data.table() %>%
-    distinct(novel_junID, ref_junID, .keep_all = T) %>%
-    mutate(ref_strand = ref_strand %>% as.character(),
-           novel_strand = novel_strand %>% as.character()) 
-  
-  
-  ## Some numbers for the graph
-  df_all_distances_pairings_raw_tidy %>%
-    dplyr::distinct(novel_junID)
-  df_all_distances_pairings_raw_tidy %>%
-    dplyr::distinct(ref_junID)
-  
-  
-  (df_ambiguous_novel %>% 
-      ungroup() %>%
-      distinct(ref_junID) %>% nrow()) - (intersect(c(df_all_distances_pairings_raw_tidy$novel_junID,
-                                                     df_all_distances_pairings_raw_tidy$ref_junID),
-                                                   df_ambiguous_novel %>% 
-                                                     ungroup() %>%
-                                                     distinct(ref_junID) %>% pull) %>% length())
-  
-  (df_all_distances_pairings_raw_tidy %>%
-      dplyr::distinct(novel_junID) %>% 
-      nrow()) + 
-    (df_all_distances_pairings_raw_tidy %>%
-       dplyr::distinct(ref_junID) %>% 
-       nrow()) + 
-    (df_never_misspliced_tidy %>% 
-       distinct(ref_junID) %>% 
-       nrow())
-  
-  
-  ##############################################################################
-  ## SAVE FINAL OBJECT
-  ##############################################################################
-  
-  ## 1. DISTANCES PAIRINGS
-  if (any(str_detect(string = df_all_distances_pairings_raw_tidy$ref_junID, pattern = "\\*")) |
-      any(str_detect(string = df_all_distances_pairings_raw_tidy$novel_junID, pattern = "\\*")) ) {
-    print("ERROR! Some junctions still have a * in their IDs!")
-  }
-  df_all_distances_pairings_raw_tidy <- df_all_distances_pairings_raw_tidy %>%
-    inner_join(y = all_split_reads_details_all_tissues %>% dplyr::select(junID, gene_id, tx_id_junction),
-               by = c("ref_junID" = "junID"))
-  saveRDS(object = df_all_distances_pairings_raw_tidy,
-          file = paste0(getwd(), "/database/v", gtf_version, "/",
-                        main_project, "/all_distances_correct_pairings_all_tissues.rds"))
-  
-  
-  ## 2. NEVER MIS-SPLICED
-  if (any(str_detect(string = df_never_misspliced_tidy$ref_junID, pattern = "\\*")) ) {
-    print("ERROR! Some NEVER MIS-SPLICED junctions still have a '*' in their IDs!")
-  }
-  df_never_misspliced_tidy <- df_never_misspliced_tidy %>%
-    inner_join(y = all_split_reads_details_all_tissues %>% 
-                 dplyr::select(junID, seqnames, start, end, width, strand, gene_id, tx_id_junction),
-               by = c("ref_junID" = "junID"))
-  
-  saveRDS(object = df_never_misspliced_tidy,
-          file = paste0(getwd(), "/database/v", gtf_version, "/",
-                        main_project, "/all_nevermisspliced_introns_all_tissues.rds"))
-  
-  
-  ## 3. AMBIGUOUS JUNCTIONS
-  if (any(str_detect(string = df_ambiguous_novel$ref_junID, pattern = "\\*")) |
-      any(str_detect(string = df_ambiguous_novel$novel_junID, pattern = "\\*")) ) {
-    print("ERROR! Some junctions still have a * in their IDs!")
-  }
-  saveRDS(df_ambiguous_novel,
-          file = paste0(getwd(), "/database/v", gtf_version, "/", main_project, 
-                        "/all_distances_ambiguous_pairings_all_tissues.rds"))
-}
 
-
-sql_database_generation <- function(database_path,
-                                    projects_used, 
-                                    main_project,
-                                    gtf_version,
-                                    remove_all = NULL) {
-  
-  
-  if ( !is.null(remove_all) ) {
-    
-    remove_tables(database_path, remove_all)
-  } 
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  tables <- DBI::dbListTables(conn = con)
-  
-  
-  if ( !any(tables == 'master') ) {
-    create_metadata_table(database_path,
-                          main_project = main_project,
-                          gtf_version = gtf_version,
-                          all_projects = projects_used)
-  }
-  
-  
-  if ( ! any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
-    create_master_tables(database_path,
-                         main_project = main_project,
-                         gtf_version = gtf_version)
-  }
-  
-  print(paste0(Sys.time(), " - creating cluster tables ..."))
-  
-  rm(CNC_CDTS_CONS_gr)
-  rm(hg_mane_transcripts)
-  rm(hg_MANE_tidy)
-  rm(hg_MANE)
-  rm(hg38_transcripts)
-  rm(hg38)
-  gc()
-  
-  create_cluster_tables(database_path = database_path,
-                        gtf_version = gtf_version,
-                        all_projects = projects_used,
-                        main_project = main_project)
-  
-}
 
 #####################################
 ## CALLS - PREPARE RECOUNT3 DATA
@@ -866,6 +547,8 @@ splicing_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",          
                         "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",        
                         "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",          
                         "STOMACH",         "THYROID")
+
+
 
 for (gtf_version in gtf_versions) {
   
@@ -907,16 +590,16 @@ for (gtf_version in gtf_versions) {
   #                                        gtf_version = gtf_version)
   
   
-  # all_final_projects_used <- readRDS(file = paste0(getwd(),"/results/all_final_projects_used.rds"))
-  
-  # generate_recount3_tpm(projects_used = all_final_projects_used,
-  #                       gtf_version = gtf_version,
-  #                       main_project = main_project)
+  all_final_projects_used <- readRDS(file = paste0(getwd(),"/results/all_final_projects_used.rds"))
+
+  generate_recount3_tpm(projects_used = all_final_projects_used,
+                        gtf_version = gtf_version,
+                        main_project = main_project)
   
   # database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
   # dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
   # database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
-  # 
+
   # sql_database_generation(database_path = database_path,
   #                         projects_used = all_final_projects_used,
   #                         main_project = main_project,
@@ -931,76 +614,76 @@ for (gtf_version in gtf_versions) {
 
 
 
-gtf_versions <- c("76","81","90","104")
-splicing_projects <- "BRAIN"
-
-# gtf_versions <- c("97")
-
-for (gtf_version in gtf_versions) {
-  
-  # gtf_version <- gtf_versions[1]
-  
-  ## re-annotate them
-  if ( file.exists(paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")) ) {
-    gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")
-  } else {
-    gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".gtf")
-  }
-  
-  edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-  
-  ## Per each project
-  for (project_id in splicing_projects) {
-    
-    # project_id <- splicing_projects[1]
-    
-    folder_results <- paste0(getwd(), "/results/", project_id, "/v105/", main_project, "/base_data/")
-    
-    if ( file.exists( paste0(folder_results, "/", project_id, "_clusters_used.rds")) ) {
-      
-      all_clusters <- readRDS(file = paste0(folder_results, "/", project_id, "_clusters_used.rds"))
-      
-      if (project_id == "BRAIN" && gtf_version != "97") {
-        all_clusters <- all_clusters[6]
-      }
-      
-      ## Per each cluster
-      for ( cluster_id in all_clusters ) {
-        
-        # cluster_id <- all_clusters[1]
-        
-        ## get the QC split reads
-        if ( #!file.exists(paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, 
-              #                   "/base_data/", project_id, "_", cluster_id, "_all_split_reads.rds")) &&
-             file.exists(paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds")) ) {
-          
-          print(paste0(Sys.time(), " - annotating ", cluster_id, " version ", gtf_version, "..."))
-          
-          all_split_reads <- readRDS(file = paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds"))
-          
-          
-          all_split_reads_details_w_symbol <- dasper::junction_annot(junctions = all_split_reads %>%
-                                                                       dplyr::select(junID, seqnames, start, end, strand) %>%
-                                                                       GRanges(), 
-                                                                     ref = edb)
-          
-          
-          folder_path <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/")
-          dir.create(file.path(folder_path), recursive = TRUE, showWarnings = T)
-          saveRDS(object = all_split_reads_details_w_symbol,
-                  file = paste0(folder_path, "/", project_id, "_", cluster_id, "_all_split_reads.rds") )
-        } 
-        
-      }
-    }
-    
-    
-  }
-  
-  rm(all_split_reads)
-  rm(all_split_reads_details_w_symbol)
-  rm(edb)
-  gc()
-
-}
+# gtf_versions <- c("76","81","90","104")
+# splicing_projects <- "BRAIN"
+# 
+# # gtf_versions <- c("97")
+# 
+# for (gtf_version in gtf_versions) {
+#   
+#   # gtf_version <- gtf_versions[1]
+#   
+#   ## re-annotate them
+#   if ( file.exists(paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")) ) {
+#     gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")
+#   } else {
+#     gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".gtf")
+#   }
+#   
+#   edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+#   edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
+#   
+#   ## Per each project
+#   for (project_id in splicing_projects) {
+#     
+#     # project_id <- splicing_projects[1]
+#     
+#     folder_results <- paste0(getwd(), "/results/", project_id, "/v105/", main_project, "/base_data/")
+#     
+#     if ( file.exists( paste0(folder_results, "/", project_id, "_clusters_used.rds")) ) {
+#       
+#       all_clusters <- readRDS(file = paste0(folder_results, "/", project_id, "_clusters_used.rds"))
+#       
+#       if (project_id == "BRAIN" && gtf_version != "97") {
+#         all_clusters <- all_clusters[6]
+#       }
+#       
+#       ## Per each cluster
+#       for ( cluster_id in all_clusters ) {
+#         
+#         # cluster_id <- all_clusters[1]
+#         
+#         ## get the QC split reads
+#         if ( #!file.exists(paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, 
+#               #                   "/base_data/", project_id, "_", cluster_id, "_all_split_reads.rds")) &&
+#              file.exists(paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds")) ) {
+#           
+#           print(paste0(Sys.time(), " - annotating ", cluster_id, " version ", gtf_version, "..."))
+#           
+#           all_split_reads <- readRDS(file = paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds"))
+#           
+#           
+#           all_split_reads_details_w_symbol <- dasper::junction_annot(junctions = all_split_reads %>%
+#                                                                        dplyr::select(junID, seqnames, start, end, strand) %>%
+#                                                                        GRanges(), 
+#                                                                      ref = edb)
+#           
+#           
+#           folder_path <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/")
+#           dir.create(file.path(folder_path), recursive = TRUE, showWarnings = T)
+#           saveRDS(object = all_split_reads_details_w_symbol,
+#                   file = paste0(folder_path, "/", project_id, "_", cluster_id, "_all_split_reads.rds") )
+#         } 
+#         
+#       }
+#     }
+#     
+#     
+#   }
+#   
+#   rm(all_split_reads)
+#   rm(all_split_reads_details_w_symbol)
+#   rm(edb)
+#   gc()
+# 
+# }

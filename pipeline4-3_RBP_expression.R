@@ -6,36 +6,35 @@ library(biomaRt)
 library(DBI)
 
 ## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-3_RBP_expression.R")
+setwd("~/PROJECTS/splicing-project-recount3/")
 
 
+gtf_version <- 105
+main_project <- "age_subsampled"
 ## Load reference GTF and get only the genes
-ensembl105 <- biomaRt::useEnsembl(biomart = 'genes', 
-                                  dataset = 'hsapiens_gene_ensembl',
-                                  version = 105)
+ensembl105 <- rtracklayer::import(con = "/data/references/ensembl/gtf_gff3/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
+  as_tibble() %>% 
+  dplyr::select(gene_id, gene_name) %>%
+  distinct(gene_id, .keep_all = T)
+
 
 ################################
 ## FUNCTIONS       
 ################################
 
-get_genes_to_analyse_expression <- function(type) {
+get_genes_to_analyse_expression <- function(type, ensembl105) {
   
   if (type == "RBP") {
     
     ## Load the RBPs and add the ensemblID
-    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/41586_2020_2077_MOESM3_ESM.xlsx', 
-                                sep = '\t', header = TRUE,
-                                sheetIndex = 1) %>%  as_tibble() 
+    genes_annotated <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/RBPs_subgroups.xlsx', 
+                                header = TRUE,
+                                sheetIndex = 1) %>%  
+      as_tibble() %>%
+      dplyr::rename(gene_id = id)
     
-    ## Tidy them
-    genes_annotated <- biomaRt::getBM(
-      attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
-      filters = 'hgnc_symbol',
-      values = all_RBPs$name %>% na.omit() %>% unique(),
-      mart = ensembl105
-    )
-    genes_annotated <- genes_annotated %>%
-      distinct(hgnc_symbol, .keep_all = T)
-    
+
+  
     
   } else {
     
@@ -46,14 +45,10 @@ get_genes_to_analyse_expression <- function(type) {
       distinct(hgnc_symbol)
     
     ## Tidy them
-    genes_annotated <- biomaRt::getBM(
-      attributes = c('ensembl_gene_id', 'hgnc_symbol'), 
-      filters = 'hgnc_symbol',
-      values = all_NMD$hgnc_symbol %>% na.omit() %>% unique(),
-      mart = ensembl105
-    )
-    genes_annotated <- genes_annotated %>%
-      distinct(hgnc_symbol, .keep_all = T)
+    genes_annotated <- all_NMD %>% 
+      left_join( y = ensembl105,
+                 by = c("hgnc_symbol" = "gene_name"))
+
   }
   
   return(genes_annotated)
@@ -166,13 +161,9 @@ get_GTEx_gene_expression <- function(rse, ensembl, recount3 = T) {
   
 }
 
-tidy_sample_metadata <- function(rse, samples) {
+tidy_sample_metadata <- function(sample_metadata, samples) {
   
-  sample_metadata <- rse %>% 
-    SummarizedExperiment::colData() %>%
-    as_tibble() %>%
-    filter(gtex.smafrze != "EXCLUDE",
-           external_id %in% samples)
+ 
   
   age_numeric <- as.numeric(factor(as.matrix(sample_metadata$gtex.age))) 
   sample_metadata$gtex.age <- age_numeric
@@ -335,47 +326,38 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   ## LOAD RBPs OF INTEREST
   ################################
   
-  if (!exists("all_RBPs")) {
-    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/41586_2020_2077_MOESM3_ESM.xlsx', 
-                                sep = '\t', header = TRUE,
+  if ( !exists("all_RBPs") ) {
+    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/RBPs_subgroups.xlsx', 
+                                header = TRUE,
                                 sheetIndex = 1) %>%  as_tibble() 
   }
   
   
   all_RBPs_tidy <- all_RBPs %>%
-    mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
-    dplyr::select(name, ensembl_gene_id = id, type) %>%
+    #mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
+    #dplyr::select(name, ensembl_gene_id = id, type) %>%
     distinct(name, .keep_all = T) 
   
-  
-  
-  gtf_version <- 105
-  main_project <- "splicing"
-  database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
-                          gtf_version, "/", main_project, "/", main_project, ".sqlite")
-  
-  ## CONNECT TO THE DATABASE
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) %>%
-    filter(SRA_project == project_id)
-  
-  
-  
+
   
   for (project_id in projects_id) {
     ## project_id <- "BRAIN"
     
+    ## Load clusters used
+    if (str_detect(main_project,pattern = "age")) {
+      all_clusters <- c("20-39","40-59","60-79")
+    } else {
+      all_clusters <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/", project_id, "_clusters_used.rds"))  
+    }
+    
+    
     ## Load and tidy the uncorrected TPMs
-    tpm_uncorrected <- map_df((df_metadata$cluster %>% unique()), function(cluster) {
+    tpm_uncorrected <- map_df(all_clusters, function(cluster_id) {
       
-      print(paste0(Sys.time(), " - ", cluster, " ... "))
-      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
-                             cluster, "/tpm_ensembl105.csv"))) {
-        read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
-                               cluster, "/tpm_ensembl105.csv"), header = T, fileEncoding = "UTF-8") 
+      print(paste0(Sys.time(), " - ", cluster_id, " ... "))
+      if ( file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/", cluster_id, "/tpm_ensembl105.csv")) ) {
+        read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/", cluster_id, "/tpm_ensembl105.csv"), 
+                 header = T, fileEncoding = "UTF-8") 
       } else {
         return(NULL)
       }   
@@ -389,31 +371,26 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     
     
     ## Load and tidy the sample metadata
-    sample_metadata <- map_df((df_metadata$cluster %>% unique()), function(cluster) {
+    sample_metadata <- map_df(all_clusters, function(cluster_id) {
       
-      print(paste0(Sys.time(), " - ", cluster, " ... "))
-      if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
-                             cluster, "/covariates.csv"))) {
-        read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
-                               cluster, "/covariates.csv"), header = T, fileEncoding = "UTF-8") 
+      print(paste0(Sys.time(), " - ", cluster_id, " ... "))
+      if (file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/",cluster_id, "/covariates.csv"))) {
+        read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/",cluster_id, "/covariates.csv"), 
+                 header = T, fileEncoding = "UTF-8") 
       } else {
         return(NULL)
       }   
     })
     
     
-    
- 
-    
     print(sample_metadata %>% nrow)
+    
     ## Check the samples are the same
-    if ( !( identical(x = names(tpm_uncorrected_tidy)[-1],
-                      y = names(sample_metadata)[-1]) ) ) {
+    if ( !( identical(x = names(tpm_uncorrected_tidy)[-1] %>% sort(),
+                      y = names(sample_metadata)[-1] %>% sort()) ) ) {
       print("ERROR!")
       break;
     }
-    
-    
     
     RBPs <- (tpm_uncorrected_tidy$gene)
     
@@ -497,17 +474,13 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     }) 
     
     
-    # any(df_lm_output$pval > 0.05)
-    
-    
-    ## Filter by age covariate and order
+    ## Filter by age covariate and order by estimate size
     df_lm_output_age <- df_lm_output %>%
       filter(str_detect(string = covariate, pattern = "gtex.age")) %>%
       arrange(Estimate)
     
     
     if (exists("RBPs_annotated")) {
-
       RBPs_annotated_tidy <- left_join(x = RBPs_annotated %>% as_tibble(), 
                                        y = all_RBPs_tidy %>% as_tibble(), 
                                        by = c("ensembl_gene_id" = "ensembl_gene_id"))
@@ -518,14 +491,13 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     ## Add gene SYMBOL info
     df_lm_age_tidy <- left_join(x = df_lm_output_age, 
                                 y = RBPs_annotated_tidy %>% drop_na(), 
-                                by = c("RBP_ID" = "ensembl_gene_id")) %>%
+                                by = c("RBP_ID" = "id")) %>%
       group_by(RBP_ID) #%>%
     #distinct(pval, .keep_all = T)
     
     
     write_csv(x = df_lm_age_tidy,
-              file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
-                            project_id,"_tpm_lm_all_ensembl105.csv"))
+              file = paste0(getwd(), "/results/RBP_EXPRESSION/RBP/",project_id,"/", project_id, "_",main_project,"_tpm_lm_all_ensembl105.csv"))
     
   }
   
@@ -534,18 +506,18 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   ###############################################
   
   
-  # RBP_decrease <- df_lm_age_tidy %>%
-  #   filter(Estimate < 0) %>%
-  #   arrange(desc(abs(Estimate)))
-  # 
-  # RBP_increase <- df_lm_age_tidy %>%
-  #   filter(Estimate > 0) %>%
-  #   arrange(desc(Estimate))
-  # 
-  # intersect(RBP_decrease$hgnc_symbol,
-  #           RBP_increase$hgnc_symbol)
-  # 
-  # RBP_decrease$hgnc_symbol %>% unique() %>% sort()
+  RBP_decrease <- df_lm_age_tidy %>%
+    filter(Estimate < 0) %>%
+    arrange(desc(abs(Estimate)))
+
+  RBP_increase <- df_lm_age_tidy %>%
+    filter(Estimate > 0) %>%
+    arrange(desc(Estimate))
+
+  intersect(RBP_decrease$name,
+            RBP_increase$name)
+
+  RBP_decrease$name %>% unique() %>% sort()
   
   
 }
@@ -563,73 +535,79 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
 
 ## Only for the subsampled samples - age stratification subsampled to correct by RIN
 
-
-
-projects_used <- readRDS(file = "~/PROJECTS/splicing-project-results/splicing-recount3-projects/all_projects_used.rds")
+projects_used <- readRDS(file = paste0(getwd(), "/results/all_final_projects_used.rds"))
 
 for (project_id in projects_used) {
   
-  # project_id <- projects_used[20]
+  # project_id <- projects_used[1]
   
-  project_id <- "BRAIN"
+  # project_id <- "BRAIN"
   
-  ## Load the recount3 data
-  rse <- recount3::create_rse_manual(
-    project = project_id,
-    project_home = "data_sources/gtex",
-    organism = "human",
-    annotation = "gencode_v29",
-    type = "gene")
-  
-  
-  ## Transform counts
-  SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
-  
-  ## See that now we have two assayNames()
-  SummarizedExperiment::assayNames(rse)
+
+  ## Load clusters used
+  if (str_detect(main_project,pattern = "age")) {
+    clusterIDs <- c("20-39","40-59","60-79")
+  } else {
+    clusterIDs <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/", project_id, "_clusters_used.rds"))  
+  }
   
   ## Get metadata
-  metadata <- rse %>% 
-    SummarizedExperiment::colData() %>%
-    as_tibble() %>%
-    filter(gtex.smrin >= 6.0,
-           gtex.smafrze != "EXCLUDE") 
+  metadata <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/splicing/base_data/", project_id, "_samples_metadata.rds"))
+ 
   
-  ## Get cluster names from the current project
-  clusterIDs <- metadata$gtex.smtsd %>% unique()
-  
-  for (cluster in clusterIDs) {
+  for (cluster_id in clusterIDs) {
     
-    
-    # cluster <-  clusterIDs[1]
-    
-    cluster_metadata <- metadata %>%
-      filter(gtex.smtsd == cluster)
+    # cluster_id <-  clusterIDs[1]
+
+    if (str_detect(main_project,pattern = "age")) {
+      ## Get metadata
+      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/", cluster_id, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+      cluster_metadata <- metadata %>%
+        filter(external_id %in% samples_used)
+    } else {
+      cluster_metadata <- metadata %>%
+        filter(gtex.smtsd == cluster_id) 
+      ## Get metadata
+      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+    }
     
     ################################################################################
     # 1. Get the TPM expression using GTEX data --------------------------------
     ################################################################################
     
-    dds_tpm <- get_GTEx_gene_expression(rse = rse, ensembl = ensembl105)
-    dds_tpm <- dds_tpm %>% filter(tpm > 0)
+    ## 1. Filter by the samples of the current cluster
+    tpm <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/tpm_all_samples.rds"))
     
+    dds_tpm <- tpm %>% 
+      tidyr::gather(key = sample, value = tpm, -gene) %>% 
+      filter(tpm > 0, sample %in% samples_used)
+    
+    ## 2. Add gene name
+    dds_tpm_wsymbol <- dds_tpm %>% 
+      mutate(project = project_id) %>%
+      dplyr::left_join(ensembl105,
+                       by =  c("gene" = "gene_id"))
+    
+    ## 3. Get TPM data per RBP
     for (type in c("RBP", "NMD")) {
       
-      print(paste0(Sys.time(), " - ", cluster, "...", type))
+      # type <- c("RBP", "NMD")[2]
       
-      genes <- get_genes_to_analyse_expression(type)
+      print(paste0(Sys.time(), " - ", cluster_id, "...", type))
+      
+      genes <- get_genes_to_analyse_expression(type, ensembl105 = ensembl105)
       
       # Tidy the 'dds_tpm' object
       dds_tpm_pv <- dds_tpm %>%
-        dplyr::filter(gene %in% genes$ensembl_gene_id) %>%
-        dplyr::select(gene, sample, tpm) %>%
+        dplyr::filter(gene %in% genes$gene_id) %>%
+        #dplyr::select(gene, sample, tpm) %>%
         filter(sample %in% cluster_metadata$external_id) %>%
         group_by(gene) %>%
         distinct(sample, .keep_all = T) %>%
         pivot_wider(names_from = sample, values_from = tpm, values_fill = 0)
       
       ## Save data
-      folder_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION/", type, "/", cluster, "/")
+      folder_name <- paste0(getwd(), "/results/RBP_EXPRESSION/", type, "/", project_id, "/", cluster_id, "/")
       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
       
       write.csv(x = dds_tpm_pv %>% tibble::column_to_rownames("gene"),
@@ -639,7 +617,7 @@ for (project_id in projects_used) {
       # 2. Get the covariates to correct for -----------------------------------------
       ################################################################################
       
-      sample_metadata <- tidy_sample_metadata(rse, samples = cluster_metadata$external_id)
+      sample_metadata <- tidy_sample_metadata(cluster_metadata, samples = cluster_metadata$external_id)
       
       
       write_csv(x = sample_metadata %>% as_tibble(rownames = "covariates"), 
