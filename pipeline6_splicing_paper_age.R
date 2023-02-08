@@ -1,4 +1,3 @@
-
 library(tidyverse)
 library(data.table)
 library(GenomicRanges)
@@ -37,6 +36,9 @@ age_stratification_get_stats <- function() {
   
   db_metadata %>%
     dplyr::count(cluster)
+  
+  db_metadata %>%
+    dplyr::count(SRA_project)
   
   db_metadata %>%
     dplyr::count(SRA_project) 
@@ -81,6 +83,17 @@ age_stratification_get_stats <- function() {
   novel <- dbGetQuery(con, query) 
   novel %>% distinct(novel_junID) %>% nrow()
   novel %>% dplyr::count(novel_type)
+  
+  
+  
+  query <- paste0("SELECT * from 'gene'")
+  gene <- dbGetQuery(con, query) 
+  gene %>% nrow()
+  
+  
+  query <- paste0("SELECT * from 'transcript'")
+  transcript <- dbGetQuery(con, query) 
+  transcript %>% distinct(transcript_id) %>% nrow()
 }
 
 
@@ -704,267 +717,7 @@ age_stratification_mode_distances <- function(age_groups,
 
 
 
-age_stratification_Wilcoxon <- function(age_groups,
-                                        common = T) {
-  
-  con <- dbConnect(RSQLite::SQLite(), "./database/age-stratification.sqlite")
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  
-  df_age_groups <- map_df((df_metadata$SRA_project %>% unique())[2], function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      pull(cluster)
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      # age_group <- age_groups[1]
-      
-      query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, gene_id FROM '", age_group, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      
-      query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, gene_id FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- plyr::rbind.fill(introns, dbGetQuery(con, query)) %>% as_tibble()
-      
-      query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", paste(introns$gene_id, collapse = ","),")")
-      genes <- dbGetQuery(con, query) %>% as_tibble()
-      
-      
-      introns <- merge(x = introns,
-                       y = genes,
-                       by.x = "gene_id",
-                       by.y = "id", all.x = T) %>%
-        mutate(sample_type = age_group) %>%
-        as_tibble()
-      
-      return(introns)
-      
-    })
-    
-  })
-  
-  common_junctions <- df_age_groups %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
-  
-  
-  
-  df_age_groups_tidy <- df_age_groups %>%
-    filter(ref_junID %in% common_junctions)
-  
-  
-  
-  ####################################
-  ## TESTING MSR_D
-  ####################################
-  
-  df_correlation <- df_age_groups_tidy %>%
-    select(ref_junID, sample_type, MSR_D) %>%
-    spread(sample_type, MSR_D)
-  
-  
-  wilcox.test(x = df_correlation$`20-39`,
-              y = df_correlation$`40-59`,
-              alternative = "less")
-  
-  wilcox.test(x = df_correlation$`20-39`,
-              y = df_correlation$`60-79`,
-              alternative = "less")
-  
-  wilcox.test(x = df_correlation$`40-59`,
-              y = df_correlation$`60-79`,
-              alternative = "less")
-  
-  
-  ####################################
-  ## TESTING MSR_A
-  ####################################
-  
-  df_correlation <- df_age_groups_tidy %>%
-    select(ref_junID, sample_type, MSR_A) %>%
-    spread(sample_type, MSR_A)
-  
-  
-  wilcox.test(x = df_correlation$`20-39`,
-              y = df_correlation$`40-59`,
-              alternative = "less")
-  
-  wilcox.test(x = df_correlation$`20-39`,
-              y = df_correlation$`60-79`,
-              alternative = "less")
-  
-  wilcox.test(x = df_correlation$`40-59`,
-              y = df_correlation$`60-79`,
-              alternative = "less")
-  
-  
-  
-  bg_genes <- df_age_groups_tidy %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
-  
-  #####################################
-  ## MSR_D
-  #####################################
-  
-  df_correlation_MSRD <- df_age_groups_tidy %>%
-    select(ref_junID, sample_type, MSR_D ,gene_name) %>%
-    spread(sample_type, MSR_D)
-  
-  
-  introns_always_less_MSRD <- df_correlation_MSRD %>%
-    rowwise() %>%
-    filter(`20-39` < `40-59`,
-           `20-39` < `60-79`,
-           `40-59` < `60-79`)
-  genes_always_less_MSRD <- introns_always_less_MSRD %>% 
-    unnest(gene_name) %>% 
-    distinct(gene_name) %>% 
-    drop_na()
-  
-  
-  
-  introns_always_more_MSRD <- df_correlation_MSRD %>%
-    rowwise() %>%
-    filter(`20-39` > `40-59`,
-           `20-39` > `60-79`,
-           `40-59` > `60-79`)
-  genes_always_more_MSRD <- introns_always_more_MSRD %>% 
-    unnest(gene_name) %>% 
-    distinct(gene_name) %>% 
-    drop_na()
-  
-  
-  
-  genes_less_MSRD <- setdiff(genes_always_less_MSRD$gene_name, 
-                             genes_always_more_MSRD$gene_name)
-  genes_more_MSRD <- setdiff(genes_always_more_MSRD$gene_name, 
-                             genes_always_less_MSRD$gene_name)
-  
-  
-  ## GO analysis
-  
-  gene_enrichment_less_MSRD <- gprofiler2::gost(query = genes_less_MSRD,
-                                                custom_bg = bg_genes,
-                                                organism = "hsapiens",
-                                                ordered_query = F,
-                                                correction_method = "bonferroni",
-                                                significant = T)
-  gene_enrichment_less_MSRD$result
-  gene_enrichment_less_MSRD$result %>%
-    filter(source == "KEGG")
-  
-  
-  gene_enrichment_more_MSRD <- gprofiler2::gost(query = genes_more_MSRD,
-                                                custom_bg = bg_genes,
-                                                organism = "hsapiens",
-                                                ordered_query = F,
-                                                correction_method = "bonferroni",
-                                                significant = T)
-  gene_enrichment_more_MSRD$result %>%
-    filter(source == "KEGG")
-  
-  
-  
-  #####################################
-  ## MSR_A
-  #####################################
-  
-  df_correlation_MSRA <- df_age_groups_tidy %>%
-    select(ref_junID, sample_type, MSR_A, gene_name) %>%
-    spread(sample_type, MSR_A)
-  
-  introns_always_less_MSRA <- df_correlation_MSRA %>%
-    rowwise() %>%
-    filter(`20-39` < `40-59`,
-           `20-39` < `60-79`,
-           `40-59` < `60-79`)
-  genes_always_less_MSRA <- introns_always_less_MSRA %>% 
-    unnest(gene_name) %>% 
-    distinct(gene_name) %>% 
-    drop_na()
-  
-  
-  introns_always_more_MSRA <- df_correlation_MSRA %>%
-    rowwise() %>%
-    filter(`20-39` > `60-79`,
-           `20-39` > `40-59`,
-           `40-59` > `60-79`)
-  genes_always_more_MSRA <- introns_always_more_MSRA %>% 
-    unnest(gene_name) %>% 
-    distinct(gene_name) %>% 
-    drop_na()
-  
-  
-  genes_less_MSRA <- setdiff(genes_always_less_MSRA$gene_name, 
-                             genes_always_more_MSRA$gene_name)
-  genes_more_MSRA <- setdiff(genes_always_more_MSRA$gene_name, 
-                             genes_always_less_MSRA$gene_name)
-  
-  
-  
-  ## GO analysis
-  
-  gene_enrichment_less_MSRA <- gprofiler2::gost(query = genes_less_MSRA,
-                                                custom_bg = bg_genes,
-                                                organism = "hsapiens",
-                                                ordered_query = F,
-                                                correction_method = "bonferroni",
-                                                significant = T)
-  gene_enrichment_less_MSRA$result 
-  gene_enrichment_less_MSRA$result %>% filter(source == "KEGG")
-  
-  
-  gene_enrichment_more_MSRA <- gprofiler2::gost(query = genes_more_MSRA,
-                                                custom_bg = bg_genes,
-                                                organism = "hsapiens",
-                                                ordered_query = F,
-                                                correction_method = "bonferroni",
-                                                significant = T)
-  gene_enrichment_more_MSRA$result %>% filter(source == "KEGG")
-  
-  
-  
-  ## COMMON
-  genes_common_less <- intersect(genes_less_MSRD, genes_less_MSRA)
-  gene_enrichment <- gprofiler2::gost(query = genes_common_less,
-                                      custom_bg = bg_genes,
-                                      organism = "hsapiens",
-                                      ordered_query = F,
-                                      correction_method = "bonferroni",
-                                      significant = T,
-                                      sources = "KEGG")
-  gene_enrichment$result
-  any(genes_common_less == "PINK1")
-  any(genes_common_less == "APOE")
-  any(genes_common_less == "MAPT")
-  any(genes_common_less == "SNCA")
-  
-  genes_common_more <- intersect(genes_more_MSRD, genes_more_MSRA)
-  gene_enrichment <- gprofiler2::gost(query = genes_common_more,
-                                      custom_bg = bg_genes,
-                                      organism = "hsapiens",
-                                      ordered_query = F,
-                                      correction_method = "bonferroni",
-                                      significant = T,
-                                      sources = "KEGG")
-  gene_enrichment$result
-  any(genes_common_more == "PINK1")
-  any(genes_common_more == "APOE")
-  any(genes_common_more == "MAPT")
-  any(genes_common_more == "SNCA")
-  
-  
-}
+
 
 
 age_stratification_plot_MSR <- function(df = NULL,
@@ -1400,7 +1153,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
   }
   
-  if ( ! file.exists(file_name) ) {
+  if ( !file.exists(file_name) ) {
     
     df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
       
@@ -1428,7 +1181,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
           query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id, 
                           novel_junID, ref_sum_counts, novel_sum_counts 
                           FROM '", age_group, "_", project_id, "_misspliced'")
-          introns <- dbGetQuery(con, query) %>% as_tibble()#introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+          introns <- dbGetQuery(con, query) %>% as_tibble()
           
           ## Add novel junction info
           query <- paste0("SELECT novel_junID, novel_type 
@@ -1503,6 +1256,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
       distinct(ref_junID, .keep_all = T) %>%
       ungroup()
     
+    df_age_groups_tidy %>% distinct(ref_junID) %>% nrow()
     
     ###############################################
     ## MSR_D
@@ -1545,21 +1299,19 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
   } else {
     
-    ## MSR_D
+    
     if ( (age_projects %>% length()) > 1) {
       file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
-    } else {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
-    }
-    df_MSRD <- readRDS(file = file_name)
-    
-    
-    ## MSR_A
-    if ( (age_projects %>% length()) > 1) {
       file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
     } else {
+      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
       file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
     }
+    
+    ## MSR_D
+    df_MSRD <- readRDS(file = file_name)
+    
+    ## MSR_A
     df_MSRA <- readRDS(file = file_name)
   }
   
@@ -1589,7 +1341,6 @@ age_stratification_MSR_changing_with_age <- function(database_path,
       # MSR_type <- "MSR Donor"
       print( paste0( "Getting data from: '", MSR_type, "'..." ) )
 
-      # tendency_type <- "increasing"
       map_df(age_projects, function(proj_id) {
         
         # proj_id <- age_projects[1]
@@ -1630,10 +1381,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
           
           r_effect1 <- rstatix::wilcox_effsize(data = df_introns %>%
                                                  dplyr::select(`20-39`,`60-79`) %>%
-                                      gather(key = age, MSR) %>%
-                                      dplyr::select(age, MSR),
-                                    formula = MSR ~ age) %>%
-            mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
+                                                 gather(key = age, value = MSR),
+                                               formula = MSR ~ age) %>%
+            mutate(MSR_type = paste0(MSR_type), 
                    tissue = proj_id)
           
           # r_effect2 <-
@@ -1661,6 +1411,44 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   }
   
   
+  #######################################################
+  ## PAPER STATS
+  #######################################################
+  
+  
+  ## Focusing on the donor splice site, we found that MSRD values in the “60-79” age group were significantly 
+  ## higher than those in the “20-39” age group in 9 of the 18 body sites analysed 
+  df_wilcoxon %>%
+    group_by(MSR_type) %>%
+    mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
+    count(pval_sig) %>%
+    ungroup() 
+  
+  
+  ## (Wilcoxon signed rank test with continuity correction, 2e-16 < p-value < 1.09e-43)
+  df_wilcoxon %>%
+    group_by(MSR_type) %>%
+    mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
+    filter(pval_sig == "yes") %>%
+    ungroup() %>%
+    arrange(MSR_type, pval) 
+  
+  
+  ## and that the effect of age was highest in XXXXX
+  df_wilcoxon %>%
+    group_by(MSR_type) %>%
+    mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
+    filter(pval_sig == "yes") %>%
+    ungroup() %>%
+    arrange(MSR_type, effsize)
+  
+  
+  
+  
+  
+  #######################################################
+  ## OTHER STATS
+  #######################################################
   
   df_wilcoxon <- df_wilcoxon %>%
     mutate(group = paste0(group1, "<", group2)) %>%
@@ -1735,10 +1523,8 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     guides(color = guide_legend(title = "Age comparison: "))
   
   ## Save the figure 3
-  folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
-                           main_project, "/figures/")
+  folder_figures <- paste0(getwd(), "/results/_paper/figures/")
   dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
-  
   
   ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.svg"), 
                   width = 183, height = 183, units = "mm", dpi = 300)
@@ -1746,50 +1532,323 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                   width = 183, height = 100, units = "mm", dpi = 300)
   
   
-  for (type in c("MSR Donor", "MSR Acceptor")) {
+  # for (type in c("MSR Donor", "MSR Acceptor")) {
+  # 
+  #   # type <- "MSR Acceptor"
+  #   # type <- "MSR Donor"
+  #   
+  #   
+  #   
+  #   
+  #   
+  #   ## PLOT 2
+  #   ggplot(data = df_wilcoxon_tidy %>%
+  #            #filter(pval < 0.05) %>%
+  #            dplyr::select( tissue, MSR_type, group,effsize) %>%
+  #            spread(key = group, value = effsize) %>%
+  #            mutate(effsizediff = `40-59<60-79` - `20-39<40-59`) %>%
+  #            mutate(col = ifelse(effsizediff > 0, "increased effsize with age", "reduced effsize with age")) %>%
+  #            drop_na(),
+  #          aes(x = `20-39<40-59`,  y = tissue, colour = col)) +
+  #     geom_point(alpha=.7) +
+  #     geom_pointrange(aes(xmax=`40-59<60-79`, 
+  #                         xmin=`20-39<40-59`)) +
+  #     facet_wrap(vars(MSR_type)) +
+  #     theme_light() +
+  #     ylab("") +
+  #     scale_x_log10() +
+  #     xlab("log10(effsize)") +
+  #     theme(axis.line = element_line(colour = "black"), 
+  #           axis.text = element_text(colour = "black", size = "12"),
+  #           axis.title = element_text(colour = "black", size = "12"),
+  #           legend.text = element_text(size = "12"),
+  #           legend.title = element_text(size = "12"),
+  #           axis.text.x = element_text(colour = "black", size = "12"),
+  #           strip.text = element_text(colour = "black", size = "12"),
+  #           legend.position = "top"
+  #     ) + 
+  #     #scale_size(trans = "reverse")+
+  #     theme(legend.position="top", legend.box="vertical", legend.margin=margin())+ 
+  #     scale_colour_discrete(direction=-1) +
+  #     guides(colour = guide_legend(title = NULL)) 
+  #   
+  #   file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".svg")
+  #   file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".png")
+  #   ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  # }
   
-    # type <- "MSR Acceptor"
-    # type <- "MSR Donor"
+}
+
+
+
+age_stratification_brain_GO <- function(database_path,
+                                        gtf_version) {
+  
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  project_id <- "BRAIN"
+  print(paste0(Sys.time(), " --> ", project_id))
+  
+  age_groups <- df_metadata %>%
+    filter(SRA_project == project_id) %>%
+    distinct(cluster) %>%
+    pull()
+  
+  df_age_groups <- map_df(age_groups, function(age_group) {
+    # age_group <- age_groups[1]
+    
+    print(paste0(Sys.time(), " --> ", age_group))
+    
+    query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, transcript_id FROM '", age_group, "_", project_id, "_nevermisspliced'")
+    introns <- dbGetQuery(con, query) %>% as_tibble()
+    
+    query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, transcript_id FROM '", age_group, "_", project_id, "_misspliced'")
+    introns <- plyr::rbind.fill(introns, dbGetQuery(con, query)) %>% as_tibble()
+    
+    query <- paste0("SELECT transcript.transcript_id, transcript.id, gene.gene_name
+                    FROM 'transcript' INNER JOIN 'gene' ON gene.id = transcript.gene_id
+                    WHERE transcript.id IN (", paste(introns$transcript_id, collapse = ","),")")
+    genes <- dbGetQuery(con, query) %>% as_tibble()
     
     
+    introns <- introns %>%
+      inner_join(y = genes,
+                 by = c("transcript_id" = "id")) %>%
+      mutate(sample_type = age_group) %>%
+      as_tibble()
     
+    return(introns)
+  })
+  
+  common_junctions <- df_age_groups %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == age_groups %>% length()) %>%
+    pull(ref_junID)
+  common_junctions %>% unique() %>% length()
+  
+  df_age_groups_tidy <- df_age_groups %>%
+    filter(ref_junID %in% common_junctions)
+  
+ 
+  
+  
+  #####################################
+  ## MSR_D AND MSR_A
+  #####################################
+  
+  
+  
+  df_MSRD <- df_age_groups_tidy %>%
+    dplyr::select(ref_junID, sample_type, MSR_D, gene_name) %>%
+    spread(sample_type, MSR_D)
+  df_MSRA <- df_age_groups_tidy %>%
+    dplyr::select(ref_junID, sample_type, MSR_A, gene_name) %>%
+    spread(sample_type, MSR_A)
+  
+  ## Introns increasing noise with age
+  df_MSRD_increasing <- df_MSRD %>%
+    filter(`20-39` < `40-59`,
+           `40-59` < `60-79`)
+  
+  df_MSRA_increasing <- df_MSRA %>%
+    filter(`20-39` < `40-59`,
+           `40-59` < `60-79`)
+  
+  df_MSRD_increasing %>% nrow() + df_MSRA_increasing %>% nrow()
+  
+  
+  ## Genes with introns increasing noise with age
+  genes_increasing <- c(df_MSRD_increasing %>% drop_na() %>% distinct(gene_name) %>% pull(),
+                        df_MSRA_increasing %>% drop_na() %>% distinct(gene_name) %>% pull()) %>% unique()
+  genes_increasing %>% length()
+  
+  
+  ## GENES BACKGROUND
+  bg_genes <- df_age_groups_tidy %>% drop_na() %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  bg_genes %>% length()
+  
+  #############################################
+  ## MSR OF GENES INCREASING NOISE AT DONOR
+  ## AND ACCEPTOR
+  #############################################
+  
+  ego_MSR <- clusterProfiler::enrichGO(
+    gene          = genes_increasing,
+    universe      = bg_genes,
+    keyType       = "SYMBOL",
+    OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
+    ont           = "ALL",
+    pAdjustMethod = "bonferroni",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.05,
+    readable = F # already using SYMBOL, so not necessary setReadable=T
+    )
+  
+  
+  #############################################
+  ## EVALUATE TERMS
+  #############################################
+  query <- paste0("SELECT DISTINCT ref_junID, ref_coordinates FROM 'intron' WHERE ref_junID = '88181'")
+  TARDBP_introns <- dbGetQuery(con, query) %>% as_tibble() 
+  
+  df_MSRD_increasing %>%
+    filter(gene_name == "TARDBP") %>%
+    inner_join(y = TARDBP_introns,
+               by = "ref_junID") %>%
+    dplyr::select(-ref_junID) %>%
+    dplyr::rename(intron_coordinates = ref_coordinates) %>%
+    dplyr::relocate(intron_coordinates) 
+  
+  
+  ## All enrichment
+  ego_MSR %>% 
+    as_tibble() %>%
+    dplyr::select(Description, p.adjust) %>%
+    arrange(p.adjust) %>%
+    print(n=140)
+
+  
+  ## Find terms with TARDBP (the gene that encodes for the TDP43 gene)
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = geneID,
+                      pattern = "TARDBP")) %>%
+    dplyr::select( ONTOLOGY, ID,Description,GeneRatio,p.adjust,geneID)
+
+  
+  ## Get genes with "neur" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "neur")) %>%
+    arrange(p.adjust)
+  
+  ego_MSR_neur_genes <- ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "neur")) %>%
+    mutate(geneID = str_replace_all(string = geneID, pattern = "/", replacement = " "))
+  
+  ego_MSR_neur_genes_tidy <- paste(ego_MSR_neur_genes$geneID,collapse = ",") %>%
+    str_replace_all(pattern = "/", replacement = " ") %>%
+    str_split_1(pattern = " ") %>%
+    unique() %>%
+    sort()
+  
+  any(ego_MSR_neur_genes_tidy == "MAPT")
+  any(ego_MSR_neur_genes_tidy == "SNCA")
+  any(ego_MSR_neur_genes_tidy == "PSEN1")
+  any(ego_MSR_neur_genes_tidy == "PSEN2")
+  
+  
+  ## Get genes with "dendritic" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "dend")) %>%
+    arrange(p.adjust)
+  
+  ## Get genes with "proteosome" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "prote")) %>%
+    arrange(p.adjust)
+  
+  
+  ## Get genes with "splic" term
+  ego_MSR_splic_genes <- ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "splic")) %>%
+    mutate(geneID = str_replace_all(string = geneID, pattern = "/", replacement = " "))
+
+  ego_MSR_splic_genes_tidy <- paste(ego_MSR_splic_genes$geneID,collapse = ",") %>%
+    str_replace_all(pattern = "/", replacement = " ") %>%
+    str_split_1(pattern = " ") %>%
+    unique() %>%
+    sort()
+  
+  ego_MSR_splic_genes_tidy <- data.frame(gene_name = ego_MSR_splic_genes_tidy)
+  
+  RBPs <- xlsx::read.xlsx(file = paste0(getwd(), "/data/RBPs_subgroups.xlsx"),sheetIndex = 1,header = T)
+  
+  ego_MSR_splic_genes_tidy_RBPs <-  ego_MSR_splic_genes_tidy %>%
+    left_join(y = RBPs,
+              by = c("gene_name" = "name"))
+  
+  
+  (ego_MSR_splic_genes_tidy_RBPs %>%
+    drop_na() %>%
+    distinct(gene_name) %>%
+    nrow() * 100) / (RBPs %>% 
+    drop_na() %>%
+    distinct(name) %>%
+    nrow())
+  
+  
+  ## splicing regulator
+  (ego_MSR_splic_genes_tidy_RBPs %>% count(Splicing.regulation) %>% filter(Splicing.regulation == 1) %>% pull(n) * 100) /
+    (RBPs %>% count(Splicing.regulation) %>% filter(Splicing.regulation == 1) %>% pull(n))
+  
+  ego_MSR_splic_genes_tidy_RBPs %>% filter(Splicing.regulation == 1) %>% pull(gene_name)
+  
+  ## spliceosome
+  (ego_MSR_splic_genes_tidy_RBPs %>% count(Spliceosome) %>% filter(Spliceosome == 1) %>% pull(n) * 100) /
+    (RBPs %>% count(Spliceosome) %>% filter(Spliceosome == 1) %>% pull(n))
+  
+  ego_MSR_splic_genes_tidy_RBPs %>% filter(Spliceosome == 1) %>% pull(gene_name)
+  RBPs %>% filter(Spliceosome == 1) %>% nrow()
+  
+  ## exon-junction complex
+  (ego_MSR_splic_genes_tidy_RBPs %>% count(Exon.Junction.Complex) %>% filter(Exon.Junction.Complex == 1) %>% pull(n) * 100) /
+    (RBPs %>% count(Exon.Junction.Complex) %>% filter(Exon.Junction.Complex == 1) %>% pull(n))
+  
+  ego_MSR_splic_genes_tidy_RBPs %>% filter(Exon.Junction.Complex == 1) %>% pull(gene_name)
+  RBPs %>% filter(Exon.Junction.Complex == 1) %>% nrow()
     
-    
-    ## PLOT 2
-    ggplot(data = df_wilcoxon_tidy %>%
-             #filter(pval < 0.05) %>%
-             dplyr::select( tissue, MSR_type, group,effsize) %>%
-             spread(key = group, value = effsize) %>%
-             mutate(effsizediff = `40-59<60-79` - `20-39<40-59`) %>%
-             mutate(col = ifelse(effsizediff > 0, "increased effsize with age", "reduced effsize with age")) %>%
-             drop_na(),
-           aes(x = `20-39<40-59`,  y = tissue, colour = col)) +
-      geom_point(alpha=.7) +
-      geom_pointrange(aes(xmax=`40-59<60-79`, 
-                          xmin=`20-39<40-59`)) +
-      facet_wrap(vars(MSR_type)) +
-      theme_light() +
-      ylab("") +
-      scale_x_log10() +
-      xlab("log10(effsize)") +
-      theme(axis.line = element_line(colour = "black"), 
-            axis.text = element_text(colour = "black", size = "12"),
-            axis.title = element_text(colour = "black", size = "12"),
-            legend.text = element_text(size = "12"),
-            legend.title = element_text(size = "12"),
-            axis.text.x = element_text(colour = "black", size = "12"),
-            strip.text = element_text(colour = "black", size = "12"),
-            legend.position = "top"
-      ) + 
-      #scale_size(trans = "reverse")+
-      theme(legend.position="top", legend.box="vertical", legend.margin=margin())+ 
-      scale_colour_discrete(direction=-1) +
-      guides(colour = guide_legend(title = NULL)) 
-    
-    file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".svg")
-    file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".png")
-    ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  }
+  
+  ## BAR PLOT
+  MSR_GO_plot <- barplot(ego_MSR, 
+                         showCategory = 40) +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+    xlab("Gene count") +
+    facet_grid(ONTOLOGY~., scale = "free") +
+    theme_minimal() + 
+    theme(text = element_text(colour = "black",size = 12),
+          axis.line = element_line(colour = "black"),
+          legend.position = "top",
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_blank(),
+          axis.ticks = element_line(colour = "black", size = 2),
+          axis.text.y = element_text(colour = "black",
+                                     vjust = 0.3,
+                                     hjust = 1)) +
+    guides(fill = guide_legend(title = "pval",
+                               label.position = "bottom") ) 
+  MSR_GO_plot
+  
+  
+  ## BUBBLE PLOT
+  # edox <- clusterProfiler::setReadable(ego_MSRD, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
+  # edox2 <- enrichplot::pairwise_termsim(x = ego_MSRD,  showCategory = 30)
+  # p1 <- enrichplot::cnetplot(edox2, fontsize = 2.5) +
+  #   theme(text = element_text(size = 12),
+  #         axis.text = element_text(size = "10"),
+  #         legend.position = "top") +
+  #   guides(colour = guide_legend(title = "pval",
+  #                                label.position = "bottom") ) 
+  # p1$layers[[7]]$aes_params$size <- 2.5
+  # p1
+  
+  
   
 }
 
