@@ -1141,8 +1141,6 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     age_projects <- df_metadata$SRA_project %>% unique()
   }
   
-  
-  
   folder_results <- paste0(getwd(), "/results/_paper/results/")
   dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
   
@@ -1178,10 +1176,14 @@ age_stratification_MSR_changing_with_age <- function(database_path,
         
         if ( (dbGetQuery(con, query) %>% nrow()) > 0 ) {
           
+          ###########################################
+          ## GET DATA FROM THE DATABASE
+          
           query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id, 
                           novel_junID, ref_sum_counts, novel_sum_counts 
                           FROM '", age_group, "_", project_id, "_misspliced'")
           introns <- dbGetQuery(con, query) %>% as_tibble()
+          
           
           ## Add novel junction info
           query <- paste0("SELECT novel_junID, novel_type 
@@ -1189,8 +1191,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                           WHERE novel_junID IN (", 
                           paste(introns$novel_junID %>% unique(), collapse =","), ")")
           introns <- introns %>%
-            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
                       by = "novel_junID")
+          
           
           ## Add never-misspliced info
           query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id 
@@ -1198,26 +1201,29 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                           age_group, "_", project_id, "_nevermisspliced'")
           introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
           
+          
           ## Add transcript info
           query <- paste0("SELECT id, gene_id FROM 'transcript' WHERE id IN (", 
                           paste(introns$transcript_id %>% unique(), collapse =","), ")")
+          introns %>% nrow()
           introns <- introns %>%
-            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                      by = c("transcript_id" = "id"))
+            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                       by = c("transcript_id" = "id"))
+          
           
           ## Add gene info
           query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", 
                           paste(introns$gene_id %>% unique(), collapse =","), ")")
           introns <- introns %>%
-            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                      by = c("gene_id" = "id"))
+            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                       by = c("gene_id" = "id"))
           
-          return(introns %>%
+          return(introns %>% 
+                   distinct(ref_junID, .keep_all = T) %>%
                    dplyr::select(-transcript_id, -gene_id) %>%
                    mutate(sample_type = age_group,
                           project_id = project_id))
         } else {
-          #print(query)
           return(NULL)
         }
       })
@@ -1410,6 +1416,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     saveRDS(object = df_wilcoxon, file = file_name)
   }
   
+ 
   
   #######################################################
   ## PAPER STATS
@@ -1418,10 +1425,10 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   ## Focusing on the donor splice site, we found that MSRD values in the “60-79” age group were significantly 
   ## higher than those in the “20-39” age group in 9 of the 18 body sites analysed 
-  df_wilcoxon %>%
+  df_wilcoxon <- df_wilcoxon %>%
     group_by(MSR_type) %>%
     mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
-    count(pval_sig) %>%
+    #count(pval_sig) %>%
     ungroup() 
   
   
@@ -1482,6 +1489,10 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   ## PLOTS
   #######################################################
 
+  df_wilcoxon <- df_wilcoxon %>%
+    group_by(MSR_type) %>%
+    mutate(q = p.adjust(pval, method = "fdr"))
+  
   df_wilcoxon$MSR_type = factor(df_wilcoxon$MSR_type, 
                                 levels = c("MSR Donor",
                                            "MSR Acceptor"))
@@ -1489,36 +1500,37 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   df_wilcoxon_tidy <- df_wilcoxon %>%
     mutate(tissue = str_replace(tissue, 
                                 pattern = "_",
-                                replacement = " ")) %>%
+                                replacement = " "))  %>%
+    group_by(MSR_type) %>%
+    filter(q < 0.05) %>%
+    ungroup() %>%
     group_by(group) %>%
     mutate(tissue = fct_reorder(tissue, effsize)) %>%
     ungroup() 
 
   write.csv(x = df_wilcoxon_tidy,
-            file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
-                          main_project, "/results/wilcoxon_MSR.csv"))
+            file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
   
   ## PLOT 1
   ggplot(data = df_wilcoxon_tidy ,
-         aes(x = effsize, y = tissue, 
-             color= group, size = pval)) +
+         aes(x = effsize, y = tissue, color = MSR_type, size = q)) +
     geom_point(alpha=.7) +
     facet_wrap(vars(MSR_type)) +
     theme_light() +
     ylab("") +
     #scale_x_log10() +
-    xlab("effect size") +
+    xlab("Median MSR difference\n20-39yrs vs. 60-79yrs") +
+    scale_color_manual(values = c("#35B779FF","#64037d"),
+                      breaks = c("MSR Donor", "MSR Acceptor"),
+                      labels = c("20-39<60-79", "20-39<60-79")) +
     theme(axis.line = element_line(colour = "black"), 
           axis.text = element_text(colour = "black", size = "10"),
           axis.title = element_text(colour = "black", size = "12"),
           legend.text = element_text(size = "12"),
           legend.title = element_text(size = "12"),
-          strip.text = element_text(colour = "black", size = "12"),
-          legend.position = "top"
+          strip.text = element_text(colour = "black", size = "12")
     ) + 
-    scale_size(#trans = "reverse",
-      range = c(5, 1), 
-      breaks = c(0, 1e-40, 0.01, 1)  )+
+    scale_size(range = c(10, 1)  )+
     theme(legend.position="top", legend.box="vertical", legend.margin=margin()) +
     guides(color = guide_legend(title = "Age comparison: "))
   
@@ -1603,11 +1615,16 @@ age_stratification_brain_GO <- function(database_path,
     
     print(paste0(Sys.time(), " --> ", age_group))
     
-    query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, transcript_id FROM '", age_group, "_", project_id, "_nevermisspliced'")
+    query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, transcript_id 
+                    FROM '", age_group, "_", project_id, "_nevermisspliced'")
     introns <- dbGetQuery(con, query) %>% as_tibble()
     
-    query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, transcript_id FROM '", age_group, "_", project_id, "_misspliced'")
+    query <- paste0("SELECT DISTINCT ref_junID, ref_type, MSR_D, MSR_A, transcript_id 
+                    FROM '", age_group, "_", project_id, "_misspliced'")
     introns <- plyr::rbind.fill(introns, dbGetQuery(con, query)) %>% as_tibble()
+    
+    introns <- introns %>%
+      distinct(ref_junID, .keep_all = T)
     
     query <- paste0("SELECT transcript.transcript_id, transcript.id, gene.gene_name
                     FROM 'transcript' INNER JOIN 'gene' ON gene.id = transcript.gene_id
@@ -1636,14 +1653,10 @@ age_stratification_brain_GO <- function(database_path,
   df_age_groups_tidy <- df_age_groups %>%
     filter(ref_junID %in% common_junctions)
   
- 
-  
   
   #####################################
   ## MSR_D AND MSR_A
   #####################################
-  
-  
   
   df_MSRD <- df_age_groups_tidy %>%
     dplyr::select(ref_junID, sample_type, MSR_D, gene_name) %>%
@@ -1679,16 +1692,16 @@ age_stratification_brain_GO <- function(database_path,
   ## AND ACCEPTOR
   #############################################
   
+  ont <- "ALL"
   ego_MSR <- clusterProfiler::enrichGO(
     gene          = genes_increasing,
     universe      = bg_genes,
     keyType       = "SYMBOL",
     OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
-    ont           = "ALL",
+    ont           = ont,
     pAdjustMethod = "bonferroni",
     pvalueCutoff  = 0.05,
-    qvalueCutoff  = 0.05,
-    readable = F # already using SYMBOL, so not necessary setReadable=T
+    qvalueCutoff  = 0.05
     )
   
   
@@ -1815,9 +1828,28 @@ age_stratification_brain_GO <- function(database_path,
   RBPs %>% filter(Exon.Junction.Complex == 1) %>% nrow()
     
   
+  #############################################
+  ## PLOTS
+  #############################################
+  
+  ## DOT PLOT
+  
+  clusterProfiler::dotplot(ego_MSR, showCategory=40)+
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = "10"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          strip.text = element_text(colour = "black", size = "12")
+    ) 
+  
+  ggplot2::ggsave(filename = paste0(getwd(), "/results/_paper/figures/go_dotplot_",ont,"_age_brain.png"), 
+                  width = 200, height = 150, units = "mm", dpi = 300)
+  
+  
   ## BAR PLOT
   MSR_GO_plot <- barplot(ego_MSR, 
-                         showCategory = 40) +
+                         showCategory = 20) +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
     xlab("Gene count") +
     facet_grid(ONTOLOGY~., scale = "free") +
@@ -1836,15 +1868,15 @@ age_stratification_brain_GO <- function(database_path,
   MSR_GO_plot
   
   
-  ## BUBBLE PLOT
-  # edox <- clusterProfiler::setReadable(ego_MSRD, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
-  # edox2 <- enrichplot::pairwise_termsim(x = ego_MSRD,  showCategory = 30)
-  # p1 <- enrichplot::cnetplot(edox2, fontsize = 2.5) +
+  # ## BUBBLE PLOT
+  # edox <- clusterProfiler::setReadable(x = ego_MSR, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
+  # edox2 <- enrichplot::pairwise_termsim(x = ego_MSR,  showCategory = 30)
+  # p1 <- enrichplot::(edox2, fontsize = 2.5) +
   #   theme(text = element_text(size = 12),
   #         axis.text = element_text(size = "10"),
   #         legend.position = "top") +
   #   guides(colour = guide_legend(title = "pval",
-  #                                label.position = "bottom") ) 
+  #                                label.position = "bottom") )
   # p1$layers[[7]]$aes_params$size <- 2.5
   # p1
   

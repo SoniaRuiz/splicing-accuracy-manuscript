@@ -3166,29 +3166,31 @@ get_lm_single_tissue <- function() {
     dplyr::select(gene_id, tpm_median) 
   
   #######################################
-  
+  ## GET DATA FROM THE DATABASE
   
   query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
   introns <- dbGetQuery(con, query) %>% as_tibble()
   query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_misspliced'")
   introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+  introns %>% nrow()
   
   query <- paste0("SELECT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
-                  ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, 
-                  protein_coding
+                  ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, protein_coding
                   FROM 'intron' 
                   WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),")")
   introns <- introns %>%
-    left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = "ref_junID") %>% 
     as_tibble() 
+  introns %>% nrow()
   
   ## JOIN WITH TRANSCRIPT DATA
   query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
   introns <- introns %>%
-    left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = c("transcript_id" = "id")) %>% 
     as_tibble() 
+  introns %>% nrow()
   
   
   ## JOIN WITH GENE DATA
@@ -3196,10 +3198,17 @@ get_lm_single_tissue <- function() {
                   FROM 'gene' WHERE id IN (",
                   base::paste(introns$gene_id, collapse = ","),")")
   introns <- introns %>%
-    left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = c("gene_id" = "id")) %>% 
     as_tibble() 
+  introns %>% nrow()
   
+  introns <- introns %>%
+    distinct(ref_junID, .keep_all = T)
+  
+  introns %>% nrow()
+  
+  ###########################
   
   #########################
   ## TIDY DATA
@@ -3225,6 +3234,7 @@ get_lm_single_tissue <- function() {
                   MSR_D,
                   MSR_A)
   
+  idb %>% nrow()
   # idb <- introns %>%
   #   as.data.frame() %>%
   #   dplyr::distinct(ref_junID, .keep_all = T) %>%
@@ -3300,7 +3310,7 @@ get_lm_single_tissue <- function() {
   plotLM <- jtools::plot_summs(fit_donor, 
                                fit_acceptor,
                                #scale = TRUE, 
-                               #robust = T,
+                               robust = T,
                                #n.sd = 2,
                                #pvals = TRUE,
                                legend.title = "",
@@ -3308,17 +3318,31 @@ get_lm_single_tissue <- function() {
                                ci_level = 0.95,
                                coefs = coef_names,
                                colors = c("#35B779FF","#64037d"),
+                               groups =  list("gene level" = c("Gene Length",
+                                                               "Gene TPM",
+                                                               "Gene num. transcripts",
+                                                               "Protein coding"),
+                                              "intron level" = c("Intron Length",
+                                                                 "Intron 5'ss MES score",
+                                                                 "Intron 3'ss MES score",
+                                                                 "CDTS 5'ss",
+                                                                 "CDTS 3'ss",
+                                                                 "PhastCons20 5'ss",
+                                                                 "PhastCons20 3'ss")),
+                               #facet.cols = 2,
+                               facet.label.pos = "left",
                                model.names = model_names,
                                plot.distributions = F,
                                rescale.distributions = T,
                                point.shape = T) +
     guides(colour = guide_legend(ncol = 2, nrow = 1)) +
     theme_minimal() + 
+    
     theme(axis.line = element_line(colour = "black"), 
-          axis.text.x = element_text(colour = "black", size = "10"),
-          axis.text.y = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(colour = "black", size = "12"),
+          axis.text.x = element_text(colour = "black", size = "8"),
+          axis.text.y = element_text(colour = "black", size = "11"),
+          axis.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(colour = "black", size = "10"),
           legend.title = element_text(colour = "black", size = "12"),
           legend.position = "top",
           #panel.grid.major.x = element_blank(),
@@ -3329,16 +3353,14 @@ get_lm_single_tissue <- function() {
                                 to = length((fit_donor$coefficients %>% names)[-1]) + .5,
                                 by = 1),
                colour = "#999999") +
-    guides(colour = guide_legend(ncol = 2, nrow = 1))     +
-    scale_x_continuous(breaks = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025),
-                       labels = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025))
+    guides(colour = guide_legend(ncol = 2, nrow = 1))    
   
-  
+  plotLM
   
   tiles_data <- rbind(summary(fit_donor)$coefficients[,4] %>% 
                         as_tibble() %>%
-                        mutate(value = ifelse(value == 0, max(value), value)) %>%
-                        mutate(q = p.adjust(value,method = "bonferroni")) %>%
+                        mutate(value = ifelse(value == 0, 2.2e-308, value)) %>%
+                        mutate(q = p.adjust(value,method = "fdr")) %>%
                         mutate(q = value %>% log10())%>%
                         mutate(names = names(summary(fit_donor)$coefficients[,4] ),
                                type = "MSR Donor") %>%
@@ -3347,7 +3369,7 @@ get_lm_single_tissue <- function() {
                         rev(),
                       summary(fit_acceptor)$coefficients[,4] %>% 
                         as_tibble() %>%
-                        mutate(value = ifelse(value == 0, max(value), value)) %>%
+                        mutate(value = ifelse(value == 0, 2.2e-308, value)) %>%
                         mutate(q = p.adjust(value,method = "bonferroni")) %>%
                         mutate(q = q %>% log10())%>%
                         mutate(names = names(summary(fit_acceptor)$coefficients[,4] ),
@@ -3357,11 +3379,15 @@ get_lm_single_tissue <- function() {
                         rev())
   
   tiles_data <- tiles_data %>%
-    inner_join(y = data.frame(col_name = c("gene_length","gene_tpm","gene_num_transcripts","protein_coding","intron_length","intron_5ss_score","intron_3ss_score",
-                                              "CDTS_5ss","CDTS_3ss","mean_phastCons20way_5ss","mean_phastCons20way_3ss"),
-                                 col_label = c("Gene Length","Gene TPM","Gene num. transcripts","Protein coding",
-                                               "Intron Length","Intron 5'ss MES score","Intron 3'ss MES score","CDTS 5'ss","CDTS 3'ss",
-                                               "PhastCons20 5'ss","PhastCons20 3'ss")) %>% as_tibble(),
+    inner_join(y = data.frame(col_name = c("gene_length","gene_tpm","gene_num_transcripts","protein_coding",
+                                           "intron_length","intron_5ss_score","intron_3ss_score",
+                                           "CDTS_5ss","CDTS_3ss","mean_phastCons20way_5ss","mean_phastCons20way_3ss"),
+                              col_label = c("Gene Length","Gene TPM","Gene num. transcripts","Protein coding",
+                                            "Intron Length","Intron 5'ss MES score","Intron 3'ss MES score","CDTS 5'ss","CDTS 3'ss",
+                                            "PhastCons20 5'ss","PhastCons20 3'ss"),
+                              group_label = c("gene level","gene level","gene level","gene level",
+                                              "intron level","intron level","intron level","intron level","intron level",
+                                              "intron level","intron level")) %>% as_tibble(),
                by = c("names" = "col_name"))
   
   tiles_data$col_label <- factor(tiles_data$col_label, levels= c("Gene Length","Gene TPM","Gene num. transcripts","Protein coding",
@@ -3370,26 +3396,26 @@ get_lm_single_tissue <- function() {
   tiles_data$type <- factor(tiles_data$type, levels= c("MSR Donor",
                                                          "MSR Acceptor"))
   
-  ggpubr::ggarrange(plotLM +
-                      theme(axis.text.x = element_text(angle = 25, vjust = 1, hjust = 0.9)),
+  ggpubr::ggarrange(plotLM ,
                     ggplot() + 
                       geom_tile(data = tiles_data, mapping = aes(x = type, y = col_label, fill = q))+
-                      scale_fill_gradient(low = "red", high = "white") +
+                      scale_fill_gradient(low = "red", high = "#cccccc") +
                       theme(legend.position = "top") +
                       xlab(" ") + 
                       ylab("") + 
+                      facet_col(~group_label,space = "free",scales = "free_y",strip.position = "left") +
                       theme_minimal() + 
                       theme(axis.line = element_line(colour = "black"), 
-                            axis.text.x = element_text(colour = "black", size = "10"),
-                            axis.text.y = element_text(colour = "black", size = "12"),
+                            axis.text.x = element_text(colour = "black", size = "8"),
+                            axis.text.y = element_text(colour = "black", size = "11"),
                             axis.title = element_text(colour = "black", size = "12"),
-                            legend.text = element_text(colour = "black", size = "12"),
+                            legend.text = element_text(colour = "black", size = "10"),
                             legend.title = element_text(colour = "black", size = "12"),
                             legend.position = "top",
+                            
                             #panel.grid.major.x = element_blank(),
                             #panel.grid.major.y = element_blank(),
-                            axis.ticks = element_line(colour = "black", linewidth = 2))+
-                      theme(axis.text.x = element_text(angle = 15, vjust = 1, hjust = 0.9)),
+                            axis.ticks = element_line(colour = "black", linewidth = 2)),
                     ncol = 2,
                     nrow = 1)
     
@@ -3410,7 +3436,7 @@ get_lm_single_tissue <- function() {
   
   file_name <- paste0(getwd(), "/results/_paper/figures/lm_FTCX")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 200, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 200, height = 100, units = "mm", dpi = 300)
   
   
   ############################################
@@ -3532,16 +3558,19 @@ get_estimate_variance_across_tissues <- function() {
         dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
         dplyr::select(gene_id, gene_tpm = tpm_median) 
       
+      
       ##################################
+      ## LOAD DATA FROM THE DATABASE
       
       query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       introns <- dbGetQuery(con, query) %>% as_tibble()
       query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_misspliced'")
       introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
       
-      
+      ## Only common introns across tissues
       introns <- introns %>%
-        filter(ref_junID %in% common_introns$ref_junID)
+        filter(ref_junID %in% common_introns$ref_junID) %>% 
+        distinct(ref_junID, .keep_all = T)
       
       ## Add MASTER INTRON INFO
       query <- paste0("SELECT ref_junID, ref_length AS intron_length, ref_ss5score AS intron_5ss_score, 
@@ -3553,17 +3582,16 @@ get_estimate_variance_across_tissues <- function() {
                       protein_coding, transcript_id 
                       FROM 'intron' WHERE ref_junID IN (",
                       paste(introns$ref_junID, collapse = ","),")")
-      introns <- merge(x = introns,
-                       y = dbGetQuery(con, query) %>% as_tibble(),
-                       by = "ref_junID",
-                       all.x = T) %>% 
+      introns <- introns %>%
+        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "ref_junID") %>% 
         as_tibble() 
       
       
       ## JOIN WITH TRANSCRIPT DATA
       query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
       introns <- introns %>%
-        left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
                   by = c("transcript_id" = "id")) %>% 
         as_tibble() 
       
@@ -3573,20 +3601,10 @@ get_estimate_variance_across_tissues <- function() {
                   FROM 'gene' WHERE id IN (",
                       base::paste(introns$gene_id, collapse = ","),")")
       introns <- introns %>%
-        left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                  by = c("gene_id" = "id")) %>% 
+        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = c("gene_id" = "id")) %>% 
         as_tibble()  %>%
         dplyr::rename(gene_length = gene_width)
-      
-      # query <- paste0("SELECT id, n_transcripts AS gene_num_transcripts, 
-      #                 gene_width AS gene_length, gene_name FROM 'gene' WHERE id IN (",
-      #                 paste(introns$gene_id, collapse = ","),")")
-      # introns <- merge(x = introns,
-      #                  y = dbGetQuery(con, query) %>% as_tibble(),
-      #                  by.x = "gene_id",
-      #                  by.y = "id",
-      #                  all.x = T) %>% 
-      #   as_tibble() 
       
       
       ## JOIN WITH TPM DATA
@@ -3598,9 +3616,8 @@ get_estimate_variance_across_tissues <- function() {
         dplyr::rename(gene_num_transcripts = n_transcripts )
       
       
-      introns %>% distinct(ref_junID) %>% nrow() %>% print()
-      
-      introns
+      ####################################
+      ## LINEAR MODELS
       
       model <- lm(MSR_D ~
                     intron_length +
@@ -3633,15 +3650,15 @@ get_estimate_variance_across_tissues <- function() {
                               mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
                               mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname())
 
-
-
-      #model %>% summary() %>% print()
-      MSR_Donor %>% mutate(type = "MSR_Donor")
-
-      MSR_Donor <- cbind(MSR_Donor %>%
-              gather(key = feature, value = estimate),
-            pval = ((model %>% summary())$coefficients  %>% as.data.frame())[-1,4]) %>%
-        mutate(tissue = cluster_id)
+      MSR_Donor <- MSR_Donor %>%
+        gather(key = feature, value = estimate) %>%
+        inner_join(y = ((model %>% summary())$coefficients) %>% 
+                     as_tibble(rownames = "feature") %>%
+                     dplyr::select(feature,`Pr(>|t|)`),
+                   by = "feature") %>%
+        mutate(tissue = cluster_id,
+               type = "MSR_Donor") %>%
+        dplyr::rename(pval = `Pr(>|t|)`)
 
       ## Acceptor
       model <- lm(MSR_A ~
@@ -3651,19 +3668,12 @@ get_estimate_variance_across_tissues <- function() {
                     gene_tpm +
                     gene_length +
                     gene_num_transcripts +
-                    # u2_intron +
-                    # clinvar +
                     protein_coding +
                     CDTS_5ss +
                     CDTS_3ss +
                     mean_phastCons20way_5ss +
                     mean_phastCons20way_3ss,
                   data = introns)
-      #
-      #MSR_Acceptor_list[[tissue]] <- model
-
-      #ind_sign <- which(((model %>% summary())$coefficients  %>% as.data.frame())[,4] < 0.05)
-      #model$coefficients[-ind_sign] <- 0
 
       MSR_Acceptor <- data.frame(feature = cluster_id,
                                  intron_length = model$coefficients["intron_length"] %>% unname(),
@@ -3680,16 +3690,17 @@ get_estimate_variance_across_tissues <- function() {
                                  mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
                                  mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname())
 
-      #model %>% summary() %>% print()
-      model$coefficients
+      MSR_Acceptor <- MSR_Acceptor %>%
+        gather(key = feature, value = estimate) %>%
+        inner_join(y = ((model %>% summary())$coefficients) %>% 
+                     as_tibble(rownames = "feature") %>%
+                     dplyr::select(feature,`Pr(>|t|)`),
+                   by = "feature") %>%
+        mutate(tissue = cluster_id,
+               type = "MSR_Acceptor") %>%
+        dplyr::rename(pval = `Pr(>|t|)`)
 
-      MSR_Acceptor <- cbind(MSR_Acceptor %>%
-                           gather(key = feature, value = estimate),
-                         pval = ((model %>% summary())$coefficients  %>% as.data.frame())[-1,4]) %>%
-        mutate(tissue = cluster_id)
-
-      return( rbind(MSR_Donor %>% mutate(type = "MSR_Donor"),
-                    MSR_Acceptor %>% mutate(type = "MSR_Acceptor")) )
+      return( rbind(MSR_Donor, MSR_Acceptor) )
       
     })
   })
@@ -3726,13 +3737,13 @@ plot_estimate_variance_across_tissues <- function() {
     filter(feature == "mean_phastCons20way_5ss",
            type == "MSR_Donor") %>%
     ungroup() %>%
-    pull(pval_corrected) %>% summary()
+    pull(q) %>% summary()
   df_estimate %>%
     group_by(type) %>%
     filter(feature == "mean_phastCons20way_3ss",
            type == "MSR_Donor") %>%
     ungroup() %>%
-    pull(pval_corrected) %>% summary()
+    pull(q) %>% summary()
   
   
   ## Acceptor - pval
@@ -3741,14 +3752,14 @@ plot_estimate_variance_across_tissues <- function() {
     filter(feature == "mean_phastCons20way_5ss",
            type == "MSR_Acceptor") %>%
     ungroup() %>%
-    pull(pval_corrected) %>% summary()
+    pull(q) %>% summary()
 
   df_estimate %>%
     group_by(type) %>%
     filter(feature == "mean_phastCons20way_3ss",
            type == "MSR_Acceptor") %>%
     ungroup() %>%
-    pull(pval_corrected) %>% summary()
+    pull(q) %>% summary()
   
   
   
@@ -3793,7 +3804,7 @@ plot_estimate_variance_across_tissues <- function() {
     #group_by(type) %>%
     #filter(pval_corrected <= 0.05) %>%
     #ungroup() %>%
-    dplyr::select(-c(pval, pval_corrected)) %>%
+    dplyr::select(-c(pval, q)) %>%
     drop_na()
   
   MSR_Donor <- df_estimate %>%
@@ -3900,13 +3911,13 @@ plot_estimate_variance_across_tissues <- function() {
                                                   "PhastCons20 5'ss",
                                                   "PhastCons20 3'ss" ) %>% rev() )
   ## PLOT
-  plotTissues5ssLM <- ggplot(data = MSR_Donor_tidy, aes(tissue, feature, fill=feature)) + 
+  plotTissuesMSRDonor <- ggplot(data = MSR_Donor_tidy, aes(tissue, feature, fill = feature)) + 
     geom_boxplot(fill = "#35B779FF") +
     coord_flip() +
     #ggforce::facet_col(vars(type)) + 
     facet_grid(vars(subgroup), scales = "free", switch = "y", space = "free_y")  +
     #ggtitle(graph_title) +
-    ylab("Distribution of the significant beta values (q<0.05)") +
+    ylab("Distribution of the significant Estimate values (q<0.05)") +
     xlab(" ") +
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
@@ -3924,20 +3935,20 @@ plot_estimate_variance_across_tissues <- function() {
     geom_hline(yintercept = 0,linetype='dotted')
   
   
-  plotTissues5ssLM
+  plotTissuesMSRDonor
   file_name <- paste0(getwd(), "/results/_paper/figures/lm_donor_alltissues")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
   
   
   
-  plotTissues3ssLM <- ggplot(data = MSR_Donor_tidy, aes(tissue, feature, fill=feature)) + 
+  plotTissues3ssLM <- ggplot(data = MSR_Acceptor_tidy, aes(tissue, feature, fill = feature)) + 
     geom_boxplot(fill = "#8d03b0") +
     coord_flip() +
     #ggforce::facet_col(vars(type)) + 
     facet_grid(vars(subgroup), scales = "free", switch = "y", space = "free_y")  +
     #ggtitle(graph_title) +
-    ylab("Distribution of the significant beta values (q<0.05)") +
+    ylab("Distribution of the significant Estimate values (q<0.05)") +
     xlab(" ") +
     theme_light() +
     theme(axis.line = element_line(colour = "black"), 
@@ -4510,7 +4521,13 @@ plot_effect_size_data <- function() {
   
   source(paste0(getwd(), "/code/helper_functions.R"))
   
-  ## LOAD RBPS
+  category_labels <- c("Splicing_regulation" = "Splicing regulation", 
+                       "Spliceosome"="Spliceosome", 
+                       "Exon_junction_complex" = "EJC", 
+                       "NMD" = "NMD")
+  max_genes <- 7
+  
+  ## LOAD RBPS ---------------
   
   metadata_filtered <- readr::read_delim("/home/grocamora/RytenLab-Research/Additional_files/ENCODE_files/metadata_filtered.tsv", show_col_types = F)
   
@@ -4529,7 +4546,7 @@ plot_effect_size_data <- function() {
   required_clusters <- metadata_RBPs %>% pull(experiment_type) %>% unique
 
   
-  ## LOAD COMMON INTRONS
+  ## LOAD COMMON INTRONS ----------------
   
   overwrite = F
   num_cores = 10 
@@ -4558,7 +4575,7 @@ plot_effect_size_data <- function() {
   }
   
   
-  ## GET THE EFFECT SIZE
+  ## GET THE EFFECT SIZE ---------------------
   
   # Variable paths
   overwrite = F
@@ -4579,49 +4596,59 @@ plot_effect_size_data <- function() {
                 names_from = c("target_gene", "cluster"), 
                 values_from = c("MSR_A"))
   
+  ## Execute the wilcox test on MSR_A and MSR_D --------------------------
   ## Execute the wilcox test on MSR_A and MSR_D
-  if (!file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.rds"))) {
+  if (!file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"))) {
     
-    MSR_A_tests <- generateMSRtests(target_RBPs, MSR = MSR_A, file_output = "", overwrite = T, num_cores = num_cores)
+    
     MSR_D_tests <- generateMSRtests(target_RBPs = target_RBPs, 
                                     MSR = MSR_D, 
-                                    file_output = "", 
+                                    file_output = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"), 
                                     overwrite = T,
                                     num_cores = num_cores)
     
     ## Add the categories
-    MSR_A_tests <- addMSRcategories(MSR_A_tests, metadata_RBPs)
     MSR_D_tests <- addMSRcategories(MSR_D_tests, metadata_RBPs)
     
     ## Add bonferroni correction
-    MSR_A_tests <- addBonferroniCorrection(MSR_A_tests)
     MSR_D_tests <- addBonferroniCorrection(MSR_D_tests)
     
     
     saveRDS(object = MSR_D_tests, file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"))
     xlsx::write.xlsx2(x = MSR_D_tests, file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.xlsx"), 
                       sheetName = "MSRD_test", row.names = F, append = T)
+  } else {
+    MSR_D_tests <- readRDS(file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"))
+  }
+  if (!file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.rds"))) {
+    
+    MSR_A_tests <- generateMSRtests(target_RBPs, MSR = MSR_A, file_output = "", overwrite = T, num_cores = num_cores)
+    
+    ## Add the categories
+    MSR_A_tests <- addMSRcategories(MSR_A_tests, metadata_RBPs)
+    
+    ## Add bonferroni correction
+    MSR_A_tests <- addBonferroniCorrection(MSR_A_tests)
     
     saveRDS(object = MSR_A_tests, file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.rds"))
     xlsx::write.xlsx2(x = MSR_A_tests, file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.xlsx"), 
                      sheetName = "MSRA_test", row.names = F, append = T)
   } else {
-    MSR_D_tests <- readRDS(file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"))
     MSR_A_tests <- readRDS(file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.rds"))
   }
   
-  # Combine both MSR_A and MSR_D
+  # Combine both MSR_A and MSR_D -------------------
   MSR_combined = rbind(MSR_A_tests %>% mutate(MSR_type = "MSR_A"), 
                        MSR_D_tests %>% mutate(MSR_type = "MSR_D")) %>%
     filter(p.value.bonferroni <= 0.05)
   
   # Filter the Splicing regulation category
   filter_splicing_regulation <- MSR_combined %>% 
-    select(-statistical_test, -H0, -H1) %>% 
+    dplyr::select(-statistical_test, -H0, -H1) %>% 
     arrange(-effect_size) %>%
     filter(Category == "Splicing_regulation") %>%
     distinct(target_gene, .keep_all = T) %>%
-    head(splicing_max) %>%
+    head(max_genes) %>%
     pull(target_gene)
   
   MSR_graph_data <- MSR_combined %>%
@@ -4637,20 +4664,46 @@ plot_effect_size_data <- function() {
     geom_hline(aes(yintercept = 0.1), linewidth = 0.25) + geom_hline(aes(yintercept = 0.3), linewidth = 0.25) + geom_hline(aes(yintercept = 0.5), linewidth = 0.25) + 
     scale_y_continuous(expand = expansion(mult = c(0, 0.02)), 
                        breaks = seq(0, 0.6, 0.1),
-                       labels = c("0", "Small", "0.2", "Moderate", "0.4", "Large", "0.6")) +
+                       labels = c("0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6")) +
     scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
-    coord_flip() +
-    viridis::scale_fill_viridis(option="viridis", discrete = T, begin = 0.20, end = 0.75, 
-                                name = "Splice site:",
-                                labels = c("MSR_A" = "Acceptor", "MSR_D" = "Donor"),
-                                guide = guide_legend(reverse = T)) +
-    labs(x = "Target shRNA knockdown gene", y = "Effect size") + 
-    ggforce::facet_col(vars(Category), scales = "free_y", space = "free",
-                       labeller = labeller(Category = category_labels)) +
-    custom_gg_theme
+    #coord_flip() +
+    # viridis::scale_fill_viridis(option="viridis", discrete = T, begin = 0.20, end = 0.75, 
+    #                             name = "Splice site:",
+    #                             labels = c("MSR_A" = "Acceptor", "MSR_D" = "Donor"),
+    #                             guide = guide_legend(reverse = T)) +
+    labs(x = "Target shRNA knockdown gene", y = "Median MSR difference\ngene knockdown vs. control") + 
+    facet_row(facets = vars(Category), 
+               scales = "free_x", space = "free",
+               #ncol = 4, 
+               #nrow=1,
+               labeller = labeller(Category = category_labels),
+               drop = T,shrink = T) +
+  
+  
+    scale_fill_manual(values = c("#35B779FF","#64037d"),
+                      labels = c("MSR_A" = "MSR Acceptor", "MSR_D" = "MSR Donor"),
+                      breaks = c("MSR_D", "MSR_A")) +
+    
+  
+  guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
+                               override.aes = list(size = 3),
+                               ncol = 2, nrow = 1 )) +
+    theme_light() +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.text.y = element_text(colour = "black", size = "9"),
+          axis.text.x = element_text(colour = "black", size = "9",angle = 90,hjust = 1,vjust = 1),
+          axis.title = element_text(colour = "black", size = "10"),
+          strip.text = element_text(colour = "black", size = "10"), 
+          legend.text = element_text(colour = "black", size = "10"),
+          plot.caption = element_text(colour = "black", size = "10"),
+          plot.title = element_text(colour = "black", size = "10"),
+          legend.title = element_text(colour = "black", size = "10"),
+          legend.position = "top") 
   
   # Save the graph
-  ggsave(file = paste0("images/Effect_size_combined_top", splicing_max, ".png"), width = 183, height = (183/23)*(splicing_max+13), units = "mm", dpi = 300)
+  ggsave(file = paste0(getwd(), "/results/_paper/figures/Effect_size_combined_top", max_genes, ".png"), 
+         width = 200, height = (100), units = "mm", dpi = 300)
 }
 
 
@@ -4739,13 +4792,13 @@ plot_data_AQR_U2AF1 <- function() {
                    position = "identity", 
                    alpha = 1, 
                    color = "black", 
-                   linewidth = 0.2) +
+                   linewidth = 0.1) +
     #facet_grid(vars(target_gene))+
     scale_x_continuous(expand = expansion(mult = c(0, 0)), 
                        limits = c((limit_bp * -1), limit_bp), 
                        breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
     
-    scale_fill_manual(values = c("#D6445CFF","#333333"),
+    scale_fill_manual(values = c("#F5986FFF","#333333"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("gene knockdown  ", "control")) +
     
@@ -4802,14 +4855,14 @@ plot_data_AQR_U2AF1 <- function() {
                    binwidth = 1, 
                    position = "identity", 
                    alpha = 1, 
-                   color = "black", 
-                   linewidth = 0.1) +
+                   color = "#333333", 
+                   linewidth = 0.01) +
     #facet_grid(vars(target_gene))+
     scale_x_continuous(expand = expansion(mult = c(0, 0)), 
                        limits = c((limit_bp * -1), limit_bp), 
                        breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
-    scale_fill_manual(values = c("#D6445CFF","#333333"),
+    scale_fill_manual(values = c("#F5986FFF","#333333"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("gene knockdown  ", "control")) +
     labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
@@ -4887,7 +4940,7 @@ plot_data_AQR_U2AF1 <- function() {
     mutate(delta_ss3score = ref_ss3score - novel_ss3score) %>%
     ungroup()
   
-  RBP_delta2 <- RBP_merged %>%
+  RBP_delta2 <- RBP_merged2 %>%
     dplyr::select(target_gene, delta_ss3score,cluster ) %>%
     gather(key = "delta_type", value = "delta", delta_ss3score, target_gene) %>%
     mutate(delta = delta %>% as.double()) %>%
@@ -4906,7 +4959,7 @@ plot_data_AQR_U2AF1 <- function() {
     scale_x_continuous(expand = c(0, 0)) +
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) +  
     
-    scale_fill_manual(values = c("#D6445CFF","#333333"),
+    scale_fill_manual(values = c("#F5986FFF","#333333"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("gene knockdown  ", "control")) + 
     labs(x = "Delta 3' MaxEntScan score", y = "Density") +
