@@ -1,14 +1,16 @@
 library(tidyverse)
-library(data.table)
-library(GenomicRanges)
-library(ggforce)
 library(DBI)
 
-## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R")
+# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper_age.R")
 
 
-# source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
+
 setwd("~/PROJECTS/splicing-project-recount3/")
+
+
+##################################
+## CONNECT TO THE DATABASE
+##################################
 
 gtf_version <- 105
 main_project <- "age_subsampled"
@@ -18,8 +20,6 @@ dbListTables(con)
 
 age_projects <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
 
-
-# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification_helper.R")
 
 
 ##################################
@@ -1118,23 +1118,18 @@ age_stratification_plot_MSR_across_tissues <- function(age_projects = c("BRAIN",
 age_stratification_MSR_changing_with_age <- function(database_path,
                                                      gtf_version) {
   
-  
   ## CONNECT TO THE DATABASE
   con <- dbConnect(RSQLite::SQLite(), database_path) 
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
   
+  ## Load metadata
   df_metadata <- dbGetQuery(con, query) %>%
     group_by(SRA_project) %>%
     mutate(nsamples = n()) %>%
     filter(nsamples >= 70)
   
-  # df_metadata %>%
-  #   write.csv(file = paste0("~/PROJECTS/splicing-project-recount3/database/v", 
-  #                           gtf_version, "/", main_project, "/results/", 
-  #                           main_project, "_database_metadata.csv"), 
-  #             row.names = FALSE)
-  
+  ## Get the age clusters
   age_groups <- df_metadata$cluster %>% unique()
   
   if ( is.null(age_projects) ) {
@@ -1307,18 +1302,18 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     
     
     if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
+      file_nameD <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
+      file_nameA <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
     } else {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
+      file_nameD <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
+      file_nameA <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
     }
     
     ## MSR_D
-    df_MSRD <- readRDS(file = file_name)
+    df_MSRD <- readRDS(file = file_nameD)
     
     ## MSR_A
-    df_MSRA <- readRDS(file = file_name)
+    df_MSRA <- readRDS(file = file_nameA)
   }
   
  
@@ -1349,7 +1344,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
 
       map_df(age_projects, function(proj_id) {
         
-        # proj_id <- age_projects[1]
+        # proj_id <- age_projects[2]
         # proj_id <- "KIDNEY"
         print( paste0( proj_id ) )
         
@@ -1371,40 +1366,25 @@ age_stratification_MSR_changing_with_age <- function(database_path,
         
         if ( nrow(df_introns) > 0 ) {
           
-
+          ## Wilcoxon text
           wilcox_pval <- data.frame(pval = c((wilcox.test(x = df_introns$`20-39`,
                                                           y = df_introns$`60-79`,
                                                           alternative = "less",
                                                           paired = T))$p.value))
-                                             #(wilcox.test(x = df_introns$`20-39`,
-                                             #            y = df_introns$`60-79`,
-                                             #           alternative = wilcox_alternative,
-                                             #          paired = T))$p.value,
-                                             # (wilcox.test(x = df_introns$`40-59`,
-                                             #              y = df_introns$`60-79`,
-                                             #              alternative = wilcox_alternative,
-                                             #              paired = T))$p.value))
-          
+          ## Wilcoxon effect size
           r_effect1 <- rstatix::wilcox_effsize(data = df_introns %>%
-                                                 dplyr::select(`20-39`,`60-79`) %>%
-                                                 gather(key = age, value = MSR),
-                                               formula = MSR ~ age) %>%
+                                                 dplyr::select(ref_junID, `20-39`,`60-79`) %>%
+                                                 gather(key = age, value = MSR, -ref_junID) %>%
+                                                 mutate(age = age %>% as.factor()),
+                                               formula = MSR ~ age,
+                                               paired = T,
+                                               p.adjust.method = "fdr") %>%
             mutate(MSR_type = paste0(MSR_type), 
                    tissue = proj_id)
           
-          # r_effect2 <-
-          #   rstatix::wilcox_effsize(data = df_introns %>%
-          #                             dplyr::select(`40-59`, `60-79`) %>%
-          #                             gather(key = age, MSR) %>%
-          #                             dplyr::select(age, MSR),
-          #                           formula = MSR ~ age) %>%
-          #   mutate(MSR_type = paste0(MSR_type), #paste0(MSR_type, "_", tendency_type),
-          #          tissue = proj_id) #%>%
           
+          return(rbind(r_effect1) %>% cbind(wilcox_pval))
           
-          
-          return(rbind(r_effect1) %>%
-                   cbind(wilcox_pval))
         } else {
           return(NULL)
         }
@@ -1425,7 +1405,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   ## Focusing on the donor splice site, we found that MSRD values in the “60-79” age group were significantly 
   ## higher than those in the “20-39” age group in 9 of the 18 body sites analysed 
-  df_wilcoxon <- df_wilcoxon %>%
+  df_wilcoxon_tidy <- df_wilcoxon %>%
     group_by(MSR_type) %>%
     mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
     #count(pval_sig) %>%
@@ -1433,7 +1413,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   
   ## (Wilcoxon signed rank test with continuity correction, 2e-16 < p-value < 1.09e-43)
-  df_wilcoxon %>%
+  df_wilcoxon_tidy %>%
     group_by(MSR_type) %>%
     mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
     filter(pval_sig == "yes") %>%
@@ -1442,7 +1422,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   
   ## and that the effect of age was highest in XXXXX
-  df_wilcoxon %>%
+  df_wilcoxon_tidy %>%
     group_by(MSR_type) %>%
     mutate(pval_sig = ifelse(pval < 0.05, "yes", "no")) %>%
     filter(pval_sig == "yes") %>%
@@ -1457,17 +1437,17 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   ## OTHER STATS
   #######################################################
   
-  df_wilcoxon <- df_wilcoxon %>%
+  df_wilcoxon_tidy <- df_wilcoxon_tidy %>%
     mutate(group = paste0(group1, "<", group2)) %>%
     as_tibble() %>%
     as.data.frame() 
   
-  df_wilcoxon %>%
+  df_wilcoxon_tidy %>%
     filter(MSR_type == "MSR Donor",
            pval <= 0.05) %>%
     arrange(MSR_type, desc(pval))
   
-  df_wilcoxon %>%
+  df_wilcoxon_tidy %>%
     filter(MSR_type == "MSR Donor",
            pval <= 0.05) %>%
     pull(effsize) %>%
@@ -1475,11 +1455,11 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   
   
   
-  df_wilcoxon %>%
+  df_wilcoxon_tidy %>%
     filter(MSR_type == "MSR Acceptor",
            pval <= 0.05) %>%
     arrange(MSR_type, desc(pval))
-  df_wilcoxon %>%
+  df_wilcoxon_tidy %>%
     filter(MSR_type == "MSR Acceptor",
            pval <= 0.05) %>%
     pull(effsize) %>%
@@ -1489,50 +1469,58 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   ## PLOTS
   #######################################################
 
-  df_wilcoxon <- df_wilcoxon %>%
+  df_wilcoxon_tidy <- df_wilcoxon_tidy %>%
     group_by(MSR_type) %>%
-    mutate(q = p.adjust(pval, method = "fdr"))
+    mutate(q = p.adjust(pval, method = "fdr"))%>%
+    ungroup()
   
-  df_wilcoxon$MSR_type = factor(df_wilcoxon$MSR_type, 
+  df_wilcoxon_tidy$MSR_type = factor(df_wilcoxon_tidy$MSR_type, 
                                 levels = c("MSR Donor",
                                            "MSR Acceptor"))
   
-  df_wilcoxon_tidy <- df_wilcoxon %>%
+  df_wilcoxon_tidy_final <- df_wilcoxon_tidy %>%
+    filter(tissue %in% (df_wilcoxon_tidy %>%
     mutate(tissue = str_replace(tissue, 
                                 pattern = "_",
                                 replacement = " "))  %>%
+    group_by(tissue) %>%
+    filter(pval_sig == "yes") %>%
+    dplyr::count(pval_sig) %>%
+    #filter(q < 0.05) %>%
+    ungroup() %>% pull(tissue))) %>%
     group_by(MSR_type) %>%
-    filter(q < 0.05) %>%
-    ungroup() %>%
-    group_by(group) %>%
-    mutate(tissue = fct_reorder(tissue, effsize)) %>%
+    mutate(#effsize = format(effsize, digits = 2, scientific = T),
+           tissue = fct_reorder(tissue, effsize)) %>%
     ungroup() 
 
   write.csv(x = df_wilcoxon_tidy,
             file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
   
   ## PLOT 1
-  ggplot(data = df_wilcoxon_tidy ,
+  ggplot(data = df_wilcoxon_tidy_final ,
          aes(x = effsize, y = tissue, color = MSR_type, size = q)) +
     geom_point(alpha=.7) +
     facet_wrap(vars(MSR_type)) +
     theme_light() +
     ylab("") +
-    #scale_x_log10() +
-    xlab("Median MSR difference\n20-39yrs vs. 60-79yrs") +
+    xlab("Median MSR difference between\n20-39yrs vs. 60-79yrs") +
     scale_color_manual(values = c("#35B779FF","#64037d"),
                       breaks = c("MSR Donor", "MSR Acceptor"),
-                      labels = c("20-39<60-79", "20-39<60-79")) +
+                      labels = c("MSR Donor", "MSR Acceptor")) +
     theme(axis.line = element_line(colour = "black"), 
           axis.text = element_text(colour = "black", size = "10"),
+          axis.text.x = element_text(colour = "black", size = "9"),
           axis.title = element_text(colour = "black", size = "12"),
           legend.text = element_text(size = "12"),
           legend.title = element_text(size = "12"),
           strip.text = element_text(colour = "black", size = "12")
     ) + 
-    scale_size(range = c(10, 1)  )+
-    theme(legend.position="top", legend.box="vertical", legend.margin=margin()) +
-    guides(color = guide_legend(title = "Age comparison: "))
+    scale_size(range = c(7, 1))+
+    theme(legend.position="top", 
+          legend.box="vertical", 
+          legend.margin=margin()) +
+    guides(color = guide_legend(title = ""))+
+    scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
   
   ## Save the figure 3
   folder_figures <- paste0(getwd(), "/results/_paper/figures/")
@@ -1544,50 +1532,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                   width = 183, height = 100, units = "mm", dpi = 300)
   
   
-  # for (type in c("MSR Donor", "MSR Acceptor")) {
-  # 
-  #   # type <- "MSR Acceptor"
-  #   # type <- "MSR Donor"
-  #   
-  #   
-  #   
-  #   
-  #   
-  #   ## PLOT 2
-  #   ggplot(data = df_wilcoxon_tidy %>%
-  #            #filter(pval < 0.05) %>%
-  #            dplyr::select( tissue, MSR_type, group,effsize) %>%
-  #            spread(key = group, value = effsize) %>%
-  #            mutate(effsizediff = `40-59<60-79` - `20-39<40-59`) %>%
-  #            mutate(col = ifelse(effsizediff > 0, "increased effsize with age", "reduced effsize with age")) %>%
-  #            drop_na(),
-  #          aes(x = `20-39<40-59`,  y = tissue, colour = col)) +
-  #     geom_point(alpha=.7) +
-  #     geom_pointrange(aes(xmax=`40-59<60-79`, 
-  #                         xmin=`20-39<40-59`)) +
-  #     facet_wrap(vars(MSR_type)) +
-  #     theme_light() +
-  #     ylab("") +
-  #     scale_x_log10() +
-  #     xlab("log10(effsize)") +
-  #     theme(axis.line = element_line(colour = "black"), 
-  #           axis.text = element_text(colour = "black", size = "12"),
-  #           axis.title = element_text(colour = "black", size = "12"),
-  #           legend.text = element_text(size = "12"),
-  #           legend.title = element_text(size = "12"),
-  #           axis.text.x = element_text(colour = "black", size = "12"),
-  #           strip.text = element_text(colour = "black", size = "12"),
-  #           legend.position = "top"
-  #     ) + 
-  #     #scale_size(trans = "reverse")+
-  #     theme(legend.position="top", legend.box="vertical", legend.margin=margin())+ 
-  #     scale_colour_discrete(direction=-1) +
-  #     guides(colour = guide_legend(title = NULL)) 
-  #   
-  #   file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".svg")
-  #   file_name <- paste0(folder_figures, "/effsize_comparison_common_introns_all_tissues_", type, ".png")
-  #   ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  # }
+
   
 }
 
@@ -1626,11 +1571,10 @@ age_stratification_brain_GO <- function(database_path,
     introns <- introns %>%
       distinct(ref_junID, .keep_all = T)
     
-    query <- paste0("SELECT transcript.transcript_id, transcript.id, gene.gene_name
+    query <- paste0("SELECT transcript.transcript_id, transcript.id, gene.gene_name, gene.gene_id
                     FROM 'transcript' INNER JOIN 'gene' ON gene.id = transcript.gene_id
                     WHERE transcript.id IN (", paste(introns$transcript_id, collapse = ","),")")
     genes <- dbGetQuery(con, query) %>% as_tibble()
-    
     
     introns <- introns %>%
       inner_join(y = genes,
@@ -1651,7 +1595,8 @@ age_stratification_brain_GO <- function(database_path,
   common_junctions %>% unique() %>% length()
   
   df_age_groups_tidy <- df_age_groups %>%
-    filter(ref_junID %in% common_junctions)
+    filter(ref_junID %in% common_junctions) %>%
+    drop_na()
   
   
   #####################################
@@ -1659,50 +1604,65 @@ age_stratification_brain_GO <- function(database_path,
   #####################################
   
   df_MSRD <- df_age_groups_tidy %>%
-    dplyr::select(ref_junID, sample_type, MSR_D, gene_name) %>%
+    dplyr::select(ref_junID, sample_type, MSR_D, gene_name, gene_id) %>%
     spread(sample_type, MSR_D)
   df_MSRA <- df_age_groups_tidy %>%
-    dplyr::select(ref_junID, sample_type, MSR_A, gene_name) %>%
+    dplyr::select(ref_junID, sample_type, MSR_A, gene_name, gene_id) %>%
     spread(sample_type, MSR_A)
   
   ## Introns increasing noise with age
   df_MSRD_increasing <- df_MSRD %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`)
-  
+    filter((`20-39` < `40-59` & `40-59` < `60-79`) |
+             (`20-39` == `40-59` & `40-59` < `60-79`) |
+             (`20-39` < `40-59` & `40-59` == `60-79`))
   df_MSRA_increasing <- df_MSRA %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`)
+    filter((`20-39` < `40-59` & `40-59` < `60-79`) |
+             (`20-39` == `40-59` & `40-59` < `60-79`) |
+             (`20-39` < `40-59` & `40-59` == `60-79`))
   
-  df_MSRD_increasing %>% nrow() + df_MSRA_increasing %>% nrow()
+  # df_MSRD_increasing <- df_MSRD %>%
+  #   filter((`20-39` < `40-59` & `40-59` < `60-79`))
+  # 
+  # df_MSRA_increasing <- df_MSRA %>%
+  #   filter((`20-39` < `40-59` & `40-59` < `60-79`))
   
   
   ## Genes with introns increasing noise with age
-  genes_increasing <- c(df_MSRD_increasing %>% drop_na() %>% distinct(gene_name) %>% pull(),
-                        df_MSRA_increasing %>% drop_na() %>% distinct(gene_name) %>% pull()) %>% unique()
+  genes_increasing <- c(df_MSRD_increasing %>% distinct(gene_name) %>% pull(),
+                        df_MSRA_increasing %>% distinct(gene_name) %>% pull()) %>% unique()
   genes_increasing %>% length()
-  
-  
+
   ## GENES BACKGROUND
-  bg_genes <- df_age_groups_tidy %>% drop_na() %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
+  bg_genes <- df_age_groups_tidy %>% unnest(gene_name) %>% distinct(gene_name) %>% pull()
   bg_genes %>% length()
+  
   
   #############################################
   ## MSR OF GENES INCREASING NOISE AT DONOR
   ## AND ACCEPTOR
   #############################################
   
-  ont <- "ALL"
+
   ego_MSR <- clusterProfiler::enrichGO(
     gene          = genes_increasing,
     universe      = bg_genes,
     keyType       = "SYMBOL",
     OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
-    ont           = ont,
-    pAdjustMethod = "bonferroni",
+    ont           = "ALL",
+    pAdjustMethod = "fdr",
     pvalueCutoff  = 0.05,
     qvalueCutoff  = 0.05
     )
+  
+  
+  library('org.Hs.eg.db')
+  mapIds(org.Hs.eg.db, genes_increasing, 'ENTREZID', 'SYMBOL')
+ 
+  ekegg_MSR <- clusterProfiler::enrichKEGG(
+    gene          = mapIds(org.Hs.eg.db, genes_increasing, 'ENTREZID', 'SYMBOL'),
+    organism      = "hsa",
+    keyType       = "kegg",
+    universe      = mapIds(org.Hs.eg.db, bg_genes, 'ENTREZID', 'SYMBOL'), pAdjustMethod = "fdr")
   
   
   #############################################
@@ -1832,53 +1792,107 @@ age_stratification_brain_GO <- function(database_path,
   ## PLOTS
   #############################################
   
-  ## DOT PLOT
+  ## DOTPLOT -------------------------
   
-  clusterProfiler::dotplot(ego_MSR, showCategory=40)+
+  edox2 <- enrichplot::pairwise_termsim(ego_MSR, showCategory = 30)
+  #clusterProfiler::heatplot(ego_MSR,showCategory = 30)
+  
+  
+  clusterProfiler::dotplot(ego_MSR, x = "qvalue", 
+                           showCategory = 40, decreasing = TRUE, font.size = 6, label_format = 20)+
     theme(axis.line = element_line(colour = "black"), 
-          axis.text.y = element_text(colour = "black", size = "10"),
+          axis.text.y = element_text(colour = "black", size = "9"),
+          axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
           axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
+          legend.text = element_text(size = "8"),
           legend.title = element_text(size = "12"),
-          strip.text = element_text(colour = "black", size = "12")
-    ) 
+          legend.position = "top",
+          legend.box="vertical",
+          strip.text = element_text(colour = "black", size = "12")) + 
+    scale_y_discrete(labels=function(x) str_wrap(x, width=60)) + 
+    
+    scale_size(range = c(1, 10))+
+    coord_flip()# +
+    #guides(fill = guide_legend(title = "Sample type: "),
+    #       colour = guide_legend(title = "q: "))               
   
-  ggplot2::ggsave(filename = paste0(getwd(), "/results/_paper/figures/go_dotplot_",ont,"_age_brain.png"), 
-                  width = 200, height = 150, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(getwd(), "/results/_paper/figures/go_dotplot_ALL_age_brain_acceptor.png"), 
+                  width = 260, height = 160, units = "mm", dpi = 300)
   
   
-  ## BAR PLOT
-  MSR_GO_plot <- barplot(ego_MSR, 
-                         showCategory = 20) +
+  ## BAR PLOT -------------------------------
+  
+  
+  
+  plot1 <- barplot(ego_MSR, 
+                   x = "Count", 
+                   order=T, 
+                   showCategory = 40) +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
-    xlab("Gene count") +
-    facet_grid(ONTOLOGY~., scale = "free") +
-    theme_minimal() + 
+    xlab("Gene Count") +
+    ggforce::facet_row(facets = vars(ONTOLOGY),
+                       scales = "free_x", space = "free",
+                       strip.position = "top") +
+    coord_flip() +
+    theme_light() + 
     theme(text = element_text(colour = "black",size = 12),
           axis.line = element_line(colour = "black"),
+          
+          strip.text = element_text(colour = "black", size = "12"),
           legend.position = "top",
-          panel.grid.major.x = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2),
+          axis.ticks = element_line(colour = "black", linewidth = 2),
+          axis.text.x = element_text(colour = "black",
+                                     angle = 90,
+                                     vjust = 0.3,
+                                     hjust = 1),
           axis.text.y = element_text(colour = "black",
                                      vjust = 0.3,
                                      hjust = 1)) +
-    guides(fill = guide_legend(title = "pval",
-                               label.position = "bottom") ) 
-  MSR_GO_plot
+    guides(fill = guide_legend(title = "q",
+                               label.position = "bottom") ) #+xlim(c(0,0.072))
+  plot1
   
   
-  # ## BUBBLE PLOT
-  # edox <- clusterProfiler::setReadable(x = ego_MSR, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
-  # edox2 <- enrichplot::pairwise_termsim(x = ego_MSR,  showCategory = 30)
-  # p1 <- enrichplot::(edox2, fontsize = 2.5) +
-  #   theme(text = element_text(size = 12),
-  #         axis.text = element_text(size = "10"),
-  #         legend.position = "top") +
-  #   guides(colour = guide_legend(title = "pval",
-  #                                label.position = "bottom") )
-  # p1$layers[[7]]$aes_params$size <- 2.5
-  # p1
+  plot2 <- barplot(ekegg_MSR %>%
+                     mutate(ONTOLOGY = "KEGG"), 
+                   x = "Count", 
+                   order=T, 
+                   color = "qvalue") +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+    xlab("Gene Ratio") +
+    ggforce::facet_row(facets = vars(ONTOLOGY),
+                       scales = "free_x", space = "free",
+                       strip.position = "top") +
+    theme_light() + 
+    theme(text = element_text(colour = "black",size = 12),
+          axis.line = element_line(colour = "black"),
+          
+          strip.text = element_text(colour = "black", size = "12"),
+          legend.position = "top",
+          #panel.grid.major.x = element_blank(),
+          #panel.grid.major.y = element_blank(),
+          axis.ticks = element_line(colour = "black", size = 2),
+          axis.text.x = element_text(colour = "black",
+                                     angle = 90,
+                                     vjust = 0.3,
+                                     hjust = 1),
+          axis.text.y = element_text(colour = "black",
+                                     vjust = 0.3,
+                                     hjust = 1)) +
+    guides(fill = guide_legend(title = "q",
+                               label.position = "bottom") ) +
+    coord_flip() #+xlim(c(0,0.072))
+  
+  
+  ggpubr::ggarrange(plot1,
+                    plot2+ ggpubr::rremove("ylab"), 
+                    common.legend = T,
+                    widths = c(4,1))
+  
+  ggplot2::ggsave(filename = paste0(getwd(), 
+                                    "/results/_paper/figures/go_barplot_ALL_age_brain_acceptor.png"), 
+                  width = 260, height = 160, units = "mm", dpi = 300)
+  
   
   
   
@@ -2623,9 +2637,8 @@ ENCORI_test_results <- function () {
 ## CALLS
 ################################
 
-# age_stratification_MSR_changing_with_age(database_path,
-#                                          age_projects = NULL,
-#                                          gtf_version)
+age_stratification_MSR_changing_with_age(database_path,
+                                         gtf_version)
 
 
 
