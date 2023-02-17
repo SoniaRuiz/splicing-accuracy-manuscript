@@ -97,6 +97,97 @@ age_stratification_get_stats <- function() {
 }
 
 
+age_stratification_plot_metadata <- function() {
+  
+  custom_theme <- theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "9"),
+          axis.text.x = element_text(colour = "black", size = "9"),
+          axis.title = element_text(colour = "black", size = "9"),
+          strip.text = element_text(colour = "black", size = "9"), 
+          legend.text = element_text(colour = "black", size = "9"),
+          plot.caption = element_text(colour = "black", size = "9"),
+          plot.title = element_text(colour = "black", size = "9"),
+          legend.title = element_text(colour = "black", size = "9"),
+          legend.position = "top",
+          ## This is to plot the two legends in two rows
+          legend.box="vertical")  
+  
+  tables <- dbListTables(con)
+  query <- paste0("SELECT * from 'master'")
+  db_metadata <- dbGetQuery(con, query) %>% 
+    as_tibble() %>% 
+    mutate(gender = gender %>% as.integer())
+  
+
+  ## Num samples
+  plot_num_samples <- ggplot(db_metadata %>% 
+           dplyr::count(SRA_project,cluster) %>%
+           arrange(cluster , n) %>%
+           mutate(SRA_project = fct_inorder(SRA_project)) ) +
+    geom_bar(aes(y = SRA_project, x = n, fill = cluster),
+             stat = "identity", position = position_dodge()) + 
+    theme_light() +
+    scale_fill_hue() +
+    labs(y = ("Body site"), x = "Num. samples" ) +
+    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
+    custom_theme
+  
+  plot_num_samples
+  
+  
+  ## Gender
+  plot_gender <- ggplot(db_metadata %>% 
+           mutate(gender = gender %>% as.character()) %>%
+           dplyr::count(SRA_project, gender) %>%
+           arrange(gender , n) %>%
+           mutate(SRA_project = fct_inorder(SRA_project)) ) +
+    geom_bar(aes(y = SRA_project, x = n, group = gender, fill = gender),
+             stat = "identity", position = "dodge") + 
+    theme_light() +
+    labs(y = ("Body site"), x = "Num. samples" ) +
+    scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
+    guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
+    custom_theme
+  
+  plot_gender
+  
+  
+  ## RIN
+  plot_rin <- ggplot(db_metadata ) +
+    geom_density(aes(x = rin, fill = cluster), alpha = 0.5) + 
+    theme_light() +
+    labs(x = "RIN" ) +
+    scale_fill_hue() +
+    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
+    custom_theme
+  
+  plot_rin
+  
+  
+  ## Mapped read depth
+  plot_read_depth <- ggplot(db_metadata ) +
+    geom_density(aes(x = mapped_read_count, fill = cluster), alpha = 0.5) + 
+    theme_light() +
+    scale_fill_hue() +
+    labs(x = "Mapped Read Count" ) +
+    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
+    custom_theme
+  
+  plot_read_depth
+  
+  ggpubr::ggarrange(plot_num_samples,plot_gender,
+                    plot_rin,plot_read_depth,
+                    labels = c("a","b","c","d"))
+  
+  
+  figures_path <- paste0(getwd(), "/results/_paper/figures/")
+  file_name <- paste0(figures_path, "/age_metadata")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 210, height = 190, units = "mm", dpi = 300)
+  
+  
+}
+
 ##################################
 ## BASIC PLOTS
 ##################################
@@ -1397,6 +1488,120 @@ age_stratification_MSR_changing_with_age <- function(database_path,
   }
   
  
+
+
+  #######################################################
+  ## PLOTS
+  #######################################################
+
+  df_wilcoxon_tidy <- df_wilcoxon %>%
+    group_by(MSR_type) %>%
+    mutate(q = p.adjust(pval, method = "fdr"))%>%
+    ungroup()
+  
+  df_wilcoxon_tidy$MSR_type = factor(df_wilcoxon_tidy$MSR_type, 
+                                levels = c("MSR Donor",
+                                           "MSR Acceptor"))
+  
+  df_wilcoxon_tidy_final <- df_wilcoxon_tidy %>%
+    filter(tissue %in% (df_wilcoxon_tidy %>%
+                          group_by(tissue) %>%
+                          filter(pval <= 0.05) %>%
+                          dplyr::count(pval) %>%
+                          #filter(q < 0.05) %>%
+                          ungroup() %>% 
+                          pull(tissue)) ) %>%
+    mutate(tissue = str_replace(tissue, 
+                                pattern = "_",
+                                replacement = " ")) %>%
+    group_by(MSR_type) %>%
+    mutate(tissue = fct_reorder(tissue, effsize)) %>%
+    ungroup()  
+  
+  
+
+  write.csv(x = df_wilcoxon_tidy,
+            file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
+  
+  ## PLOT 1
+  ggplot(data = df_wilcoxon_tidy_final ,
+         aes(x = effsize, y = tissue, color = MSR_type, size = q)) +
+    geom_point(alpha=.7) +
+    facet_wrap(vars(MSR_type)) +
+    theme_light() +
+    ylab("") +
+    xlab("Median MSR difference between\n20-39yrs vs. 60-79yrs") +
+    scale_color_manual(values = c("#35B779FF","#64037d"),
+                      breaks = c("MSR Donor", "MSR Acceptor"),
+                      labels = c("MSR Donor", "MSR Acceptor")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "10"),
+          axis.text.x = element_text(colour = "black", size = "9"),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          strip.text = element_text(colour = "black", size = "12")
+    ) + 
+    scale_size(range = c(7, 1))+
+    theme(legend.position="top", 
+          legend.box="vertical", 
+          legend.margin=margin()) +
+    guides(color = guide_legend(title = ""))+
+    scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
+  
+  ## Save the figure 3
+  folder_figures <- paste0(getwd(), "/results/_paper/figures/")
+  dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
+  
+  ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.svg"), 
+                  width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.png"), 
+                  width = 183, height = 120, units = "mm", dpi = 300)
+  
+  
+
+  
+}
+
+
+age_stratification_MSR_changing_with_age_stats <- function(database_path,
+                                                           gtf_version) {
+  
+  ## CONNECT TO THE DATABASE
+  con <- dbConnect(RSQLite::SQLite(), database_path) 
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  
+  ## Load metadata
+  df_metadata <- dbGetQuery(con, query) %>%
+    group_by(SRA_project) %>%
+    mutate(nsamples = n()) %>%
+    filter(nsamples >= 70)
+  
+  ## Get the age clusters
+  age_groups <- df_metadata$cluster %>% unique()
+  
+  
+  
+  #######################################
+  ## STATISTICAL TEST 
+  ## WILCOXON MSR
+  ########################################
+  
+  folder_results <- paste0(getwd(), "/results/_paper/results/")
+  if ( (age_projects %>% length()) > 1) {
+    file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
+  } else {
+    file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_", project_id,".rds")
+  }
+  
+  if ( file.exists(file_name) ) {
+    
+    df_wilcoxon <- readRDS(file = file_name)
+    
+  } 
+  
+  
   
   #######################################################
   ## PAPER STATS
@@ -1464,35 +1669,35 @@ age_stratification_MSR_changing_with_age <- function(database_path,
            pval <= 0.05) %>%
     pull(effsize) %>%
     summary()
-
+  
   #######################################################
   ## PLOTS
   #######################################################
-
+  
   df_wilcoxon_tidy <- df_wilcoxon_tidy %>%
     group_by(MSR_type) %>%
     mutate(q = p.adjust(pval, method = "fdr"))%>%
     ungroup()
   
   df_wilcoxon_tidy$MSR_type = factor(df_wilcoxon_tidy$MSR_type, 
-                                levels = c("MSR Donor",
-                                           "MSR Acceptor"))
+                                     levels = c("MSR Donor",
+                                                "MSR Acceptor"))
   
   df_wilcoxon_tidy_final <- df_wilcoxon_tidy %>%
     filter(tissue %in% (df_wilcoxon_tidy %>%
-    mutate(tissue = str_replace(tissue, 
-                                pattern = "_",
-                                replacement = " "))  %>%
-    group_by(tissue) %>%
-    filter(pval_sig == "yes") %>%
-    dplyr::count(pval_sig) %>%
-    #filter(q < 0.05) %>%
-    ungroup() %>% pull(tissue))) %>%
+                          mutate(tissue = str_replace(tissue, 
+                                                      pattern = "_",
+                                                      replacement = " "))  %>%
+                          group_by(tissue) %>%
+                          filter(pval_sig == "yes") %>%
+                          dplyr::count(pval_sig) %>%
+                          #filter(q < 0.05) %>%
+                          ungroup() %>% pull(tissue))) %>%
     group_by(MSR_type) %>%
     mutate(#effsize = format(effsize, digits = 2, scientific = T),
-           tissue = fct_reorder(tissue, effsize)) %>%
+      tissue = fct_reorder(tissue, effsize)) %>%
     ungroup() 
-
+  
   write.csv(x = df_wilcoxon_tidy,
             file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
   
@@ -1505,8 +1710,8 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     ylab("") +
     xlab("Median MSR difference between\n20-39yrs vs. 60-79yrs") +
     scale_color_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("MSR Donor", "MSR Acceptor"),
-                      labels = c("MSR Donor", "MSR Acceptor")) +
+                       breaks = c("MSR Donor", "MSR Acceptor"),
+                       labels = c("MSR Donor", "MSR Acceptor")) +
     theme(axis.line = element_line(colour = "black"), 
           axis.text = element_text(colour = "black", size = "10"),
           axis.text.x = element_text(colour = "black", size = "9"),
@@ -1532,12 +1737,9 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                   width = 183, height = 100, units = "mm", dpi = 300)
   
   
-
   
-}
-
-
-
+  
+  }
 age_stratification_brain_GO <- function(database_path,
                                         gtf_version) {
   
@@ -1584,6 +1786,7 @@ age_stratification_brain_GO <- function(database_path,
     
     return(introns)
   })
+ 
   
   common_junctions <- df_age_groups %>%
     group_by(sample_type) %>%
@@ -1619,6 +1822,9 @@ age_stratification_brain_GO <- function(database_path,
     filter((`20-39` < `40-59` & `40-59` < `60-79`) |
              (`20-39` == `40-59` & `40-59` < `60-79`) |
              (`20-39` < `40-59` & `40-59` == `60-79`))
+  
+  c(df_MSRD_increasing %>% distinct(ref_junID) %>% pull(),
+    df_MSRA_increasing %>% distinct(ref_junID) %>% pull()) %>% unique() %>% length()
   
   # df_MSRD_increasing <- df_MSRD %>%
   #   filter((`20-39` < `40-59` & `40-59` < `60-79`))
@@ -1665,129 +1871,7 @@ age_stratification_brain_GO <- function(database_path,
     universe      = mapIds(org.Hs.eg.db, bg_genes, 'ENTREZID', 'SYMBOL'), pAdjustMethod = "fdr")
   
   
-  #############################################
-  ## EVALUATE TERMS
-  #############################################
-  query <- paste0("SELECT DISTINCT ref_junID, ref_coordinates FROM 'intron' WHERE ref_junID = '88181'")
-  TARDBP_introns <- dbGetQuery(con, query) %>% as_tibble() 
-  
-  df_MSRD_increasing %>%
-    filter(gene_name == "TARDBP") %>%
-    inner_join(y = TARDBP_introns,
-               by = "ref_junID") %>%
-    dplyr::select(-ref_junID) %>%
-    dplyr::rename(intron_coordinates = ref_coordinates) %>%
-    dplyr::relocate(intron_coordinates) 
-  
-  
-  ## All enrichment
-  ego_MSR %>% 
-    as_tibble() %>%
-    dplyr::select(Description, p.adjust) %>%
-    arrange(p.adjust) %>%
-    print(n=140)
-
-  
-  ## Find terms with TARDBP (the gene that encodes for the TDP43 gene)
-  ego_MSR %>% 
-    as_tibble() %>%
-    filter(str_detect(string = geneID,
-                      pattern = "TARDBP")) %>%
-    dplyr::select( ONTOLOGY, ID,Description,GeneRatio,p.adjust,geneID)
-
-  
-  ## Get genes with "neur" term
-  ego_MSR %>% 
-    as_tibble() %>%
-    filter(str_detect(string = Description,
-                      pattern = "neur")) %>%
-    arrange(p.adjust)
-  
-  ego_MSR_neur_genes <- ego_MSR %>% 
-    as_tibble() %>%
-    filter(str_detect(string = Description,
-                      pattern = "neur")) %>%
-    mutate(geneID = str_replace_all(string = geneID, pattern = "/", replacement = " "))
-  
-  ego_MSR_neur_genes_tidy <- paste(ego_MSR_neur_genes$geneID,collapse = ",") %>%
-    str_replace_all(pattern = "/", replacement = " ") %>%
-    str_split_1(pattern = " ") %>%
-    unique() %>%
-    sort()
-  
-  any(ego_MSR_neur_genes_tidy == "MAPT")
-  any(ego_MSR_neur_genes_tidy == "SNCA")
-  any(ego_MSR_neur_genes_tidy == "PSEN1")
-  any(ego_MSR_neur_genes_tidy == "PSEN2")
-  
-  
-  ## Get genes with "dendritic" term
-  ego_MSR %>% 
-    as_tibble() %>%
-    filter(str_detect(string = Description,
-                      pattern = "dend")) %>%
-    arrange(p.adjust)
-  
-  ## Get genes with "proteosome" term
-  ego_MSR %>% 
-    as_tibble() %>%
-    filter(str_detect(string = Description,
-                      pattern = "prote")) %>%
-    arrange(p.adjust)
-  
-  
-  ## Get genes with "splic" term
-  ego_MSR_splic_genes <- ego_MSR %>% 
-    as_tibble() %>%
-    filter(str_detect(string = Description,
-                      pattern = "splic")) %>%
-    mutate(geneID = str_replace_all(string = geneID, pattern = "/", replacement = " "))
-
-  ego_MSR_splic_genes_tidy <- paste(ego_MSR_splic_genes$geneID,collapse = ",") %>%
-    str_replace_all(pattern = "/", replacement = " ") %>%
-    str_split_1(pattern = " ") %>%
-    unique() %>%
-    sort()
-  
-  ego_MSR_splic_genes_tidy <- data.frame(gene_name = ego_MSR_splic_genes_tidy)
-  
-  RBPs <- xlsx::read.xlsx(file = paste0(getwd(), "/data/RBPs_subgroups.xlsx"),sheetIndex = 1,header = T)
-  
-  ego_MSR_splic_genes_tidy_RBPs <-  ego_MSR_splic_genes_tidy %>%
-    left_join(y = RBPs,
-              by = c("gene_name" = "name"))
-  
-  
-  (ego_MSR_splic_genes_tidy_RBPs %>%
-    drop_na() %>%
-    distinct(gene_name) %>%
-    nrow() * 100) / (RBPs %>% 
-    drop_na() %>%
-    distinct(name) %>%
-    nrow())
-  
-  
-  ## splicing regulator
-  (ego_MSR_splic_genes_tidy_RBPs %>% count(Splicing.regulation) %>% filter(Splicing.regulation == 1) %>% pull(n) * 100) /
-    (RBPs %>% count(Splicing.regulation) %>% filter(Splicing.regulation == 1) %>% pull(n))
-  
-  ego_MSR_splic_genes_tidy_RBPs %>% filter(Splicing.regulation == 1) %>% pull(gene_name)
-  
-  ## spliceosome
-  (ego_MSR_splic_genes_tidy_RBPs %>% count(Spliceosome) %>% filter(Spliceosome == 1) %>% pull(n) * 100) /
-    (RBPs %>% count(Spliceosome) %>% filter(Spliceosome == 1) %>% pull(n))
-  
-  ego_MSR_splic_genes_tidy_RBPs %>% filter(Spliceosome == 1) %>% pull(gene_name)
-  RBPs %>% filter(Spliceosome == 1) %>% nrow()
-  
-  ## exon-junction complex
-  (ego_MSR_splic_genes_tidy_RBPs %>% count(Exon.Junction.Complex) %>% filter(Exon.Junction.Complex == 1) %>% pull(n) * 100) /
-    (RBPs %>% count(Exon.Junction.Complex) %>% filter(Exon.Junction.Complex == 1) %>% pull(n))
-  
-  ego_MSR_splic_genes_tidy_RBPs %>% filter(Exon.Junction.Complex == 1) %>% pull(gene_name)
-  RBPs %>% filter(Exon.Junction.Complex == 1) %>% nrow()
-    
-  
+ 
   #############################################
   ## PLOTS
   #############################################
@@ -1798,8 +1882,10 @@ age_stratification_brain_GO <- function(database_path,
   #clusterProfiler::heatplot(ego_MSR,showCategory = 30)
   
   
-  clusterProfiler::dotplot(ego_MSR, x = "qvalue", 
-                           showCategory = 40, decreasing = TRUE, font.size = 6, label_format = 20)+
+  plot0<- clusterProfiler::dotplot(ego_MSR, showCategory = 20, split="ONTOLOGY") +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+    xlab("Gene Ratio") +
+    ggforce::facet_row(ONTOLOGY~., scales = "free_x", space = "free") +
     theme(axis.line = element_line(colour = "black"), 
           axis.text.y = element_text(colour = "black", size = "9"),
           axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
@@ -1810,19 +1896,48 @@ age_stratification_brain_GO <- function(database_path,
           legend.box="vertical",
           strip.text = element_text(colour = "black", size = "12")) + 
     scale_y_discrete(labels=function(x) str_wrap(x, width=60)) + 
-    
-    scale_size(range = c(1, 10))+
+    ##xlim(c(0,0.05))+
+    scale_size(range = c(1, 5))+
     coord_flip()# +
     #guides(fill = guide_legend(title = "Sample type: "),
     #       colour = guide_legend(title = "q: "))               
   
-  ggplot2::ggsave(filename = paste0(getwd(), "/results/_paper/figures/go_dotplot_ALL_age_brain_acceptor.png"), 
-                  width = 260, height = 160, units = "mm", dpi = 300)
+  plot0
+  
+  plot01 <-  clusterProfiler::dotplot(ekegg_MSR %>%
+                                        mutate(ONTOLOGY = "KEGG"), 
+                                      showCategory = 20, split="ONTOLOGY") +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+    xlab("Gene Ratio") +
+    ggforce::facet_row(ONTOLOGY~., scales = "free", space = "free") +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text.y = element_text(colour = "black", size = "9"),
+          axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
+          axis.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "8"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top",
+          legend.box="vertical",
+          strip.text = element_text(colour = "black", size = "12")) + 
+    scale_y_discrete(labels=function(x) str_wrap(x, width=60)) + 
+    #xlim(c(0,0.05))+
+    scale_size(range = c(1, 5))+
+    coord_flip()# +
   
   
+  ggpubr::ggarrange(plot0,
+                    plot01+ ggpubr::rremove("ylab"), 
+                    common.legend = T,
+                    ncol = 2,nrow = 1,
+                    widths = c(3,1))
+  
+  ggplot2::ggsave(filename = paste0(getwd(), 
+                                    "/results/_paper/figures/go_dotplot_ALL_age_brain.png"), 
+                  width = 300, height = 160, units = "mm", dpi = 300)
+  
+  ############################################
   ## BAR PLOT -------------------------------
-  
-  
+  ############################################
   
   plot1 <- barplot(ego_MSR, 
                    x = "Count", 
@@ -1884,15 +1999,153 @@ age_stratification_brain_GO <- function(database_path,
     coord_flip() #+xlim(c(0,0.072))
   
   
-  ggpubr::ggarrange(plot1,
+  ggpubr::ggarrange(plot0,
                     plot2+ ggpubr::rremove("ylab"), 
                     common.legend = T,
-                    widths = c(4,1))
+                    widths = c(3,1))
   
   ggplot2::ggsave(filename = paste0(getwd(), 
                                     "/results/_paper/figures/go_barplot_ALL_age_brain_acceptor.png"), 
                   width = 260, height = 160, units = "mm", dpi = 300)
   
+  
+  #############################################
+  ## EVALUATE TERMS
+  #############################################
+  
+  query <- paste0("SELECT DISTINCT ref_junID, ref_coordinates FROM 'intron' WHERE ref_junID = '88181'")
+  TARDBP_introns <- dbGetQuery(con, query) %>% as_tibble() 
+  
+  df_MSRD_increasing %>%
+    filter(gene_name == "TARDBP") %>%
+    inner_join(y = TARDBP_introns,
+               by = "ref_junID") %>%
+    dplyr::select(-ref_junID) %>%
+    dplyr::rename(intron_coordinates = ref_coordinates) %>%
+    dplyr::relocate(intron_coordinates) 
+  
+  
+  ## All enrichment
+  ego_MSR %>% 
+    as_tibble() %>%
+    dplyr::select(Description, p.adjust) %>%
+    arrange(p.adjust) %>%
+    print(n=140)
+  
+  
+  ## Find terms with TARDBP (the gene that encodes for the TDP43 gene)
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = geneID,
+                      pattern = "TARDBP")) %>%
+    dplyr::select( ONTOLOGY, ID,Description,GeneRatio,p.adjust,geneID)
+  
+  
+  ## Get genes with "splic" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "splic")) %>%
+    arrange(p.adjust)
+  
+  
+  ## Get genes with "tau" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "tau")) %>%
+    arrange(p.adjust)
+  
+  ## Get genes with "neur" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "neur")) %>%
+    arrange(p.adjust)
+  
+  ego_MSR_neur_genes <- ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "neur")) %>%
+    mutate(geneID = str_replace_all(string = geneID, pattern = "/", replacement = " "))
+  
+  ego_MSR_neur_genes_tidy <- paste(ego_MSR_neur_genes$geneID,collapse = ",") %>%
+    str_replace_all(pattern = "/", replacement = " ") %>%
+    str_split_1(pattern = " ") %>%
+    unique() %>%
+    sort()
+  
+  any(ego_MSR_neur_genes_tidy == "MAPT")
+  any(ego_MSR_neur_genes_tidy == "SNCA")
+  any(ego_MSR_neur_genes_tidy == "PSEN1")
+  any(ego_MSR_neur_genes_tidy == "PSEN2")
+  
+  
+  ## Get genes with "dendritic" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "dend")) %>%
+    arrange(p.adjust)
+  
+  ## Get genes with "proteosome" term
+  ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "prote")) %>%
+    arrange(p.adjust)
+  
+  
+  ## Get genes with "splic" term
+  ego_MSR_splic_genes <- ego_MSR %>% 
+    as_tibble() %>%
+    filter(str_detect(string = Description,
+                      pattern = "splic")) %>%
+    mutate(geneID = str_replace_all(string = geneID, pattern = "/", replacement = " "))
+  
+  ego_MSR_splic_genes_tidy <- paste(ego_MSR_splic_genes$geneID,collapse = ",") %>%
+    str_replace_all(pattern = "/", replacement = " ") %>%
+    str_split_1(pattern = " ") %>%
+    unique() %>%
+    sort()
+  
+  ego_MSR_splic_genes_tidy <- data.frame(gene_name = ego_MSR_splic_genes_tidy)
+  
+  RBPs <- xlsx::read.xlsx(file = paste0(getwd(), "/data/RBPs_subgroups.xlsx"),sheetIndex = 1,header = T)
+  
+  ego_MSR_splic_genes_tidy_RBPs <-  ego_MSR_splic_genes_tidy %>%
+    left_join(y = RBPs,
+              by = c("gene_name" = "name"))
+  
+  
+  (ego_MSR_splic_genes_tidy_RBPs %>%
+      drop_na() %>%
+      distinct(gene_name) %>%
+      nrow() * 100) / (RBPs %>% 
+                         drop_na() %>%
+                         distinct(name) %>%
+                         nrow())
+  
+  
+  ## splicing regulator
+  (ego_MSR_splic_genes_tidy_RBPs %>% dplyr::count(Splicing.regulation) %>% filter(Splicing.regulation == 1) %>% pull(n) * 100) /
+    (RBPs %>% dplyr::count(Splicing.regulation) %>% filter(Splicing.regulation == 1) %>% pull(n))
+  
+  ego_MSR_splic_genes_tidy_RBPs %>% filter(Splicing.regulation == 1) %>% pull(gene_name)
+  
+  ## spliceosome
+  (ego_MSR_splic_genes_tidy_RBPs %>% dplyr::count(Spliceosome) %>% filter(Spliceosome == 1) %>% pull(n) * 100) /
+    (RBPs %>% dplyr::count(Spliceosome) %>% filter(Spliceosome == 1) %>% pull(n))
+  
+  ego_MSR_splic_genes_tidy_RBPs %>% filter(Spliceosome == 1) %>% pull(gene_name)
+  RBPs %>% filter(Spliceosome == 1) %>% nrow()
+  
+  ## exon-junction complex
+  (ego_MSR_splic_genes_tidy_RBPs %>% dplyr::count(Exon.Junction.Complex) %>% filter(Exon.Junction.Complex == 1) %>% pull(n) * 100) /
+    (RBPs %>% dplyr::count(Exon.Junction.Complex) %>% filter(Exon.Junction.Complex == 1) %>% pull(n))
+  
+  ego_MSR_splic_genes_tidy_RBPs %>% filter(Exon.Junction.Complex == 1) %>% pull(gene_name)
+  RBPs %>% filter(Exon.Junction.Complex == 1) %>% nrow()
   
   
   
