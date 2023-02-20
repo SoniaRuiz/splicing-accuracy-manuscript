@@ -31,7 +31,7 @@ age_stratification_init_data <- function (projects_id,
                                           gtf_version,
                                           main_project) {
   
-  # project_id <- "BRAIN"
+  # project_id <- "ESOPHAGUS"
   map_df(projects_id, function(project_id) {
     
     print(paste0(Sys.time(), " --> ", project_id, " - getting sample's metadata."))
@@ -101,11 +101,11 @@ age_stratification_init_data <- function (projects_id,
         
         data_combined <- rbind(df_youngest, df_samples)
         
-        m.out <- MatchIt::matchit(age_group ~ rin, 
+        m.out <- MatchIt::matchit(formula = age_group ~ rin, 
                                   data = data_combined, 
                                   distance = data_combined$rin,
                                   method = "nearest", 
-                                  caliper = c(rin = 0), 
+                                  caliper = c(rin = 0.05), 
                                   std.caliper = FALSE)
         MatchIt::match.data(m.out) %>%
           return()

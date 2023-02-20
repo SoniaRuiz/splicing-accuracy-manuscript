@@ -1707,9 +1707,9 @@ get_distances <- function() {
   plot_all <- plot_all / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   plot_all
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  # file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX")
+  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
   
   
   ###############################
@@ -1746,7 +1746,6 @@ get_distances <- function() {
                    bins = limit_bp * 2,
                    binwidth = 1,
                    position = "stack") +
-    ggplot2::facet_grid(vars(novel_type)) +
     ggtitle("Protein-coding transcripts") +
     xlab("Distance (in bp)") +
     ylab("Unique novel junctions") +
@@ -1767,27 +1766,54 @@ get_distances <- function() {
           plot.title = element_text(colour = "black", size = "11"),
           legend.title = element_text(colour = "black", size = "11"),
           legend.position = "none") +
-    # geom_text(x = 7.5,  y = 1010,
-    #           label = "3 bp", size=5,
-    #           colour = "#333333" ) +
-    geom_segment(x = 5.8, xend = 9.2, 
-                y = 980, yend = 980,
-                colour = "#333333" ) +
-    geom_segment(x = 5.8, xend = 5.8, 
-                y = 970, yend = 980,
-                colour = "#333333" ) +
-    geom_segment(x = 9.2, xend = 9.2, 
-                y = 970, yend = 980,
-                colour = "#333333" ) 
-  
-  # geom_linerange(aes(xmin = 5.8, xmax = 9.2, y = 970),
-  #                  size = 0.5, alpha = 0.25) +
-  #   geom_linerange(aes(xmin = 8.8, xmax = 12.2, y = 670),
-  #                  size = 0.5, alpha = 0.25) +
-  #   geom_linerange(aes(xmin = 11.8, xmax = 15.2, y = 420),
-  #                  size = 0.5, alpha = 0.25) +
-  #   geom_label(label="Look at this!", x=13, y=420)
-  
+    geom_segment(data = data.frame(x = 5.8, xend = 9.2, linewidth =1,
+                                   y = 980, yend = 980,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 5.9, xend = 5.9, linewidth =1, 
+                        y = 960, yend = 980,
+                        colour = "#333333",
+                        novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 9.1, xend = 9.1, linewidth =1,
+                                   y = 960, yend = 980,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    #########
+    geom_segment(data = data.frame(x = 9.1, xend = 12.6, linewidth =1,
+                                   y = 680, yend = 680,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 9.2, xend = 9.2, linewidth =1, 
+                                   y = 660, yend = 680,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 12.5, xend = 12.5, linewidth =1,
+                                   y = 660, yend = 680,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    #########
+  geom_segment(data = data.frame(x = 12.1, xend = 15.3, linewidth =1,
+                                 y = 440, yend = 440,
+                                 colour = "#333333",
+                                 novel_type="novel acceptor"),
+               aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 12.2, xend = 12.2, linewidth =1, 
+                                   y = 420, yend = 440,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 15.2, xend = 15.2, linewidth =1,
+                                   y = 420, yend = 440,
+                                   colour = "#333333",
+                                   novel_type="novel acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    ggplot2::facet_grid(vars(factor(novel_type, levels=c('novel donor','novel acceptor'))))
   
   
   distance_rectangle <- ggplot() +
@@ -1802,6 +1828,7 @@ get_distances <- function() {
   
   plot_PC <- plot_PC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   plot_PC
+  
   
   # file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesPC")
   # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
@@ -1846,6 +1873,7 @@ get_distances <- function() {
   
   plot_NPC <- plot_NPC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   plot_NPC
+  
   
   # file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesNPC_lncRNA")
   # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
@@ -2174,8 +2202,6 @@ get_modulo <- function() {
     mutate(sum_freq = mean_freq %>% sum) %>%
     pull(sum_freq)
 }
-
-
 
 
 
@@ -2838,6 +2864,11 @@ get_MSR_tissues <- function()  {
   
 }
 
+
+
+
+## 7. Local sequence conservation is the most important predictor of mis-splicing
+
 get_lm_single_tissue <- function() {
   
   ###############################
@@ -3161,6 +3192,11 @@ get_lm_single_tissue <- function() {
   
 }
 
+
+
+
+## 8. Accuracy in splicing is affected by RNA-binding protein (RBP) expression changes
+
 get_common_introns_across_tissues <- function () {
   
   
@@ -3214,7 +3250,7 @@ get_common_introns_across_tissues <- function () {
   query <- paste0("SELECT * FROM 'intron' WHERE ref_junID IN (", paste(common_introns$ref_junID, collapse = ","), ")")
   introns <- dbGetQuery(con, query) %>% as_tibble()
   
-  file_name <- paste0(getwd(), "/results/_paper/results/common_introns.rds")
+  file_name <- paste0(getwd(), "/results/_paper/results/common_introns_all_tissues.rds")
   saveRDS(object = introns, file = file_name)
   
 }
@@ -3227,7 +3263,7 @@ get_estimate_variance_across_tissues <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   ## LOAD COMMON INTRONS
-  common_introns <- readRDS(file = paste0(getwd(), "/results/_paper/results/common_introns.rds"))
+  common_introns <- readRDS(file = paste0(getwd(), "/results/_paper/results/common_introns_all_tissues.rds"))
 
   ################################
   ## QUERY THE DATABASE PER TISSUE
@@ -3255,7 +3291,7 @@ get_estimate_variance_across_tissues <- function() {
       
       
       ###################################
-      ## GET TPM
+      ## GET Median TPM value across the tissues
       
       base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
       samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
@@ -3271,7 +3307,7 @@ get_estimate_variance_across_tissues <- function() {
       
       
       ##################################
-      ## LOAD DATA FROM THE DATABASE
+      ## Get splicing data for the current tissue corresponding to the set of common introns
       
       query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       introns <- dbGetQuery(con, query) %>% as_tibble()
@@ -3330,7 +3366,9 @@ get_estimate_variance_across_tissues <- function() {
       ####################################
       ## LINEAR MODELS
       
-      model <- lm(MSR_D ~
+      ## 1. Model the MSR at the Donor
+      
+      donor_model <- lm(MSR_D ~
                     intron_length +
                     intron_5ss_score +
                     intron_3ss_score +
@@ -3343,27 +3381,13 @@ get_estimate_variance_across_tissues <- function() {
                     mean_phastCons20way_5ss +
                     mean_phastCons20way_3ss,
                   data = introns)
+      donor_model %>% summary()
 
-      #MSR_Donor_list[[tissue]] <- model
+      #MSR_Donor_list[[tissue]] <- donor_model
 
-      MSR_Donor <- data.frame(feature = cluster_id,
-                              intron_length = model$coefficients["intron_length"] %>% unname(),
-                              intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
-                              intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
-                              gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
-                              gene_length = model$coefficients["gene_length"] %>% unname(),
-                              #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
-
-                              gene_num_transcripts = model$coefficients["gene_num_transcripts"] %>% unname(),
-                              protein_coding = model$coefficients["protein_coding"] %>% unname(),
-                              CDTS_5ss = model$coefficients["CDTS_5ss"] %>% unname(),
-                              CDTS_3ss  = model$coefficients["CDTS_3ss"] %>% unname(),
-                              mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
-                              mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname())
-
-      MSR_Donor <- MSR_Donor %>%
-        gather(key = feature, value = estimate) %>%
-        inner_join(y = ((model %>% summary())$coefficients) %>% 
+      MSR_Donor <- data.frame(feature = donor_model$coefficients %>% names(),
+                              estimate = donor_model$coefficients %>% unname()) %>%
+        inner_join(y = ((donor_model %>% summary())$coefficients) %>% 
                      as_tibble(rownames = "feature") %>%
                      dplyr::select(feature,`Pr(>|t|)`),
                    by = "feature") %>%
@@ -3371,8 +3395,13 @@ get_estimate_variance_across_tissues <- function() {
                type = "MSR_Donor") %>%
         dplyr::rename(pval = `Pr(>|t|)`)
 
+      
+      
       ## Acceptor
-      model <- lm(MSR_A ~
+      
+      ## 2. Model the MSR at the Acceptor splice site
+      
+      acceptor_model <- lm(MSR_A ~
                     intron_length +
                     intron_5ss_score +
                     intron_3ss_score +
@@ -3385,31 +3414,18 @@ get_estimate_variance_across_tissues <- function() {
                     mean_phastCons20way_5ss +
                     mean_phastCons20way_3ss,
                   data = introns)
+      acceptor_model %>% summary()
 
-      MSR_Acceptor <- data.frame(feature = cluster_id,
-                                 intron_length = model$coefficients["intron_length"] %>% unname(),
-                                 intron_5ss_score = model$coefficients["intron_5ss_score"] %>% unname(),
-                                 intron_3ss_score = model$coefficients["intron_3ss_score"] %>% unname(),
-                                 gene_tpm = model$coefficients["gene_tpm"] %>% unname(),
-                                 gene_length = model$coefficients["gene_length"] %>% unname(),
-                                 #clinvarTRUE = model$coefficients["clinvarTRUE"] %>% unname(),
-
-                                 gene_num_transcripts = model$coefficients["gene_num_transcripts"] %>% unname(),
-                                 protein_coding = model$coefficients["protein_coding"] %>% unname(),
-                                 CDTS_5ss = model$coefficients["CDTS_5ss"] %>% unname(),
-                                 CDTS_3ss  = model$coefficients["CDTS_3ss"] %>% unname(),
-                                 mean_phastCons20way_5ss  = model$coefficients["mean_phastCons20way_5ss"] %>% unname(),
-                                 mean_phastCons20way_3ss = model$coefficients["mean_phastCons20way_3ss"] %>% unname())
-
-      MSR_Acceptor <- MSR_Acceptor %>%
-        gather(key = feature, value = estimate) %>%
-        inner_join(y = ((model %>% summary())$coefficients) %>% 
+      MSR_Acceptor <- data.frame(feature = acceptor_model$coefficients %>% names(),
+                              estimate = acceptor_model$coefficients %>% unname()) %>%
+        inner_join(y = ((acceptor_model %>% summary())$coefficients) %>% 
                      as_tibble(rownames = "feature") %>%
                      dplyr::select(feature,`Pr(>|t|)`),
                    by = "feature") %>%
         mutate(tissue = cluster_id,
                type = "MSR_Acceptor") %>%
         dplyr::rename(pval = `Pr(>|t|)`)
+
 
       return( rbind(MSR_Donor, MSR_Acceptor) )
       
@@ -3421,7 +3437,7 @@ get_estimate_variance_across_tissues <- function() {
   ## SAVE RESULTS
   #############################
   
-  file_name <- paste0(getwd(), "/results/_paper/results/variance_estimate_tissues.rds")
+  file_name <- paste0(getwd(), "/results/_paper/results/variance_estimate_lm_all_tissues.rds")
   saveRDS(object = df_estimates, file = file_name)
   
 }
@@ -3429,107 +3445,36 @@ get_estimate_variance_across_tissues <- function() {
 plot_estimate_variance_across_tissues <- function() {
   
 
-  df_estimate <- readRDS(file = paste0(getwd(), "/results/_paper/results/variance_estimate_tissues.rds")) %>%
+  ## 1. Load the estimate variance across tissues
+  df_estimate <- readRDS(file = paste0(getwd(), "/results/_paper/results/variance_estimate_lm_all_tissues.rds")) %>%
     group_by(type) %>%
     mutate(q = p.adjust(pval, method = "fdr")) %>%
-    ungroup() %>%
-    drop_na()
+    ungroup()
   
+  ## Check the number of non-significant covariates
   df_estimate %>%
-    # group_by(tissue) %>%
-    dplyr::count(feature)
-  
-  ## Interestingly, this analysis also demonstrated that while the effect of sequence conservation on splicing 
-  ## noise was always significant, its effect size was variable (XXXXXrange of betas, Figure). 
-  
-  ## Donor - pval
+    filter(q <= 0.05)
   df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_5ss",
-           type == "MSR_Donor") %>%
-    ungroup() %>%
-    pull(q) %>% 
-    summary()
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_3ss",
-           type == "MSR_Donor") %>%
-    ungroup() %>%
-    pull(q) %>% summary()
+    filter(q > 0.05) 
   
-  
-  ## Acceptor - pval
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_5ss",
-           type == "MSR_Acceptor") %>%
-    ungroup() %>%
-    pull(q) %>% 
-    summary()
-
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_3ss",
-           type == "MSR_Acceptor") %>%
-    ungroup() %>%
-    pull(q) %>% summary()
-  
-  
-  
-  
-  
-  ## Donor - effect size
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_5ss",
-           type == "MSR_Donor") %>%
-    ungroup() %>%
-    pull(estimate) %>% 
-    summary()
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_3ss",
-           type == "MSR_Donor") %>%
-    ungroup()  %>%
-    pull(estimate) %>% 
-    summary()
-  
-  
-  ## Acceptor - effect size
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_5ss",
-           type == "MSR_Acceptor") %>%
-    ungroup()%>%
-    pull(estimate) %>% summary()
-  df_estimate %>%
-    group_by(type) %>%
-    filter(feature == "mean_phastCons20way_3ss",
-           type == "MSR_Acceptor") %>%
-    ungroup() %>%
-    pull(estimate) %>% summary()
- 
-
-  
-  
-  
-  
+  ## We only keep significant covariates
   
   df_estimate <- df_estimate %>%
-    #group_by(type) %>%
-    #filter(pval_corrected <= 0.05) %>%
-    #ungroup() %>%
-    dplyr::select(-c(pval, q)) %>%
-    drop_na()
+    filter(q <= 0.05) %>%
+    dplyr::select(-c(q, pval))
+  
+  
+  ## Separate the estimate values by MSR
   
   MSR_Donor <- df_estimate %>%
     filter(type == "MSR_Donor") %>%
     mutate(type = "MSR Donor") %>%
-    spread(key=feature, value= estimate)
+    spread(key = feature, value = estimate)
+  
   MSR_Acceptor <- df_estimate %>%
     filter(type == "MSR_Acceptor") %>%
     mutate(type = "MSR Acceptor") %>%
-    spread(key=feature, value= estimate)
+    spread(key = feature, value = estimate)
   
   #############################
   ## PLOT - ESTIMATE VARIANCE
@@ -3742,36 +3687,106 @@ plot_estimate_variance_across_tissues <- function() {
     arrange(estimate) %>%
     distinct(tissue, .keep_all = T)
   
+  
+  #######################################
+  ## STATS
+  #######################################
+  
+  df_estimate %>%
+    # group_by(tissue) %>%
+    dplyr::count(feature)
+  
+  ## Interestingly, this analysis also demonstrated that while the effect of sequence conservation on splicing 
+  ## noise was always significant, its effect size was variable (XXXXXrange of betas, Figure). 
+  
+  ## Donor - pval
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Donor") %>%
+    ungroup() %>%
+    pull(q) %>% 
+    summary()
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Donor") %>%
+    ungroup() %>%
+    pull(q) %>% summary()
+  
+  
+  ## Acceptor - pval
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Acceptor") %>%
+    ungroup() %>%
+    pull(q) %>% 
+    summary()
+  
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Acceptor") %>%
+    ungroup() %>%
+    pull(q) %>% summary()
+  
+  
+  
+  
+  
+  ## Donor - effect size
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Donor") %>%
+    ungroup() %>%
+    pull(estimate) %>% 
+    summary()
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Donor") %>%
+    ungroup()  %>%
+    pull(estimate) %>% 
+    summary()
+  
+  
+  ## Acceptor - effect size
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_5ss",
+           type == "MSR_Acceptor") %>%
+    ungroup()%>%
+    pull(estimate) %>% summary()
+  df_estimate %>%
+    group_by(type) %>%
+    filter(feature == "mean_phastCons20way_3ss",
+           type == "MSR_Acceptor") %>%
+    ungroup() %>%
+    pull(estimate) %>% summary()
+  
 }
-
-
-#################################
-## SOMATIC MUTATIONS - SKIN
-#################################
-
-
-# project_id1 = "SKIN"
-# cluster_id1 = "Skin - Sun Exposed (Lower leg)"
-# project_id2 = "SKIN"
-# cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)"
-# stats = F
-# 
-# 
-# project_id1 = "BRAIN"
-# cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)"
-# project_id2 = "PANCREAS"
-# cluster_id2 = "Pancreas"
-
-project_id1 = "BRAIN"
-cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)"
-project_id2 = "BLOOD"
-cluster_id2 = "Whole Blood"
 
 compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                                               cluster_id1 = "Skin - Sun Exposed (Lower leg)",
                                               project_id2 = "SKIN",
                                               cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)",
                                               stats = F) {
+  # project_id1 = "SKIN"
+  # cluster_id1 = "Skin - Sun Exposed (Lower leg)"
+  # project_id2 = "SKIN"
+  # cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)"
+  # 
+  # project_id1 = "BRAIN"
+  # cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)"
+  # project_id2 = "PANCREAS"
+  # cluster_id2 = "Pancreas"
+  #
+  # project_id1 = "BRAIN"
+  # cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)"
+  # project_id2 = "BLOOD"
+  # cluster_id2 = "Whole Blood"
   
   tables <- c(paste0(cluster_id1, "_", project_id1), 
               paste0(cluster_id2, "_", project_id2)) #c("Skin - Sun Exposed (Lower leg)", "Skin - Not Sun Exposed (Suprapubic)")
@@ -4230,13 +4245,6 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
   }
 }
 
-
-#################################
-## ENCODE KNOCKDOWN
-#################################
-
-## EFFECT-SIZE GRAPH
-
 plot_effect_size_data <- function() {
   
   source(paste0(getwd(), "/code/helper_functions.R"))
@@ -4276,7 +4284,7 @@ plot_effect_size_data <- function() {
   RBPs_path <- path.expand("/home/grocamora/RytenLab-Research/03-ENCODE_RBP_Automatization/RBPs")
   
   # Load global common introns
-  if(!file.exists(global_common_introns_path)){
+  if( !file.exists(global_common_introns_path) ) {
     global_common_introns <- generateCommonIntronsParallel(target_RBPs, RBPs_path, metadata_RBPs, 
                                                            required_clusters, global_common_introns_path, 
                                                            overwrite, num_cores)
@@ -4285,7 +4293,7 @@ plot_effect_size_data <- function() {
   }
   
   # Load global common novel
-  if(!file.exists(global_common_novel_path)){
+  if ( !file.exists(global_common_novel_path) ) {
     common_ref_coordinates <- global_common_introns %>% pull(ref_coordinates) %>% unique
     global_common_novel <- generateCommonNovelParallel(target_RBPs, common_ref_coordinates, RBPs_path, 
                                                        metadata_RBPs, required_clusters, global_common_novel_path, 
@@ -4318,7 +4326,7 @@ plot_effect_size_data <- function() {
   
   ## Execute the wilcox test on MSR_A and MSR_D --------------------------
   ## Execute the wilcox test on MSR_A and MSR_D
-  if (!file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"))) {
+  if ( !file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds")) ) {
     
     
     MSR_D_tests <- generateMSRtests(target_RBPs = target_RBPs, 
@@ -4340,7 +4348,7 @@ plot_effect_size_data <- function() {
   } else {
     MSR_D_tests <- readRDS(file = paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRD.rds"))
   }
-  if (!file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.rds"))) {
+  if ( !file.exists(paste0(getwd(), "/results/_paper/results/ENCODE_effectsize_MSRA.rds")) ) {
     
     MSR_A_tests <- generateMSRtests(target_RBPs, MSR = MSR_A, file_output = "", overwrite = T, num_cores = num_cores)
     
@@ -4377,14 +4385,35 @@ plot_effect_size_data <- function() {
     mutate(target_gene = factor(target_gene, levels = .$target_gene %>% unique),                                           # Use factors to sort the graph
            Category = factor(Category, levels = c("Splicing_regulation", "Spliceosome", "NMD", "Exon_junction_complex")))  # Use factors to sort the graph
   
+  
+  ######
+  ## METADATA KEFF
+  ######
+  project_path <- "/home/grocamora/RytenLab-Research/09-ENCODE_Gene_expression/"
+  metadata_kEff_path <- paste0(project_path, "variables/metadata_kEff.tsv")
+  metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
+    mutate(kEff_text = ifelse(is.na(kEff_avg), "", paste0(round(kEff_avg), "%")))
+  
+  
+  MSR_graph_data <- MSR_graph_data %>%
+    inner_join(y = metadata_kEff,
+               by = "target_gene")
+  MSR_graph_data %>% head()
+  
+  ######
+  ## PLOT
+  ######
+  
   # Plot the graph
-  ggplot(MSR_graph_data) + 
-    geom_bar(aes(x = target_gene, y = effect_size, fill = MSR_type), 
-             stat = "identity", color = "black", linewidth = 0.25, width = 0.80, position = "dodge") + 
+  plot_effectsize <- ggplot(MSR_graph_data, aes(x = target_gene, y = effect_size)) + 
+    geom_bar(aes(fill = MSR_type), 
+             stat = "identity", color = "black", 
+             linewidth = 0.25, width = 0.80, position = "dodge") + 
     #geom_hline(aes(yintercept = 0.1), linewidth = 0.25) + geom_hline(aes(yintercept = 0.3), linewidth = 0.25) + geom_hline(aes(yintercept = 0.5), linewidth = 0.25) + 
-    scale_y_continuous(expand = expansion(mult = c(0, 0.02)), 
-                       breaks = seq(0, 0.6, 0.1),
-                       labels = c("0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6")) +
+    scale_y_continuous(limits = c(0,0.8),
+                       expand = expansion(mult = c(0, 0.02)), 
+                       breaks = seq(0, 0.8, 0.1),
+                       labels = c("0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "", "")) +
     scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
     #coord_flip() +
     # viridis::scale_fill_viridis(option="viridis", discrete = T, begin = 0.20, end = 0.75, 
@@ -4403,28 +4432,43 @@ plot_effect_size_data <- function() {
                       labels = c("MSR_A" = "MSR Acceptor", "MSR_D" = "MSR Donor"),
                       breaks = c("MSR_D", "MSR_A")) +
   guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
-                               override.aes = list(size = 3),
-                               ncol = 2, nrow = 1 )) +
-    theme_light() +
+                             order = 1, 
+                             ncol = 2, 
+                             nrow = 1 )) +
+    theme_light() 
+    
+  plot_effectsize
+  
+  plot_effectsize +
+    ggnewscale::new_scale_fill() +
+    #geom_hline(data = data.frame(hline = c(0.1, 0.3, 0.5)), aes(yintercept = hline), linewidth = 0.25) +
+    geom_tile(stat = "identity", aes(y = 0.68, fill = kEff_avg), 
+              linewidth = 0.5, color = "black", width = 1, height = 0.045) +
+    geom_text(aes(y = 0.76, label = kEff_text),
+              color = "black", size = 3) +
+    viridis::scale_fill_viridis(option = "inferno", na.value = "#999999",
+                       name = "Knockdown\nEfficiency", 
+                       limits = c(0, 100), breaks = seq(0, 100, 25),
+                       labels = paste0(seq(0, 100, 25), "%"),
+                       guide = guide_colourbar(frame.colour = "black", frame.linewidth = 0.4,
+                                               order = 2,
+                                               ticks.colour = "black", barwidth = 10, barheight = 1.5)) +
     theme(axis.line = element_line(colour = "black"), 
           axis.text = element_text(colour = "black", size = "10"),
           axis.text.y = element_text(colour = "black", size = "9"),
           axis.text.x = element_text(colour = "black", size = "9",angle = 90,hjust = 1,vjust = 1),
           axis.title = element_text(colour = "black", size = "10"),
-          strip.text = element_text(colour = "black", size = "10"), 
-          legend.text = element_text(colour = "black", size = "10"),
+          strip.text = element_text(colour = "black", size = "11"),
           plot.caption = element_text(colour = "black", size = "10"),
           plot.title = element_text(colour = "black", size = "10"),
-          legend.title = element_text(colour = "black", size = "10"),
+          legend.text = element_text(colour = "black", size = "9"),
+          legend.title = element_text(colour = "black", size = "9"),
           legend.position = "top") 
   
   # Save the graph
   ggsave(file = paste0(getwd(), "/results/_paper/figures/Effect_size_combined_top", max_genes, ".png"), 
-         width = 200, height = (100), units = "mm", dpi = 300)
+         width = 200, height = 100, units = "mm", dpi = 300)
 }
-
-
-## AQR AND U2AF1
 
 plot_data_AQR_U2AF1 <- function() {
   
@@ -4453,8 +4497,9 @@ plot_data_AQR_U2AF1 <- function() {
                                                            file_output = global_common_introns_path, 
                                                            overwrite = overwrite, 
                                                            num_cores = num_cores)
-  }else{
+  } else {
     global_common_introns <- readRDS(global_common_introns_path)
+    global_common_introns %>% distinct(ref_coordinates) %>% nrow()
   }
   
   
@@ -4485,6 +4530,7 @@ plot_data_AQR_U2AF1 <- function() {
   RBP_intron <- global_common_introns %>% filter(target_gene %in% target_RBPs)
   RBP_novel <- global_common_novel %>% filter(target_gene %in% target_RBPs)
   
+  
   RBP_novel %>%
     dplyr::count(target_gene,cluster, novel_type)
   
@@ -4506,6 +4552,35 @@ plot_data_AQR_U2AF1 <- function() {
   #                                   replacement = " ")) %>%
   #   filter(abs(distance) < limit_bp,
   #          abs(distance) == 1)
+  
+  setdiff(x = RBP_intron %>%
+            filter(target_gene == "AQR") %>%
+            pull(ref_coordinates) %>%
+            unique,
+          y = RBP_intron %>%
+            filter(target_gene == "U2AF2") %>%
+            pull(ref_coordinates) %>%
+            unique)
+  
+  
+  setdiff(x = RBP_novel %>%
+            filter(target_gene == "AQR") %>%
+            pull(ref_coordinates) %>%
+            unique,
+          y = RBP_intron %>%
+            filter(target_gene == "AQR") %>%
+            pull(ref_coordinates) %>%
+            unique)
+  setdiff(x = RBP_novel %>%
+            filter(target_gene == "U2AF2") %>%
+            pull(ref_coordinates) %>%
+            unique,
+          y = RBP_intron %>%
+            filter(target_gene == "U2AF2") %>%
+            pull(ref_coordinates) %>%
+            unique)
+  
+
   
   plot_aqr_u2af1 <- ggplot(RBP_novel %>%
                              filter(novel_type == "novel_acceptor") %>%
@@ -4774,161 +4849,7 @@ plot_data_AQR_U2AF1 <- function() {
   
 }
 
-#################################
-## GO ENRICHMENT
-#################################
 
-## TODO: not only obtain common introns across age groups, but also obtain common introns across age groups with similar coverage.
-## Then analyse changes in splicing noise across age
-
-
-plot_GO_Enrichment <- function() {
-  
-  
-  project_id <- "BRAIN"
-  
-  ## Read data.frame containing only common introns across age groups in BRAIN
-  folder_results <- paste0(getwd(), "/database/v", gtf_version, "/age_subsampled/")
-  
-  ## MSR_D
-  file_name <- paste0(folder_results, "/results/df_MSRD_common_introns_", project_id,".rds")
-  df_MSRD <- readRDS(file = file_name)
-  df_MSRD_increasing <- df_MSRD %>%
-    filter((`20-39` < `40-59` &
-              `40-59` < `60-79`)) 
-
-  ## MSR_A
-  file_name <- paste0(folder_results, "/results/df_MSRA_common_introns_", project_id,".rds")
-  df_MSRA <- readRDS(file = file_name)
-  df_MSRA_increasing <- df_MSRA %>%
-    filter((`20-39` < `40-59` &
-              `40-59` < `60-79`)) 
-  
-  
-  ## All genes background
-  bg_genes <- c(df_MSRD$gene_name, df_MSRA$gene_name) %>% unique()
-  
-  
-  #############################################
-  ## MSR_D
-  #############################################
-  
-  ego_MSRD <- clusterProfiler::enrichGO(
-                  gene          = df_MSRD_increasing$gene_name %>% unique(),
-                  universe      = bg_genes,
-                  keyType       = "SYMBOL",
-                  OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
-                  ont           = "ALL",
-                  pAdjustMethod = "bonferroni",
-                  pvalueCutoff  = 0.05,
-                  qvalueCutoff  = 0.05,
-                  readable      = TRUE)
-  
-  
-  ## PLOT 1
-  MSR_D_GO_plot <- barplot(ego_MSRD, 
-                           showCategory = 20) +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
-    xlab("Gene count") +
-    facet_grid(ONTOLOGY~., scale = "free") +
-    theme_minimal() + 
-    theme(text = element_text(colour = "black",size = 12),
-          axis.line = element_line(colour = "black"),
-          legend.position = "top",
-          panel.grid.major.x = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2),
-          axis.text.y = element_text(colour = "black",
-                                     vjust = 0.3,
-                                     hjust = 1)) +
-    guides(fill = guide_legend(title = "pval",
-                               label.position = "bottom") ) 
-  MSR_D_GO_plot
-  
-  folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
-                           main_project, "/figures/")
-  dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_D_increasing")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  
-  ## PLOT 2
-  
-  edox <- clusterProfiler::setReadable(ego_MSRD, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
-  edox2 <- enrichplot::pairwise_termsim(edox,  showCategory = 30)
-  p1 <- enrichplot::treeplot(edox2, fontsize = 2.5) +
-    theme(text = element_text(size = 12),
-          axis.text = element_text(size = "10"),
-          legend.position = "top") +
-  guides(colour = guide_legend(title = "pval",
-                               label.position = "bottom") ) 
-  p1$layers[[7]]$aes_params$size <- 2.5
-  p1
-  
-  
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_D_increasing2")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  #############################################
-  ## MSR_A
-  #############################################
-  
-  ego_MSRA <- clusterProfiler::enrichGO(
-                                    gene          = df_MSRA_increasing$gene_name %>% unique(), 
-                                    universe      = bg_genes,
-                                    keyType       = "SYMBOL",
-                                    OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
-                                    ont           = "ALL",
-                                    pAdjustMethod = "bonferroni",
-                                    pvalueCutoff  = 0.05,
-                                    qvalueCutoff  = 0.05,
-                                    readable      = TRUE)
-  
-  
-  ## PLOT 1
-  MSR_A_GO_plot <- barplot(ego_MSRA, showCategory = 20)  +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
-    xlab("Gene count") +
-    facet_grid(ONTOLOGY~., scale = "free") +
-    theme(text = element_text(colour = "black",size = 12), 
-          axis.line = element_line(colour = "black"), 
-          legend.position = "top",
-          panel.grid.major.x = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2),
-          axis.text.y = element_text(colour = "black", 
-                                     vjust = 0.3,
-                                     hjust = 1),
-          axis.text.x = element_text(colour = "black")) +
-    guides(fill = guide_legend(title = "pval",
-                               label.position = "bottom") ) 
-
-  MSR_A_GO_plot
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_A_increasing")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-
-  
-  ## PLOT 2
-  edox <- clusterProfiler::setReadable(ego_MSRA, 'org.Hs.eg.db', 'SYMBOL')
-  edox2 <- enrichplot::pairwise_termsim(edox)
-  p1 <- enrichplot::treeplot(edox2, fontsize = 2.5) +
-    theme(legend.position = "top") +
-    guides(colour = guide_legend(title = "pval",
-                                 label.position = "bottom") ) 
-  p1$layers[[7]]$aes_params$size <- 2.5
-  p1
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_A_increasing2")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
-  
-  
-}
 
 
 ##################################

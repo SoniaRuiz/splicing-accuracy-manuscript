@@ -4,7 +4,6 @@ library(DBI)
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper_age.R")
 
 
-
 setwd("~/PROJECTS/splicing-project-recount3/")
 
 
@@ -28,20 +27,21 @@ age_projects <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_
 
 age_stratification_get_stats <- function() {
   
+  
   tables <- dbListTables(con)
   query <- paste0("SELECT * from 'master'")
+  
+  ## Total number of samples considered
   db_metadata <- dbGetQuery(con, query) %>% as_tibble()
-
   db_metadata %>% nrow() 
   
+  ## Number of samples per age group
   db_metadata %>%
     dplyr::count(cluster)
   
+  ## Number of tissues considered
   db_metadata %>%
     dplyr::count(SRA_project)
-  
-  db_metadata %>%
-    dplyr::count(SRA_project) 
   
   
   db_metadata %>%
@@ -70,30 +70,34 @@ age_stratification_get_stats <- function() {
     filter(nsamples >= 70) %>%
     distinct(cluster, .keep_all = T) 
   
+  
+  
   query <- paste0("SELECT * from 'intron'")
   db_introns <- dbGetQuery(con, query) %>% as_tibble()
-  db_introns %>% distinct(ref_junID) %>% nrow()
-  db_introns %>%
-    dplyr::count(misspliced)
   
-  db_introns %>%
-    dplyr::count()
+  ## This database contained a total of 308,717 annotated introns
+  db_introns %>% distinct(ref_junID) %>% nrow()
+  
+  ## From which 228,534 presented evidence of at least one type of mis-splicing event. 
+  db_introns %>% dplyr::count(misspliced)
+  
+
   
   query <- paste0("SELECT * from 'novel'")
   novel <- dbGetQuery(con, query) 
+  ## It also included 719,069 novel donor and 999,041 novel acceptor junctions
   novel %>% distinct(novel_junID) %>% nrow()
   novel %>% dplyr::count(novel_type)
   
-  
-  
+  ## covering 199,1991 transcripts, 30,580 genes and 6,111 samples from 40 tissues and 18 body sites. 
   query <- paste0("SELECT * from 'gene'")
   gene <- dbGetQuery(con, query) 
   gene %>% nrow()
   
-  
   query <- paste0("SELECT * from 'transcript'")
   transcript <- dbGetQuery(con, query) 
   transcript %>% distinct(transcript_id) %>% nrow()
+
 }
 
 
@@ -118,6 +122,7 @@ age_stratification_plot_metadata <- function() {
     as_tibble() %>% 
     mutate(gender = gender %>% as.integer())
   
+  # db_metadata <- project_init %>% dplyr::rename(cluster = age_group, SRA_project = project, gender = sex)
 
   ## Num samples
   plot_num_samples <- ggplot(db_metadata %>% 
@@ -188,1031 +193,19 @@ age_stratification_plot_metadata <- function() {
   
 }
 
-##################################
-## BASIC PLOTS
-##################################
-
-age_stratification_plot_distances <- function(distance_bp = 30) {
-  
-  
-  #######################################
-  ## CONNECT TO THE DATABASE
-  #######################################
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  #all_projects <- df_metadata$SRA_project %>% unique()
-  all_projects <- "BRAIN"
-  
-  df_age_distances <- map_df(all_projects, function(project_id) {
-    
-    # project_id <- (all_projects)[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      
-      # age_group <- age_groups[1]
-      print(paste0(Sys.time(), " --> ", age_group))
-      
-      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                      paste(introns$novel_junID, collapse = ","),")")
-      df_novel <- introns %>%
-        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                   by = "novel_junID") %>%
-        mutate(sample_type = age_group,
-               project_id = project_id)
-      
-      return(df_novel)
-      
-    })
-    
-  })
-  
-  ## GET common junctions across age supergroups ----------------------------------
-  
-  common_junctions <- df_age_distances %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
-  
-  df_age_distances_common <- df_age_distances %>%
-    group_by(ref_junID, sample_type) %>%
-    distinct(novel_coordinates, .keep_all = T)  %>%
-    ungroup() %>%
-    filter(ref_junID %in% common_junctions) %>%
-    as_tibble()
-  
-  
-  
-  if (QC) {
-    
-    ## Each age group should have the same reference junction IDs
-    for (age in age_groups) {
-      
-      print(age)
-      
-      df_age_distances %>%
-        filter(sample_type == age) %>%
-        distinct(ref_junID) %>% 
-        nrow() %>% 
-        print()
-      
-      print("Novel junctions:")
-      
-      df_age_distances %>%
-        filter(sample_type == age) %>%
-        distinct(novel_junID) %>% 
-        nrow() %>% 
-        print()
-      
-    }
-    
-    
-    ## Second QC - novel junction IDs
-    
-    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
-                                            subject = df_age_distances %>% filter(sample_type == age_groups[2]) %>% GenomicRanges::GRanges(),
-                                            type = "equal")
-    
-    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
-                   (df_age_distances %>% filter(sample_type == age_groups[2]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
-      print("Massive error: some overlapping junctions don't have the same junction ID!")
-    }
-    
-    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
-                                            subject = df_age_distances %>% filter(sample_type == age_groups[3]) %>% GenomicRanges::GRanges(),
-                                            type = "equal")
-    
-    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
-                   (df_age_distances %>% filter(sample_type == age_groups[3]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
-      print("Massive error: some overlapping junctions don't have the same junction ID!")
-    }
-    
-    
-    
-    
-  }
-  
-  
-  n_ref_jun <- df_age_distances_common %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID) %>%
-    dplyr::count(sample_type) %>%
-    ungroup() %>%
-    distinct(n) %>%
-    pull
-  
-  df_age_distances_common <- df_age_distances_common %>%
-    mutate(novel_type = str_replace(string = novel_type,
-                                    pattern = "_",
-                                    replacement = " "))
-  
-  
-  df_age_distances_common <- df_age_distances_common %>%
-    mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
-    mutate(sample_type = factor(sample_type, levels = c("60-79", "40-59", "20-39")))
-  
-  
-  
-  plot_distances <- ggplot(data = df_age_distances_common) + 
-    geom_histogram(aes(x = distance, fill = sample_type),
-                   alpha = 0.6,
-                   bins = distance_bp * 2,
-                   binwidth = 1,
-                   position = "identity"
-    ) +
-    facet_grid(vars(novel_type)) +
-    #ggtitle(title) +
-    xlab("Distance to the reference intron (in bp)") +
-    ylab("Number of unique novel junctions") +
-    theme_light() +
-    scale_x_continuous(limits = c((distance_bp * -1), distance_bp),
-                       breaks = c((distance_bp * -1), (round(distance_bp / 2) * -1), 0, round(distance_bp / 2), distance_bp)) +
-    
-    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
-                      labels = c("20-39", "40-59", "60-79"),
-                      breaks = c("20-39", "40-59", "60-79")) +
-    
-    # scale_fill_manual(breaks = c("20-39", "40-59", "60-79"),
-    #                   labels = c("20-39", "40-59", "60-79")) +
-    guides(fill = guide_legend(title = NULL, 
-                               ncol = 4, nrow = 1 )) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text = element_text(colour = "black", size = "12"), 
-          legend.text = element_text(colour = "black", size = "12"),
-          plot.caption = element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.title = element_text(colour = "black", size = "12"),
-          legend.position = "top") %>% 
-    return()
-  
-  
-  distance_rectangle <- ggplot() +
-    geom_rect(aes(xmin = 0, xmax = distance_bp, ymin = 1, ymax = 100),
-              fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
-    geom_rect(aes(xmin = (distance_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
-              fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
-    theme_void()
-  
-  
-  plot_distances / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
-  
-
-  folder_image <- paste0(getwd(), "/recount3/_paper/figures/")
-  dir.create(file.path(folder_image), recursive = TRUE, showWarnings = T)
-  ggplot2::ggsave(filename = paste0(folder_image, "/", main_project, "_distances_", project_id, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(folder_image, "/", main_project, "_distances_", project_id, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-}
-
-
-age_stratification_plot_distances_across_tissues <- function(df = NULL,
-                                                             age_projects = c("BRAIN", "BLOOD","MUSCLE"),
-                                                             age_groups = c("60-79", "40-59", "20-39"),
-                                                             distance_limit = 30,
-                                                             QC = F) {
-  
-  #######################################
-  ## CONNECT TO THE DATABASE
-  #######################################
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  
-  df_age_distances <- map_df(age_projects, function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      # age_group <- age_groups[1]
-      print(paste0(Sys.time(), " --> ", age_group))
-      
-      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                      paste(introns$novel_junID, collapse = ","),")")
-      df_novel <- introns %>%
-        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                   by = "novel_junID") %>%
-        mutate(sample_type = age_group,
-               project_id = project_id)
-      
-      return(df_novel)
-      
-    })
-    
-  })
-  
-  ## GET common junctions across age supergroups ----------------------------------
-  
-  common_junctions <- df_age_distances %>%
-    group_by(project_id, sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
-  
-  df_age_distances_common <- df_age_distances %>%
-    group_by(project_id, ref_junID, sample_type) %>%
-    distinct(novel_coordinates, .keep_all = T)  %>%
-    ungroup() %>%
-    filter(ref_junID %in% common_junctions) %>%
-    as_tibble()
-  
-  
-  
-  if (QC) {
-    
-    ## Each age group should have the same reference junction IDs
-    for (age in age_groups) {
-      
-      print(age)
-      
-      df_age_distances %>%
-        filter(sample_type == age) %>%
-        distinct(ref_junID) %>% 
-        nrow() %>% 
-        print()
-      
-      print("Novel junctions:")
-      
-      df_age_distances %>%
-        filter(sample_type == age) %>%
-        distinct(novel_junID) %>% 
-        nrow() %>% 
-        print()
-      
-    }
-    
-    
-    ## Second QC - novel junction IDs
-    
-    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
-                                            subject = df_age_distances %>% filter(sample_type == age_groups[2]) %>% GenomicRanges::GRanges(),
-                                            type = "equal")
-    
-    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
-                   (df_age_distances %>% filter(sample_type == age_groups[2]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
-      print("Massive error: some overlapping junctions don't have the same junction ID!")
-    }
-    
-    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
-                                            subject = df_age_distances %>% filter(sample_type == age_groups[3]) %>% GenomicRanges::GRanges(),
-                                            type = "equal")
-    
-    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
-                   (df_age_distances %>% filter(sample_type == age_groups[3]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
-      print("Massive error: some overlapping junctions don't have the same junction ID!")
-    }
-    
-    
-    
-    
-  }
-  
-  
-  df_age_distances_common <- df_age_distances_common %>%
-    mutate(novel_type = str_replace(string = novel_type,
-                                    pattern = "_",
-                                    replacement = " "))
-  df_age_distances_common <- df_age_distances_common %>%
-    mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
-    mutate(sample_type = factor(sample_type, levels = c("60-79", "40-59", "20-39")))
-  
-  
-  
-  
-  df_age_distances_common_tidy <- df_age_distances_common %>%
-    filter(abs(distance) <= 30) %>%
-    group_by(project_id, sample_type, novel_type) %>%
-    mutate(median_distance = distance %>% median()) %>%
-    ungroup()
-  
-  df_age_distances_common_tidy_donor <- df_age_distances_common_tidy %>% 
-     filter(novel_type == "novel donor") %>%
-     dplyr::select(sample_type, project_id, median_distance) %>%
-     distinct(sample_type, project_id,median_distance) %>%
-    spread(key = sample_type , value = median_distance)
-  
-  df_age_distances_common_tidy_donor %>%
-    column_to_rownames("project_id" ) %>%
-    as.matrix()
-
-  
-  heatmap(x =   df_age_distances_common_tidy_donor %>%
-            column_to_rownames("project_id" ) %>%
-            as.matrix())
-  
-  
-  
-  
-  
-  
-  folder_image <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/figures/")
-  dir.create(file.path(folder_image), recursive = TRUE, showWarnings = T)
-  ggplot2::ggsave(filename = paste0(folder_image, "/panel4_age_distances_",project_id,".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-}
-
-
-age_stratification_plot_distances_proportion <- function(age_levels = c("60-79", "40-59", "20-39"),
-                                                         distance_limit = 40,
-                                                         QC = F) {
-  #######################################
-  ## CONNECT TO THE DATABASE
-  #######################################
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  
-  df_age_distances <- map_df((df_metadata$SRA_project %>% unique())[2], function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      pull(cluster)
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      # age_group <- age_groups[1]
-      
-      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                      paste(introns$novel_junID, collapse = ","),")")
-      df_novel <- merge(x = introns,
-                        y = dbGetQuery(con, query) %>% as_tibble(),
-                        by = "novel_junID",
-                        all.x = T) %>%
-        mutate(sample_type = age_group,
-               project_id = project_id)
-      
-      return(df_novel)
-      
-    })
-    
-  })
-  
-  ## GET common junctions across age supergroups ----------------------------------
-  
-  
-  
-  common_junctions <- df_age_distances %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
-  
-  common_junctions %>% length()
-  
-  
-  df_age_distances_tidy <- df_age_distances %>%
-    group_by(ref_junID, sample_type) %>%
-    distinct(novel_coordinates, .keep_all = T)  %>%
-    ungroup() %>%
-    filter(ref_junID %in% common_junctions) %>%
-    as_tibble()
-  
-  
-  
-  n_ref_jun <- df_age_distances_tidy %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID) %>%
-    dplyr::count(sample_type) %>%
-    ungroup() %>%
-    distinct(n) %>%
-    pull
-  
-  df_age_distances_tidy <- df_age_distances_tidy %>%
-    mutate(novel_type = str_replace(string = novel_type,
-                                    pattern = "_",
-                                    replacement = " "))
-  
-  
-  df_age_distances_tidy <- df_age_distances_tidy %>%
-    mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
-    mutate(sample_type = factor(sample_type, levels = age_levels))
-  
-  
-  
-  df_prop_noise <- df_age_distances_tidy %>%
-    filter(abs(distance) <= distance_limit) %>%
-    group_by(sample_type, novel_type) %>%
-    mutate(N = n()) %>%
-    ungroup() %>%
-    group_by(sample_type, novel_type, distance) %>%
-    mutate(n_distance = n()) %>%
-    ungroup() %>%
-    mutate(p_noise = n_distance/N)%>%
-    as.data.frame()
-  
-  
-  # df_prop_noise %>% 
-  #   filter(distance == 15) %>% head
-  # 
-  # 
-  # df_prop_noise %>%
-  #   filter(sample_type == "20-39",
-  #          novel_type == "novel_acceptor",
-  #          distance == 20) %>% 
-  #   nrow()
-  # df_prop_noise %>%
-  #   filter(sample_type == "20-39") %>% 
-  #   nrow()
-  
-  
-  
-  
-  plot_distances <- ggplot(data = df_prop_noise) + 
-    geom_col(aes(x = distance, y = p_noise, fill = sample_type),
-             position = "identity") +
-    facet_grid(vars(novel_type)) +
-    xlab("Distance to the reference intron (in bp)") +
-    ylab("Proportion of splicing noise") +
-    theme_light() +
-    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
-                      labels = c("20-39", "40-59", "60-79"),
-                      breaks = c("20-39", "40-59", "60-79")) +
-    #scale_fill_manual(values =  c("#FDE725FF", "#21908CFF", "#440154FF"),
-    #                  breaks = c("20-39", "40-59", "60-79")) +
-    guides(fill = guide_legend(title = NULL, 
-                               ncol = 4, nrow = 1 )) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "14"),
-          axis.title = element_text(colour = "black", size = "14"),
-          strip.text = element_text(colour = "black", size = "16"), 
-          legend.text = element_text(colour = "black", size = "14"),
-          plot.caption = element_text(colour = "black", size = "14"),
-          plot.title = element_text(colour = "black", size = "16"),
-          legend.title = element_text(colour = "black", size = "14"),
-          legend.position = "top")
-  
-  distance_rectangle <- ggplot() +
-    geom_rect(aes(xmin = 0, xmax = distance_limit, ymin = 1, ymax = 100),
-              fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
-    geom_rect(aes(xmin = (distance_limit)*-1, xmax = 0, ymin = 49, ymax = 51),
-              fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
-    theme_void()
-  
-  
-  plot_distances / distance_rectangle + patchwork::plot_layout(heights = c(8, 1))  
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel4_age_prop_noise.svg")
-  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  
-}
-
-age_stratification_mode_distances <- function(age_groups,
-                                              common = T) {
-  
-  #######################################
-  ## CONNECT TO THE DATABASE
-  #######################################
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  
-  df_age_distances <- map_df((df_metadata$SRA_project %>% unique())[2], function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      pull(cluster)
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      # age_group <- age_groups[1]
-      
-      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                      paste(introns$novel_junID, collapse = ","),")")
-      df_novel <- merge(x = introns,
-                        y = dbGetQuery(con, query) %>% as_tibble(),
-                        by = "novel_junID",
-                        all.x = T) %>%
-        mutate(sample_type = age_group,
-               project_id = project_id)
-      
-      return(df_novel)
-      
-    })
-    
-  })
-  
-  ## GET common junctions across age supergroups ----------------------------------
-  
-  
-  
-  common_junctions <- df_age_distances %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
-  
-  
-  
-  df_age_distances_tidy <- df_age_distances %>%
-    group_by(ref_junID, sample_type) %>%
-    distinct(novel_coordinates, .keep_all = T)  %>%
-    ungroup() %>%
-    filter(ref_junID %in% common_junctions) %>%
-    as_tibble()
-  
-  
-  
-  df_age_modes <- map_df(age_groups, function(age_group) {
-    
-    # age_group <- age_groups[1]
-    
-    map_df(c("novel_acceptor", "novel_donor"), function(type) {
-      
-      # type <- "novel_acceptor"
-      
-      mode_in <- df_age_distances %>%
-        filter(sample_type == age_group,
-               novel_type == type,
-               distance < 0) %>%
-        pull(distance) %>%
-        get_mode() 
-      
-      mode_ex <- df_age_distances %>%
-        filter(sample_type == age_group,
-               novel_type == type,
-               distance > 0) %>%
-        pull(distance) %>%
-        get_mode() 
-      
-      
-      return(data.frame(age = age_group,
-                        novel_type = type,
-                        mode_intron = mode_in,
-                        mode_exon = mode_ex))
-      
-      
-    })
-    
-  })
-  
-  return(df_age_modes)
-  
-}
 
 
 
+## 9. Increasing age is associated with increasing levels of splicing errors
 
 
-
-age_stratification_plot_MSR <- function(df = NULL,
-                                        project_id = "MUSCLE",
-                                        age_groups = c("60-79", "40-59", "20-39"),
-                                        common = T,
-                                        QC = F) {
-  
-  
-  #######################################
-  ## CONNECT TO THE DATABASE
-  #######################################
-  
-
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  df_age_groups <- map_df(project_id, function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      # age_group <- age_groups[1]
-      print(paste0(Sys.time(), " --> ", age_group))
-      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      
-      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
-      
-      return(introns %>%
-               mutate(sample_type = age_group))
-      
-    })
-    
-  })
-  
-  
-  ###############################################
-  ## QC
-  ###############################################
-  
-  any(df_age_groups %>% filter(sample_type == "never") %>% pull(MSR_D) > 0)
-  any(df_age_groups %>% filter(sample_type == "never") %>% pull(MSR_A) > 0)
-  
-  intersect(df_age_groups %>% filter(sample_type == "never") %>% pull(ref_junID),
-            df_age_groups %>% filter(sample_type != "never") %>% pull(ref_junID))
-  
-  ###############################################
-  ## GET ONLY COMMON JUNCTIONS ACROSS AGE GROUPS
-  ###############################################
-  
-  common_introns <- df_age_groups %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    dplyr::count(ref_junID) %>%
-    filter(n == age_groups %>% length()) %>%
-    pull(ref_junID)
-  
-  common_introns %>% length()
-  
-  ## Filter the INTRONS table by the common mis-spliced introns
-  df_age_groups_tidy <- df_age_groups %>%
-    inner_join(y = data.table::data.table(ref_junID = common_introns),
-               by = "ref_junID") %>%
-    distinct(ref_junID, sample_type, .keep_all = T)
-  
-  
-  
-
-  
-  
-  #######################################
-  ## CONTINUE PLOT
-  #######################################
-  
-  n_ref_jun <- df_age_groups_tidy %>%
-    group_by(sample_type) %>%
-    distinct(ref_junID) %>%
-    dplyr::count(sample_type) %>%
-    ungroup() %>%
-    distinct(n) %>%
-    pull
-  
-  
-  df_age_groups_tidy <- df_age_groups_tidy %>%
-    distinct(ref_junID, sample_type, .keep_all = T) %>%
-    # mutate(ref_type = factor(ref_type, levels = c("novel_donor", "novel_acceptor"))) %>%
-    mutate(sample_type = factor(sample_type, levels = c( "60-79","20-39", "40-59" ))) %>%
-    as_tibble()
-  
-  
-  ggplot(data = df_age_groups_tidy %>% 
-           dplyr::select(MSR_D, sample_type) %>%
-           gather(key = "MSR_type", value = "MSR", -sample_type) %>%
-           mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
-    geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
-    #ggtitle(title) +
-    xlab("MSR") +
-    facet_wrap(vars(MSR_type)) +
-    ggforce::facet_zoom(xlim = c(0,0.005)) +
-    theme_light() +
-    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
-                      labels = c("20-39", "40-59", "60-79"),
-                      breaks = c("20-39", "40-59", "60-79")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          strip.text =  element_text(colour = "black", size = "9"),
-          plot.title = element_text(colour = "black", size = "9"),
-          legend.text = element_text(size = "9"),
-          legend.title = element_text(size = "9"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
-  
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
-                      main_project, "/figures/panel4_MSR_D_", project_id,".svg")
-  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  ggplot(data = df_age_groups_tidy %>% 
-                    dplyr::select(MSR_A, sample_type) %>%
-                    gather(key = "MSR_type", value = "MSR", -sample_type) %>%
-                    mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
-    geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
-    #ggtitle(title) +
-    xlab("MSR_A") +
-    facet_wrap(vars(MSR_type)) +
-    ggforce::facet_zoom(xlim = c(0,0.005)) +
-    theme_light() +
-    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
-                      labels = c("20-39", "40-59", "60-79"),
-                      breaks = c("20-39", "40-59", "60-79")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text =  element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
-                      main_project, "/figures/panel4_MSR_A_",project_id,".svg")
-  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  
-  ########################################
-  ## STATISTICAL TEST - MSR_DONOR
-  ########################################
-  
-  
-  wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_D),
-              y = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
-              alternative = "less",
-              correct = T,
-              paired = T)
-  wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
-              y = df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_D),
-              alternative = "less",
-              paired = T)
-  
-  t.test(x = df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_D),
-         y = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
-         alternative = "less",
-         paired = T)
-  
-
-  ## EFFECT SIZE 
-  
-  df_MSRD <- df_age_groups_tidy %>%
-    distinct(ref_junID, sample_type, .keep_all = T) %>%
-    dplyr::select(ref_junID,
-                  sample_type,
-                  MSR_D) %>%
-    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_D)
-  
-  df_MSRD %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`)
-  df_MSRD %>%
-    filter(`20-39` > `40-59`,
-           `40-59` > `60-79`)
-  
-  
-  rstatix::wilcox_effsize(data = df_MSRD %>%
-                            tidyr::gather(key = ref_junID, value = year),
-                          formula = ref_junID  ~ year )
-  
-  ########################################
-  ## STATISTICAL TEST - MSR_ACCEPTOR
-  ########################################
-
-  ## EFFECT SIZE 
-  
-  df_MSRA <- df_age_groups_tidy %>%
-    distinct(ref_junID, sample_type, .keep_all = T) %>%
-    dplyr::select(ref_junID,
-                  sample_type,
-                  MSR_A) %>%
-    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
-    spread(sample_type, MSR_A)
-  
-  df_MSRA %>%
-    filter(`20-39` < `40-59`,
-           `40-59` < `60-79`)
-  df_MSRA %>%
-    filter(`20-39` > `40-59`,
-           `40-59` > `60-79`)
-  
-  df_MSRA_tidy <- df_MSRA %>%
-    tidyr::gather(key = ref_junID, value = year) %>%
-    dplyr::rename(MSR = year) %>%
-    mutate(year = as.numeric(factor(as.matrix(ref_junID))) ) %>%
-    as_tibble() %>%
-    dplyr::select(MSR, year)
-  
-  rstatix::wilcox_effsize(data = df_MSRA_tidy,
-                          formula = MSR  ~ year )
-  
-  wilcox.test(x = df_MSRA$`20-39`,
-              y = df_MSRA$`40-59`,
-              alternative = "less",
-              paired = T)
-  
-  
-
-  wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_A),
-              y = df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_A),
-              alternative = "less",
-              correct = T)
-  
-  
-  
-  df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_A) %>% summary()
-  df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_A) %>% summary()
-  df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_A) %>% summary()
-  
-}
-
-
-age_stratification_plot_MSR_across_tissues <- function(age_projects = c("BRAIN", "BLOOD","MUSCLE"),
-                                                       age_groups = c("60-79", "40-59", "20-39")) {
-  
-  
-  #######################################
-  ## CONNECT TO THE DATABASE
-  #######################################
-  
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query)
-  
-  
-  df_age_groups_MSR <- map_df(age_projects, function(project_id) {
-    
-    # project_id <- (df_metadata$SRA_project %>% unique())[1]
-    
-    print(paste0(Sys.time(), " --> ", project_id))
-    
-    age_groups <- df_metadata %>%
-      filter(SRA_project == project_id) %>%
-      distinct(cluster) %>%
-      pull()
-    
-    df_age_groups <- map_df(age_groups, function(age_group) {
-      
-      # age_group <- age_groups[1]
-      print(paste0(Sys.time(), " --> ", age_group))
-      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      
-      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_misspliced'")
-      introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
-      
-      return(introns %>%
-               mutate(sample_type = age_group,
-                      project_id = project_id))
-      
-    })
-    
-    
-    ## GET ONLY COMMON JUNCTIONS ACROSS AGE GROUPS
-    
-    common_introns <- df_age_groups %>%
-      group_by(sample_type) %>%
-      distinct(ref_junID, .keep_all = T) %>%
-      ungroup() %>%
-      dplyr::count(ref_junID) %>%
-      filter(n == age_groups %>% length() ) %>% 
-      dplyr::select(-n)
-    
-    
-    ## Filter the INTRONS table by the common mis-spliced introns
-    df_age_groups_tidy <- df_age_groups %>%
-      inner_join(y = common_introns ,
-                 by = c("ref_junID" = "ref_junID")) %>%
-      distinct(sample_type, ref_junID, .keep_all = T) %>%
-      mutate(sample_type = factor(sample_type, levels = c( "20-39", "40-59", "60-79" ))) %>%
-      group_by(sample_type) %>%
-      mutate(mean_MSRD = MSR_D  %>% mean()) %>%
-      mutate(mean_MSRA = MSR_A  %>% mean()) %>%
-      mutate(median_MSRD = MSR_D  %>% median()) %>%
-      mutate(median_MSRA = MSR_A  %>% median()) %>%
-      ungroup()
-    
-    
-    df_age_groups_tidy %>% 
-      return()
-  })
-  
-  
-  ###############################################
-  ## QC
-  ###############################################
-  
-  any(df_age_groups_MSR %>% filter(sample_type == "never") %>% pull(MSR_D) > 0)
-  any(df_age_groups_MSR %>% filter(sample_type == "never") %>% pull(MSR_A) > 0)
-  
-  intersect(df_age_groups_MSR %>% filter(sample_type == "never") %>% pull(ref_junID),
-            df_age_groups_MSR %>% filter(sample_type != "never") %>% pull(ref_junID))
-  
-  
-
-
-  
-  
-  #######################################
-  ## PLOT - DONOR
-  #######################################
-  
-  
- 
-  
-  df_age_groups_tidy_donor <- df_age_groups_MSR %>% 
-    dplyr::select(sample_type, project_id, mean_MSRD) %>%
-    distinct(project_id, sample_type, mean_MSRD) %>%
-    mutate(sample_type = factor(sample_type, levels = c( "20-39", "40-59", "60-79" ))) 
-  
-  
-  ggplot(df_age_groups_tidy_donor %>%
-           mutate(mean_MSRD = mean_MSRD %>% log10()), 
-         aes(project_id, sample_type, fill= mean_MSRD)) + 
-    geom_tile()+
-    scale_fill_gradient(low="white", high="blue")
-  
-  
-
-
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
-                      main_project, "/figures/heatmap_MSR_D_all_tissues.svg")
-  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  
-  #######################################
-  ## PLOT - ACCEPTOR
-  #######################################
-  
-  
-  df_age_groups_tidy_acceptor <- df_age_groups_MSR %>% 
-    dplyr::select(sample_type, project_id, mean_MSRA) %>%
-    distinct(project_id, sample_type, mean_MSRA)  %>%
-    mutate(sample_type = factor(sample_type, levels = c( "20-39", "40-59", "60-79" ))) 
-  
-  ggplot(df_age_groups_tidy_acceptor, 
-         aes(project_id, sample_type, fill= mean_MSRA)) + 
-    geom_tile()+
-    scale_fill_gradient(low="white", high="blue")
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
-                      main_project, "/figures/heatmap_MSR_A_all_tissues.svg")
-  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
-  
- 
-}
-
-
-
-####################################
-# MSR CHANGING WITH AGE
-####################################
-
-age_stratification_MSR_changing_with_age <- function(database_path,
-                                                     gtf_version) {
+get_common_introns_across_age_groups <- function() {
   
   ## CONNECT TO THE DATABASE
   con <- dbConnect(RSQLite::SQLite(), database_path) 
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
+  
   
   ## Load metadata
   df_metadata <- dbGetQuery(con, query) %>%
@@ -1220,288 +213,238 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     mutate(nsamples = n()) %>%
     filter(nsamples >= 70)
   
-  ## Get the age clusters
-  age_groups <- df_metadata$cluster %>% unique()
-  
-  if ( is.null(age_projects) ) {
-    age_projects <- df_metadata$SRA_project %>% unique()
-  }
   
   folder_results <- paste0(getwd(), "/results/_paper/results/")
   dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
   
   
-  if ( (age_projects %>% length()) > 1) {
-    file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
-  } else {
-    file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
-  }
-  
-  if ( !file.exists(file_name) ) {
+  df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
+      
+    # project_id <- age_projects[1]
     
-    df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    ## Get the age clusters
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      distinct(cluster) %>%
+      pull(cluster)
       
-      # project_id <- age_projects[1]
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      # age_group <- age_groups[1]
       
-      print(paste0(Sys.time(), " --> ", project_id))
+      print(paste0(age_group))
       
-      age_groups <- df_metadata %>%
-        filter(SRA_project == project_id) %>%
-        distinct(cluster) %>%
-        pull(cluster)
-      
-      df_age_groups <- map_df(age_groups, function(age_group) {
-        # age_group <- age_groups[1]
+      query <- paste0("SELECT name 
+                      FROM sqlite_master 
+                      WHERE type='table' AND name='", 
+                      age_group, "_", project_id, "_nevermisspliced';")
         
-        print(paste0(age_group))
+      if ( (dbGetQuery(con, query) %>% nrow()) > 0 ) {
         
-        query <- paste0("SELECT name 
-                        FROM sqlite_master 
-                        WHERE type='table' AND name='", 
-                        age_group, "_", project_id, "_nevermisspliced';")
+        ###########################################
+        ## GET DATA FROM THE DATABASE
         
-        if ( (dbGetQuery(con, query) %>% nrow()) > 0 ) {
-          
-          ###########################################
-          ## GET DATA FROM THE DATABASE
-          
-          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id, 
-                          novel_junID, ref_sum_counts, novel_sum_counts 
-                          FROM '", age_group, "_", project_id, "_misspliced'")
-          introns <- dbGetQuery(con, query) %>% as_tibble()
-          
-          
-          ## Add novel junction info
-          query <- paste0("SELECT novel_junID, novel_type 
-                          FROM 'novel' 
-                          WHERE novel_junID IN (", 
-                          paste(introns$novel_junID %>% unique(), collapse =","), ")")
-          introns <- introns %>%
-            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                      by = "novel_junID")
-          
-          
-          ## Add never-misspliced info
-          query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id 
-                          FROM '", 
-                          age_group, "_", project_id, "_nevermisspliced'")
-          introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
-          
-          
-          ## Add transcript info
-          query <- paste0("SELECT id, gene_id FROM 'transcript' WHERE id IN (", 
-                          paste(introns$transcript_id %>% unique(), collapse =","), ")")
-          introns %>% nrow()
-          introns <- introns %>%
-            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                       by = c("transcript_id" = "id"))
-          
-          
-          ## Add gene info
-          query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", 
-                          paste(introns$gene_id %>% unique(), collapse =","), ")")
-          introns <- introns %>%
-            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                       by = c("gene_id" = "id"))
-          
-          return(introns %>% 
-                   distinct(ref_junID, .keep_all = T) %>%
-                   dplyr::select(-transcript_id, -gene_id) %>%
-                   mutate(sample_type = age_group,
-                          project_id = project_id))
-        } else {
-          return(NULL)
-        }
-      })
+        query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id, 
+                        novel_junID, ref_sum_counts, novel_sum_counts 
+                        FROM '", age_group, "_", project_id, "_misspliced'")
+        introns <- dbGetQuery(con, query) %>% as_tibble()
+        
+        
+        ## Merge with 'master' novel table
+        query <- paste0("SELECT novel_junID, novel_type 
+                        FROM 'novel' 
+                        WHERE novel_junID IN (", 
+                        paste(introns$novel_junID %>% unique(), collapse =","), ")")
+        introns <- introns %>%
+          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),  by = "novel_junID")
+        
+        
+        ## Add never-misspliced info
+        query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A, transcript_id 
+                        FROM '", 
+                        age_group, "_", project_id, "_nevermisspliced'")
+        introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+        
+        
+        ## Add transcript info
+        query <- paste0("SELECT id, gene_id FROM 'transcript' WHERE id IN (", 
+                        paste(introns$transcript_id %>% unique(), collapse =","), ")")
+        introns %>% nrow()
+        introns <- introns %>%
+          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                     by = c("transcript_id" = "id"))
+        
+        
+        ## Add gene info
+        query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", 
+                        paste(introns$gene_id %>% unique(), collapse =","), ")")
+        introns <- introns %>%
+          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                     by = c("gene_id" = "id"))
+        
+        return(introns %>% 
+                 distinct(ref_junID, .keep_all = T) %>%
+                 dplyr::select(-transcript_id, -gene_id) %>%
+                 mutate(sample_type = age_group,
+                        project_id = project_id))
+      } else {
+        return(NULL)
+      }
+    })
+    
+  })
+    
+  ## Get the age clusters
+  age_groups <- df_metadata$cluster %>% unique()
+  age_projects <- df_age_groups_all_introns$project_id %>% unique()
+  
+  
+  ## Get common introns across age groups per tissue
+  df_common_introns <- df_age_groups_all_introns %>%
+    as_tibble() %>%
+    group_by(project_id, sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    group_by(ref_junID) %>%
+    dplyr::count() %>%
+    filter(n == (age_groups %>% length()) * (age_projects %>% length())) %>%
+    ungroup()
+  df_common_introns$ref_junID %>% unique() %>% length()
+    
+  
+  ## Filter by common introns
+  df_age_groups_tidy <- df_age_groups_all_introns %>% 
+    inner_join(y = df_common_introns %>% distinct(ref_junID),
+               by = "ref_junID") %>%
+    group_by(project_id, sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup()
+  df_age_groups_tidy %>% distinct(ref_junID) %>% nrow()
+  
+  
+  ## Save data
+  file_name <- paste0(folder_results, "/", main_project, "_common_introns_all_age_groups.rds")
+  saveRDS(object = df_age_groups_tidy, file = file_name)
+  
+}
+
+
+get_effsize_MSR_with_age <- function() {
+  
+
+  folder_results <- paste0(getwd(), "/results/_paper/results/")
+  dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
+  
+  ## Load common introns across age groups and tissues
+  file_name <- paste0(folder_results, "/", main_project, "_common_introns_all_age_groups.rds")
+  df_age_groups_tidy <- readRDS(file = file_name)
+  
+  
+  ## MSR_D data preparation
+  df_MSRD <- df_age_groups_tidy %>%
+    dplyr::select(ref_junID, sample_type, MSR_D, gene_name, project_id)  %>% 
+    #distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
+    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_D) %>%
+    as_tibble()
+    
+  
+  ## MSR_A data preparation
+  df_MSRA <- df_age_groups_tidy %>%
+    dplyr::select(ref_junID, sample_type, MSR_A, gene_name, project_id)  %>% 
+    #distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
+    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_A) %>%
+    as_tibble()
+    
+    
+  df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
+      
+    # MSR_type <- "MSR Donor"
+    print( paste0( "Getting data from: '", MSR_type, "'..." ) )
+
+    map_df(age_projects, function(proj_id) {
+      
+      # proj_id <- age_projects[2]
+      # proj_id <- "KIDNEY"
+      print( paste0( proj_id ) )
+      
+      ###############################
+      ## MSR_D INCREASING WITH AGE
+      ###############################
+      
+      df_introns <- NULL
+      
+      if (MSR_type == "MSR Donor") {
+        df_introns <- df_MSRD 
+      } else {
+        df_introns <- df_MSRA
+      }
+      
+      
+      df_introns <- df_introns %>%
+        filter(project_id == proj_id) 
+      
+      if ( nrow(df_introns) > 0 ) {
+        
+        ## Wilcoxon text
+        wilcox_pval <- data.frame(pval = c((wilcox.test(x = df_introns$`20-39`,
+                                                        y = df_introns$`60-79`,
+                                                        alternative = "less",
+                                                        paired = T, 
+                                                        conf.int = T))$p.value))
+        
+        # Zstat <- qnorm(wilcox_pval$pval/2)
+        # abs(Zstat)/sqrt(df_introns %>% nrow())
+        
+        ## Wilcoxon effect size
+        r_effect1 <- rstatix::wilcox_effsize(data = df_introns %>%
+                                               dplyr::select(ref_junID, `20-39`,`60-79`) %>%
+                                               gather(key = age, value = MSR, -ref_junID) %>%
+                                               mutate(age = age %>% as.factor()),
+                                             formula = MSR ~ age,
+                                             paired = T,
+                                             p.adjust.method = "fdr") %>%
+          mutate(MSR_type = paste0(MSR_type), 
+                 tissue = proj_id)
+        
+        
+        return(rbind(r_effect1) %>% cbind(wilcox_pval))
+        
+      } else {
+        return(NULL)
+      }
       
     })
     
-    age_projects <- df_age_groups_all_introns$project_id %>% unique()
-    
-    ## Get common introns across age groups per tissue
-    df_common_introns <- df_age_groups_all_introns %>%
-      as_tibble() %>%
-      group_by(project_id, sample_type) %>%
-      distinct(ref_junID, .keep_all = T) %>%
-      ungroup() %>%
-      group_by(ref_junID) %>%
-      dplyr::count() %>%
-      filter(n == (age_groups %>% length()) * (age_projects %>% length())) %>%
-      ungroup()
-    df_common_introns$ref_junID %>% unique() %>% length()
-    
-    ## Save data.frame containing only common introns 
-    if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/", main_project, "_common_introns_all_projects.rds")
-    } else {
-      file_name <- paste0(folder_results, "/", main_project, "_common_introns_", project_id, ".rds")
-    }
-    saveRDS(object = df_common_introns, file = file_name)
-    
-    ## Filter the intron data across tissues by the common introns
-    ## At the tissue level and age cluster, the MSR_D and MSR_A values are the same per intron
-    ## as these measures are calculated using a bulk-read across samples approach
-    df_age_groups_tidy <- df_age_groups_all_introns %>% 
-      inner_join(y = df_common_introns %>% distinct(ref_junID),
-                 by = "ref_junID") %>%
-      group_by(project_id, sample_type) %>%
-      distinct(ref_junID, .keep_all = T) %>%
-      ungroup()
-    
-    df_age_groups_tidy %>% distinct(ref_junID) %>% nrow()
-    
-    ###############################################
-    ## MSR_D
-    ###############################################
-    
-    df_MSRD <- df_age_groups_tidy %>%
-      dplyr::select(ref_junID, sample_type, MSR_D, gene_name, project_id)  %>% 
-      #distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
-      mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
-      spread(sample_type, MSR_D) %>%
-      as_tibble()
-    
-    if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
-    } else {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
-    }
-    saveRDS(object = df_MSRD, file = file_name)
-    # df_MSRD <- readRDS(file = file_name)
-    
-    ###############################################
-    ## MSR_A
-    ###############################################
-    
-    df_MSRA <- df_age_groups_tidy %>%
-      dplyr::select(ref_junID, sample_type, MSR_A, gene_name, project_id)  %>% 
-      #distinct(project_id, sample_type, ref_junID, .keep_all = T) %>%
-      mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
-      spread(sample_type, MSR_A) %>%
-      as_tibble()
-    
-    if ( (age_projects %>% length()) > 1) {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
-    } else {
-      file_name <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
-    }
-    saveRDS(object = df_MSRA, file = file_name)
-    # df_MSRA <- readRDS(file = file_name)
-    
-    
-  } else {
-    
-    
-    if ( (age_projects %>% length()) > 1) {
-      file_nameD <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_all_projects.rds")
-      file_nameA <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_all_projects.rds")
-    } else {
-      file_nameD <- paste0(folder_results, "/", main_project, "_df_MSRD_common_introns_", project_id,".rds")
-      file_nameA <- paste0(folder_results, "/", main_project, "_df_MSRA_common_introns_", project_id,".rds")
-    }
-    
-    ## MSR_D
-    df_MSRD <- readRDS(file = file_nameD)
-    
-    ## MSR_A
-    df_MSRA <- readRDS(file = file_nameA)
-  }
+  })
   
- 
+  file_name <- paste0(folder_results, "/", main_project, "_effsize_MSR_with_age.rds")
+  saveRDS(object = df_wilcoxon, file = file_name)
   
+}
 
-  #######################################
-  ## STATISTICAL TEST 
-  ## WILCOXON MSR
-  ########################################
-
+plot_effsize_MSR_with_age <- function() {
   
-  if ( (age_projects %>% length()) > 1) {
-    file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
-  } else {
-    file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_", project_id,".rds")
-  }
   
-  if ( file.exists(file_name) ) {
-    
-    df_wilcoxon <- readRDS(file = file_name)
-    
-  } else {
-    
-    df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
-      
-      # MSR_type <- "MSR Donor"
-      print( paste0( "Getting data from: '", MSR_type, "'..." ) )
-
-      map_df(age_projects, function(proj_id) {
-        
-        # proj_id <- age_projects[2]
-        # proj_id <- "KIDNEY"
-        print( paste0( proj_id ) )
-        
-        ###############################
-        ## MSR_D INCREASING WITH AGE
-        ###############################
-        
-        df_introns <- NULL
-        
-        if (MSR_type == "MSR Donor") {
-          df_introns <- df_MSRD 
-        } else {
-          df_introns <- df_MSRA
-        }
-        
-        
-        df_introns <- df_introns %>%
-          filter(project_id == proj_id) 
-        
-        if ( nrow(df_introns) > 0 ) {
-          
-          ## Wilcoxon text
-          wilcox_pval <- data.frame(pval = c((wilcox.test(x = df_introns$`20-39`,
-                                                          y = df_introns$`60-79`,
-                                                          alternative = "less",
-                                                          paired = T))$p.value))
-          ## Wilcoxon effect size
-          r_effect1 <- rstatix::wilcox_effsize(data = df_introns %>%
-                                                 dplyr::select(ref_junID, `20-39`,`60-79`) %>%
-                                                 gather(key = age, value = MSR, -ref_junID) %>%
-                                                 mutate(age = age %>% as.factor()),
-                                               formula = MSR ~ age,
-                                               paired = T,
-                                               p.adjust.method = "fdr") %>%
-            mutate(MSR_type = paste0(MSR_type), 
-                   tissue = proj_id)
-          
-          
-          return(rbind(r_effect1) %>% cbind(wilcox_pval))
-          
-        } else {
-          return(NULL)
-        }
-        
-      })
-      
-    })
-    
-    saveRDS(object = df_wilcoxon, file = file_name)
-  }
+  file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
+  df_wilcoxon <- readRDS(file = file_name)
   
- 
-
-
+  
   #######################################################
   ## PLOTS
   #######################################################
-
+  
   df_wilcoxon_tidy <- df_wilcoxon %>%
     group_by(MSR_type) %>%
     mutate(q = p.adjust(pval, method = "fdr"))%>%
     ungroup()
   
   df_wilcoxon_tidy$MSR_type = factor(df_wilcoxon_tidy$MSR_type, 
-                                levels = c("MSR Donor",
-                                           "MSR Acceptor"))
+                                     levels = c("MSR Donor",
+                                                "MSR Acceptor"))
   
   df_wilcoxon_tidy_final <- df_wilcoxon_tidy %>%
     filter(tissue %in% (df_wilcoxon_tidy %>%
@@ -1519,7 +462,7 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     ungroup()  
   
   
-
+  
   write.csv(x = df_wilcoxon_tidy,
             file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
   
@@ -1532,8 +475,8 @@ age_stratification_MSR_changing_with_age <- function(database_path,
     ylab("") +
     xlab("Median MSR difference between\n20-39yrs vs. 60-79yrs") +
     scale_color_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("MSR Donor", "MSR Acceptor"),
-                      labels = c("MSR Donor", "MSR Acceptor")) +
+                       breaks = c("MSR Donor", "MSR Acceptor"),
+                       labels = c("MSR Donor", "MSR Acceptor")) +
     theme(axis.line = element_line(colour = "black"), 
           axis.text = element_text(colour = "black", size = "10"),
           axis.text.x = element_text(colour = "black", size = "9"),
@@ -1559,13 +502,13 @@ age_stratification_MSR_changing_with_age <- function(database_path,
                   width = 183, height = 120, units = "mm", dpi = 300)
   
   
-
+  
+  
   
 }
 
 
-age_stratification_MSR_changing_with_age_stats <- function(database_path,
-                                                           gtf_version) {
+stats_effsize_MSR_with_age <- function() {
   
   ## CONNECT TO THE DATABASE
   con <- dbConnect(RSQLite::SQLite(), database_path) 
@@ -1739,15 +682,23 @@ age_stratification_MSR_changing_with_age_stats <- function(database_path,
   
   
   
-  }
-age_stratification_brain_GO <- function(database_path,
-                                        gtf_version) {
+}
+
+
+age_stratification_brain_GO <- function() {
   
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
   dbListTables(con)
   query <- paste0("SELECT * FROM 'master'")
   df_metadata <- dbGetQuery(con, query)
+  
+  
+  
+  #############################################
+  ## COMMON INTRONS ACROSS AGE GROUPS
+  ## ONLY IN BRAIN
+  #############################################
   
   project_id <- "BRAIN"
   print(paste0(Sys.time(), " --> ", project_id))
@@ -1803,12 +754,16 @@ age_stratification_brain_GO <- function(database_path,
   
   
   #####################################
-  ## MSR_D AND MSR_A
+  ## TIDY THE DATAFRAME OF COMMON
+  ## INTRONS TO GET INCREASING
+  ## MSR_D AND MSR_A VALUES WITH AGE
   #####################################
+  
   
   df_MSRD <- df_age_groups_tidy %>%
     dplyr::select(ref_junID, sample_type, MSR_D, gene_name, gene_id) %>%
     spread(sample_type, MSR_D)
+  
   df_MSRA <- df_age_groups_tidy %>%
     dplyr::select(ref_junID, sample_type, MSR_A, gene_name, gene_id) %>%
     spread(sample_type, MSR_A)
@@ -1876,64 +831,63 @@ age_stratification_brain_GO <- function(database_path,
   ## PLOTS
   #############################################
   
-  ## DOTPLOT -------------------------
+  ## DOTPLOT
   
   edox2 <- enrichplot::pairwise_termsim(ego_MSR, showCategory = 30)
   #clusterProfiler::heatplot(ego_MSR,showCategory = 30)
   
   
-  plot0<- clusterProfiler::dotplot(ego_MSR, showCategory = 20, split="ONTOLOGY") +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+  plotGO <- clusterProfiler::dotplot(ego_MSR %>%
+                                       filter(Description != "RNA splicing, via transesterification reactions with bulged adenosine as nucleophile"), 
+                                     x = "GeneRatio", showCategory = 20, split="ONTOLOGY") +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free_x", space = "free") +
     theme(axis.line = element_line(colour = "black"), 
           axis.text.y = element_text(colour = "black", size = "9"),
           axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
           axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "8"),
+          legend.text = element_text(size = "12"),
           legend.title = element_text(size = "12"),
           legend.position = "top",
           legend.box="vertical",
           strip.text = element_text(colour = "black", size = "12")) + 
-    scale_y_discrete(labels=function(x) str_wrap(x, width=60)) + 
-    ##xlim(c(0,0.05))+
     scale_size(range = c(1, 5))+
-    coord_flip()# +
-    #guides(fill = guide_legend(title = "Sample type: "),
-    #       colour = guide_legend(title = "q: "))               
+    coord_flip() +
+    guides(size = guide_legend(title = "Gene Count: "),
+           colour = guide_legend(title = "q: "))               
   
-  plot0
+  plotGO
   
-  plot01 <-  clusterProfiler::dotplot(ekegg_MSR %>%
-                                        mutate(ONTOLOGY = "KEGG"), 
+  plotKEGG <-  clusterProfiler::dotplot(ekegg_MSR %>%
+                                          mutate(ONTOLOGY = "KEGG"), 
                                       showCategory = 20, split="ONTOLOGY") +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free", space = "free") +
     theme(axis.line = element_line(colour = "black"), 
           axis.text.y = element_text(colour = "black", size = "9"),
           axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
           axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "8"),
+          legend.text = element_text(size = "12"),
           legend.title = element_text(size = "12"),
           legend.position = "top",
           legend.box="vertical",
           strip.text = element_text(colour = "black", size = "12")) + 
-    scale_y_discrete(labels=function(x) str_wrap(x, width=60)) + 
-    #xlim(c(0,0.05))+
     scale_size(range = c(1, 5))+
     coord_flip()# +
   
+  plotKEGG
   
-  ggpubr::ggarrange(plot0,
-                    plot01+ ggpubr::rremove("ylab"), 
+  ggpubr::ggarrange(plotGO,
+                    plotKEGG + ggpubr::rremove("ylab"), 
                     common.legend = T,
                     ncol = 2,nrow = 1,
                     widths = c(3,1))
   
   ggplot2::ggsave(filename = paste0(getwd(), 
                                     "/results/_paper/figures/go_dotplot_ALL_age_brain.png"), 
-                  width = 300, height = 160, units = "mm", dpi = 300)
+                  width = 300, height = 180, units = "mm", dpi = 300)
   
   ############################################
   ## BAR PLOT -------------------------------
@@ -2147,6 +1101,163 @@ age_stratification_brain_GO <- function(database_path,
   ego_MSR_splic_genes_tidy_RBPs %>% filter(Exon.Junction.Complex == 1) %>% pull(gene_name)
   RBPs %>% filter(Exon.Junction.Complex == 1) %>% nrow()
   
+  
+  
+}
+
+
+
+
+
+## 9. Increasing age is associated with increasing levels of splicing errors
+
+## TODO: not only obtain common introns across age groups, but also obtain common introns across age groups with similar coverage.
+## Then analyse changes in splicing noise across age
+
+plot_GO_Enrichment <- function() {
+  
+  
+  project_id <- "BRAIN"
+  
+  ## Read data.frame containing only common introns across age groups in BRAIN
+  folder_results <- paste0(getwd(), "/database/v", gtf_version, "/age_subsampled/")
+  
+  ## MSR_D
+  file_name <- paste0(folder_results, "/results/df_MSRD_common_introns_", project_id,".rds")
+  df_MSRD <- readRDS(file = file_name)
+  df_MSRD_increasing <- df_MSRD %>%
+    filter((`20-39` < `40-59` &
+              `40-59` < `60-79`)) 
+  
+  ## MSR_A
+  file_name <- paste0(folder_results, "/results/df_MSRA_common_introns_", project_id,".rds")
+  df_MSRA <- readRDS(file = file_name)
+  df_MSRA_increasing <- df_MSRA %>%
+    filter((`20-39` < `40-59` &
+              `40-59` < `60-79`)) 
+  
+  
+  ## All genes background
+  bg_genes <- c(df_MSRD$gene_name, df_MSRA$gene_name) %>% unique()
+  
+  
+  #############################################
+  ## MSR_D
+  #############################################
+  
+  ego_MSRD <- clusterProfiler::enrichGO(
+    gene          = df_MSRD_increasing$gene_name %>% unique(),
+    universe      = bg_genes,
+    keyType       = "SYMBOL",
+    OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
+    ont           = "ALL",
+    pAdjustMethod = "bonferroni",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.05,
+    readable      = TRUE)
+  
+  
+  ## PLOT 1
+  MSR_D_GO_plot <- barplot(ego_MSRD, 
+                           showCategory = 20) +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+    xlab("Gene count") +
+    facet_grid(ONTOLOGY~., scale = "free") +
+    theme_minimal() + 
+    theme(text = element_text(colour = "black",size = 12),
+          axis.line = element_line(colour = "black"),
+          legend.position = "top",
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_blank(),
+          axis.ticks = element_line(colour = "black", size = 2),
+          axis.text.y = element_text(colour = "black",
+                                     vjust = 0.3,
+                                     hjust = 1)) +
+    guides(fill = guide_legend(title = "pval",
+                               label.position = "bottom") ) 
+  MSR_D_GO_plot
+  
+  folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
+                           main_project, "/figures/")
+  dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
+  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_D_increasing")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  
+  ## PLOT 2
+  
+  edox <- clusterProfiler::setReadable(ego_MSRD, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
+  edox2 <- enrichplot::pairwise_termsim(edox,  showCategory = 30)
+  p1 <- enrichplot::treeplot(edox2, fontsize = 2.5) +
+    theme(text = element_text(size = 12),
+          axis.text = element_text(size = "10"),
+          legend.position = "top") +
+    guides(colour = guide_legend(title = "pval",
+                                 label.position = "bottom") ) 
+  p1$layers[[7]]$aes_params$size <- 2.5
+  p1
+  
+  
+  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_D_increasing2")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  #############################################
+  ## MSR_A
+  #############################################
+  
+  ego_MSRA <- clusterProfiler::enrichGO(
+    gene          = df_MSRA_increasing$gene_name %>% unique(), 
+    universe      = bg_genes,
+    keyType       = "SYMBOL",
+    OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
+    ont           = "ALL",
+    pAdjustMethod = "bonferroni",
+    pvalueCutoff  = 0.05,
+    qvalueCutoff  = 0.05,
+    readable      = TRUE)
+  
+  
+  ## PLOT 1
+  MSR_A_GO_plot <- barplot(ego_MSRA, showCategory = 20)  +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
+    xlab("Gene count") +
+    facet_grid(ONTOLOGY~., scale = "free") +
+    theme(text = element_text(colour = "black",size = 12), 
+          axis.line = element_line(colour = "black"), 
+          legend.position = "top",
+          panel.grid.major.x = element_blank(),
+          panel.grid.major.y = element_blank(),
+          axis.ticks = element_line(colour = "black", size = 2),
+          axis.text.y = element_text(colour = "black", 
+                                     vjust = 0.3,
+                                     hjust = 1),
+          axis.text.x = element_text(colour = "black")) +
+    guides(fill = guide_legend(title = "pval",
+                               label.position = "bottom") ) 
+  
+  MSR_A_GO_plot
+  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_A_increasing")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  
+  ## PLOT 2
+  edox <- clusterProfiler::setReadable(ego_MSRA, 'org.Hs.eg.db', 'SYMBOL')
+  edox2 <- enrichplot::pairwise_termsim(edox)
+  p1 <- enrichplot::treeplot(edox2, fontsize = 2.5) +
+    theme(legend.position = "top") +
+    guides(colour = guide_legend(title = "pval",
+                                 label.position = "bottom") ) 
+  p1$layers[[7]]$aes_params$size <- 2.5
+  p1
+  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_A_increasing2")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
 }
@@ -2885,6 +1996,1019 @@ ENCORI_test_results <- function () {
               paired = T,
               alternative = "greater")
 }
+
+##################################
+## BASIC PLOTS
+##################################
+
+age_stratification_plot_distances <- function(distance_bp = 30) {
+  
+  
+  #######################################
+  ## CONNECT TO THE DATABASE
+  #######################################
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  #all_projects <- df_metadata$SRA_project %>% unique()
+  all_projects <- "BRAIN"
+  
+  df_age_distances <- map_df(all_projects, function(project_id) {
+    
+    # project_id <- (all_projects)[1]
+    
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      
+      # age_group <- age_groups[1]
+      print(paste0(Sys.time(), " --> ", age_group))
+      
+      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                      paste(introns$novel_junID, collapse = ","),")")
+      df_novel <- introns %>%
+        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "novel_junID") %>%
+        mutate(sample_type = age_group,
+               project_id = project_id)
+      
+      return(df_novel)
+      
+    })
+    
+  })
+  
+  ## GET common junctions across age supergroups ----------------------------------
+  
+  common_junctions <- df_age_distances %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == age_groups %>% length()) %>%
+    pull(ref_junID)
+  
+  df_age_distances_common <- df_age_distances %>%
+    group_by(ref_junID, sample_type) %>%
+    distinct(novel_coordinates, .keep_all = T)  %>%
+    ungroup() %>%
+    filter(ref_junID %in% common_junctions) %>%
+    as_tibble()
+  
+  
+  
+  if (QC) {
+    
+    ## Each age group should have the same reference junction IDs
+    for (age in age_groups) {
+      
+      print(age)
+      
+      df_age_distances %>%
+        filter(sample_type == age) %>%
+        distinct(ref_junID) %>% 
+        nrow() %>% 
+        print()
+      
+      print("Novel junctions:")
+      
+      df_age_distances %>%
+        filter(sample_type == age) %>%
+        distinct(novel_junID) %>% 
+        nrow() %>% 
+        print()
+      
+    }
+    
+    
+    ## Second QC - novel junction IDs
+    
+    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
+                                            subject = df_age_distances %>% filter(sample_type == age_groups[2]) %>% GenomicRanges::GRanges(),
+                                            type = "equal")
+    
+    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
+                   (df_age_distances %>% filter(sample_type == age_groups[2]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
+      print("Massive error: some overlapping junctions don't have the same junction ID!")
+    }
+    
+    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
+                                            subject = df_age_distances %>% filter(sample_type == age_groups[3]) %>% GenomicRanges::GRanges(),
+                                            type = "equal")
+    
+    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
+                   (df_age_distances %>% filter(sample_type == age_groups[3]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
+      print("Massive error: some overlapping junctions don't have the same junction ID!")
+    }
+    
+    
+    
+    
+  }
+  
+  
+  n_ref_jun <- df_age_distances_common %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID) %>%
+    dplyr::count(sample_type) %>%
+    ungroup() %>%
+    distinct(n) %>%
+    pull
+  
+  df_age_distances_common <- df_age_distances_common %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " "))
+  
+  
+  df_age_distances_common <- df_age_distances_common %>%
+    mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
+    mutate(sample_type = factor(sample_type, levels = c("60-79", "40-59", "20-39")))
+  
+  
+  
+  plot_distances <- ggplot(data = df_age_distances_common) + 
+    geom_histogram(aes(x = distance, fill = sample_type),
+                   alpha = 0.6,
+                   bins = distance_bp * 2,
+                   binwidth = 1,
+                   position = "identity"
+    ) +
+    facet_grid(vars(novel_type)) +
+    #ggtitle(title) +
+    xlab("Distance to the reference intron (in bp)") +
+    ylab("Number of unique novel junctions") +
+    theme_light() +
+    scale_x_continuous(limits = c((distance_bp * -1), distance_bp),
+                       breaks = c((distance_bp * -1), (round(distance_bp / 2) * -1), 0, round(distance_bp / 2), distance_bp)) +
+    
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
+    
+    # scale_fill_manual(breaks = c("20-39", "40-59", "60-79"),
+    #                   labels = c("20-39", "40-59", "60-79")) +
+    guides(fill = guide_legend(title = NULL, 
+                               ncol = 4, nrow = 1 )) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text = element_text(colour = "black", size = "12"), 
+          legend.text = element_text(colour = "black", size = "12"),
+          plot.caption = element_text(colour = "black", size = "12"),
+          plot.title = element_text(colour = "black", size = "12"),
+          legend.title = element_text(colour = "black", size = "12"),
+          legend.position = "top") %>% 
+    return()
+  
+  
+  distance_rectangle <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = distance_bp, ymin = 1, ymax = 100),
+              fill = "grey", color = "black") +
+    geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
+    geom_rect(aes(xmin = (distance_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
+              fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
+    theme_void()
+  
+  
+  plot_distances / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
+  
+  
+  folder_image <- paste0(getwd(), "/recount3/_paper/figures/")
+  dir.create(file.path(folder_image), recursive = TRUE, showWarnings = T)
+  ggplot2::ggsave(filename = paste0(folder_image, "/", main_project, "_distances_", project_id, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_image, "/", main_project, "_distances_", project_id, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+}
+
+
+age_stratification_plot_distances_across_tissues <- function(df = NULL,
+                                                             age_projects = c("BRAIN", "BLOOD","MUSCLE"),
+                                                             age_groups = c("60-79", "40-59", "20-39"),
+                                                             distance_limit = 30,
+                                                             QC = F) {
+  
+  #######################################
+  ## CONNECT TO THE DATABASE
+  #######################################
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  
+  
+  df_age_distances <- map_df(age_projects, function(project_id) {
+    
+    # project_id <- (df_metadata$SRA_project %>% unique())[1]
+    
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      # age_group <- age_groups[1]
+      print(paste0(Sys.time(), " --> ", age_group))
+      
+      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                      paste(introns$novel_junID, collapse = ","),")")
+      df_novel <- introns %>%
+        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                   by = "novel_junID") %>%
+        mutate(sample_type = age_group,
+               project_id = project_id)
+      
+      return(df_novel)
+      
+    })
+    
+  })
+  
+  ## GET common junctions across age supergroups ----------------------------------
+  
+  common_junctions <- df_age_distances %>%
+    group_by(project_id, sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == age_groups %>% length()) %>%
+    pull(ref_junID)
+  
+  df_age_distances_common <- df_age_distances %>%
+    group_by(project_id, ref_junID, sample_type) %>%
+    distinct(novel_coordinates, .keep_all = T)  %>%
+    ungroup() %>%
+    filter(ref_junID %in% common_junctions) %>%
+    as_tibble()
+  
+  
+  
+  if (QC) {
+    
+    ## Each age group should have the same reference junction IDs
+    for (age in age_groups) {
+      
+      print(age)
+      
+      df_age_distances %>%
+        filter(sample_type == age) %>%
+        distinct(ref_junID) %>% 
+        nrow() %>% 
+        print()
+      
+      print("Novel junctions:")
+      
+      df_age_distances %>%
+        filter(sample_type == age) %>%
+        distinct(novel_junID) %>% 
+        nrow() %>% 
+        print()
+      
+    }
+    
+    
+    ## Second QC - novel junction IDs
+    
+    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
+                                            subject = df_age_distances %>% filter(sample_type == age_groups[2]) %>% GenomicRanges::GRanges(),
+                                            type = "equal")
+    
+    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
+                   (df_age_distances %>% filter(sample_type == age_groups[2]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
+      print("Massive error: some overlapping junctions don't have the same junction ID!")
+    }
+    
+    overlaps <- GenomicRanges::findOverlaps(query = df_age_distances %>% filter(sample_type == age_groups[1]) %>% GenomicRanges::GRanges(),
+                                            subject = df_age_distances %>% filter(sample_type == age_groups[3]) %>% GenomicRanges::GRanges(),
+                                            type = "equal")
+    
+    if (!identical((df_age_distances %>% filter(sample_type == age_groups[1]))[S4Vectors::queryHits(overlaps),]$novel_junID,
+                   (df_age_distances %>% filter(sample_type == age_groups[3]))[S4Vectors::subjectHits(overlaps),]$novel_junID)){
+      print("Massive error: some overlapping junctions don't have the same junction ID!")
+    }
+    
+    
+    
+    
+  }
+  
+  
+  df_age_distances_common <- df_age_distances_common %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " "))
+  df_age_distances_common <- df_age_distances_common %>%
+    mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
+    mutate(sample_type = factor(sample_type, levels = c("60-79", "40-59", "20-39")))
+  
+  
+  
+  
+  df_age_distances_common_tidy <- df_age_distances_common %>%
+    filter(abs(distance) <= 30) %>%
+    group_by(project_id, sample_type, novel_type) %>%
+    mutate(median_distance = distance %>% median()) %>%
+    ungroup()
+  
+  df_age_distances_common_tidy_donor <- df_age_distances_common_tidy %>% 
+    filter(novel_type == "novel donor") %>%
+    dplyr::select(sample_type, project_id, median_distance) %>%
+    distinct(sample_type, project_id,median_distance) %>%
+    spread(key = sample_type , value = median_distance)
+  
+  df_age_distances_common_tidy_donor %>%
+    column_to_rownames("project_id" ) %>%
+    as.matrix()
+  
+  
+  heatmap(x =   df_age_distances_common_tidy_donor %>%
+            column_to_rownames("project_id" ) %>%
+            as.matrix())
+  
+  
+  
+  
+  
+  
+  folder_image <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", main_project, "/figures/")
+  dir.create(file.path(folder_image), recursive = TRUE, showWarnings = T)
+  ggplot2::ggsave(filename = paste0(folder_image, "/panel4_age_distances_",project_id,".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  
+}
+
+
+age_stratification_plot_distances_proportion <- function(age_levels = c("60-79", "40-59", "20-39"),
+                                                         distance_limit = 40,
+                                                         QC = F) {
+  #######################################
+  ## CONNECT TO THE DATABASE
+  #######################################
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  
+  
+  df_age_distances <- map_df((df_metadata$SRA_project %>% unique())[2], function(project_id) {
+    
+    # project_id <- (df_metadata$SRA_project %>% unique())[1]
+    
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      pull(cluster)
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      # age_group <- age_groups[1]
+      
+      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                      paste(introns$novel_junID, collapse = ","),")")
+      df_novel <- merge(x = introns,
+                        y = dbGetQuery(con, query) %>% as_tibble(),
+                        by = "novel_junID",
+                        all.x = T) %>%
+        mutate(sample_type = age_group,
+               project_id = project_id)
+      
+      return(df_novel)
+      
+    })
+    
+  })
+  
+  ## GET common junctions across age supergroups ----------------------------------
+  
+  
+  
+  common_junctions <- df_age_distances %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == age_groups %>% length()) %>%
+    pull(ref_junID)
+  
+  common_junctions %>% length()
+  
+  
+  df_age_distances_tidy <- df_age_distances %>%
+    group_by(ref_junID, sample_type) %>%
+    distinct(novel_coordinates, .keep_all = T)  %>%
+    ungroup() %>%
+    filter(ref_junID %in% common_junctions) %>%
+    as_tibble()
+  
+  
+  
+  n_ref_jun <- df_age_distances_tidy %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID) %>%
+    dplyr::count(sample_type) %>%
+    ungroup() %>%
+    distinct(n) %>%
+    pull
+  
+  df_age_distances_tidy <- df_age_distances_tidy %>%
+    mutate(novel_type = str_replace(string = novel_type,
+                                    pattern = "_",
+                                    replacement = " "))
+  
+  
+  df_age_distances_tidy <- df_age_distances_tidy %>%
+    mutate(novel_type = factor(novel_type, levels = c("novel donor", "novel acceptor"))) %>%
+    mutate(sample_type = factor(sample_type, levels = age_levels))
+  
+  
+  
+  df_prop_noise <- df_age_distances_tidy %>%
+    filter(abs(distance) <= distance_limit) %>%
+    group_by(sample_type, novel_type) %>%
+    mutate(N = n()) %>%
+    ungroup() %>%
+    group_by(sample_type, novel_type, distance) %>%
+    mutate(n_distance = n()) %>%
+    ungroup() %>%
+    mutate(p_noise = n_distance/N)%>%
+    as.data.frame()
+  
+  
+  # df_prop_noise %>% 
+  #   filter(distance == 15) %>% head
+  # 
+  # 
+  # df_prop_noise %>%
+  #   filter(sample_type == "20-39",
+  #          novel_type == "novel_acceptor",
+  #          distance == 20) %>% 
+  #   nrow()
+  # df_prop_noise %>%
+  #   filter(sample_type == "20-39") %>% 
+  #   nrow()
+  
+  
+  
+  
+  plot_distances <- ggplot(data = df_prop_noise) + 
+    geom_col(aes(x = distance, y = p_noise, fill = sample_type),
+             position = "identity") +
+    facet_grid(vars(novel_type)) +
+    xlab("Distance to the reference intron (in bp)") +
+    ylab("Proportion of splicing noise") +
+    theme_light() +
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
+    #scale_fill_manual(values =  c("#FDE725FF", "#21908CFF", "#440154FF"),
+    #                  breaks = c("20-39", "40-59", "60-79")) +
+    guides(fill = guide_legend(title = NULL, 
+                               ncol = 4, nrow = 1 )) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "14"),
+          axis.title = element_text(colour = "black", size = "14"),
+          strip.text = element_text(colour = "black", size = "16"), 
+          legend.text = element_text(colour = "black", size = "14"),
+          plot.caption = element_text(colour = "black", size = "14"),
+          plot.title = element_text(colour = "black", size = "16"),
+          legend.title = element_text(colour = "black", size = "14"),
+          legend.position = "top")
+  
+  distance_rectangle <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = distance_limit, ymin = 1, ymax = 100),
+              fill = "grey", color = "black") +
+    geom_text(aes(x = 15, y = 55),  size = 6, label = "exon") +
+    geom_rect(aes(xmin = (distance_limit)*-1, xmax = 0, ymin = 49, ymax = 51),
+              fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = -15,y = 70),  size = 6, label = "intron") +
+    theme_void()
+  
+  
+  plot_distances / distance_rectangle + patchwork::plot_layout(heights = c(8, 1))  
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/panel4_age_prop_noise.svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  
+}
+
+age_stratification_mode_distances <- function(age_groups,
+                                              common = T) {
+  
+  #######################################
+  ## CONNECT TO THE DATABASE
+  #######################################
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  
+  
+  df_age_distances <- map_df((df_metadata$SRA_project %>% unique())[2], function(project_id) {
+    
+    # project_id <- (df_metadata$SRA_project %>% unique())[1]
+    
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      pull(cluster)
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      # age_group <- age_groups[1]
+      
+      query <- paste0("SELECT novel_junID FROM '", age_group, "_", project_id, "_misspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                      paste(introns$novel_junID, collapse = ","),")")
+      df_novel <- merge(x = introns,
+                        y = dbGetQuery(con, query) %>% as_tibble(),
+                        by = "novel_junID",
+                        all.x = T) %>%
+        mutate(sample_type = age_group,
+               project_id = project_id)
+      
+      return(df_novel)
+      
+    })
+    
+  })
+  
+  ## GET common junctions across age supergroups ----------------------------------
+  
+  
+  
+  common_junctions <- df_age_distances %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == age_groups %>% length()) %>%
+    pull(ref_junID)
+  
+  
+  
+  df_age_distances_tidy <- df_age_distances %>%
+    group_by(ref_junID, sample_type) %>%
+    distinct(novel_coordinates, .keep_all = T)  %>%
+    ungroup() %>%
+    filter(ref_junID %in% common_junctions) %>%
+    as_tibble()
+  
+  
+  
+  df_age_modes <- map_df(age_groups, function(age_group) {
+    
+    # age_group <- age_groups[1]
+    
+    map_df(c("novel_acceptor", "novel_donor"), function(type) {
+      
+      # type <- "novel_acceptor"
+      
+      mode_in <- df_age_distances %>%
+        filter(sample_type == age_group,
+               novel_type == type,
+               distance < 0) %>%
+        pull(distance) %>%
+        get_mode() 
+      
+      mode_ex <- df_age_distances %>%
+        filter(sample_type == age_group,
+               novel_type == type,
+               distance > 0) %>%
+        pull(distance) %>%
+        get_mode() 
+      
+      
+      return(data.frame(age = age_group,
+                        novel_type = type,
+                        mode_intron = mode_in,
+                        mode_exon = mode_ex))
+      
+      
+    })
+    
+  })
+  
+  return(df_age_modes)
+  
+}
+
+
+
+
+
+
+age_stratification_plot_MSR <- function(df = NULL,
+                                        project_id = "MUSCLE",
+                                        age_groups = c("60-79", "40-59", "20-39"),
+                                        common = T,
+                                        QC = F) {
+  
+  
+  #######################################
+  ## CONNECT TO THE DATABASE
+  #######################################
+  
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  
+  df_age_groups <- map_df(project_id, function(project_id) {
+    
+    # project_id <- (df_metadata$SRA_project %>% unique())[1]
+    
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      # age_group <- age_groups[1]
+      print(paste0(Sys.time(), " --> ", age_group))
+      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_nevermisspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      
+      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_misspliced'")
+      introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+      
+      return(introns %>%
+               mutate(sample_type = age_group))
+      
+    })
+    
+  })
+  
+  
+  ###############################################
+  ## QC
+  ###############################################
+  
+  any(df_age_groups %>% filter(sample_type == "never") %>% pull(MSR_D) > 0)
+  any(df_age_groups %>% filter(sample_type == "never") %>% pull(MSR_A) > 0)
+  
+  intersect(df_age_groups %>% filter(sample_type == "never") %>% pull(ref_junID),
+            df_age_groups %>% filter(sample_type != "never") %>% pull(ref_junID))
+  
+  ###############################################
+  ## GET ONLY COMMON JUNCTIONS ACROSS AGE GROUPS
+  ###############################################
+  
+  common_introns <- df_age_groups %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    ungroup() %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == age_groups %>% length()) %>%
+    pull(ref_junID)
+  
+  common_introns %>% length()
+  
+  ## Filter the INTRONS table by the common mis-spliced introns
+  df_age_groups_tidy <- df_age_groups %>%
+    inner_join(y = data.table::data.table(ref_junID = common_introns),
+               by = "ref_junID") %>%
+    distinct(ref_junID, sample_type, .keep_all = T)
+  
+  
+  
+  
+  
+  
+  #######################################
+  ## CONTINUE PLOT
+  #######################################
+  
+  n_ref_jun <- df_age_groups_tidy %>%
+    group_by(sample_type) %>%
+    distinct(ref_junID) %>%
+    dplyr::count(sample_type) %>%
+    ungroup() %>%
+    distinct(n) %>%
+    pull
+  
+  
+  df_age_groups_tidy <- df_age_groups_tidy %>%
+    distinct(ref_junID, sample_type, .keep_all = T) %>%
+    # mutate(ref_type = factor(ref_type, levels = c("novel_donor", "novel_acceptor"))) %>%
+    mutate(sample_type = factor(sample_type, levels = c( "60-79","20-39", "40-59" ))) %>%
+    as_tibble()
+  
+  
+  ggplot(data = df_age_groups_tidy %>% 
+           dplyr::select(MSR_D, sample_type) %>%
+           gather(key = "MSR_type", value = "MSR", -sample_type) %>%
+           mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
+    geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
+    #ggtitle(title) +
+    xlab("MSR") +
+    facet_wrap(vars(MSR_type)) +
+    ggforce::facet_zoom(xlim = c(0,0.005)) +
+    theme_light() +
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "9"),
+          axis.title = element_text(colour = "black", size = "9"),
+          strip.text =  element_text(colour = "black", size = "9"),
+          plot.title = element_text(colour = "black", size = "9"),
+          legend.text = element_text(size = "9"),
+          legend.title = element_text(size = "9"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
+  
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
+                      main_project, "/figures/panel4_MSR_D_", project_id,".svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+  ggplot(data = df_age_groups_tidy %>% 
+           dplyr::select(MSR_A, sample_type) %>%
+           gather(key = "MSR_type", value = "MSR", -sample_type) %>%
+           mutate(MSR_type = factor(MSR_type, levels = c("MSR_A", "MSR_D")))) + 
+    geom_density(aes(x = MSR, fill = sample_type), alpha = 0.8) +
+    #ggtitle(title) +
+    xlab("MSR_A") +
+    facet_wrap(vars(MSR_type)) +
+    ggforce::facet_zoom(xlim = c(0,0.005)) +
+    theme_light() +
+    scale_fill_manual(values =  c("#21908CFF","#FDE725FF","#440154FF"),
+                      labels = c("20-39", "40-59", "60-79"),
+                      breaks = c("20-39", "40-59", "60-79")) +
+    theme(axis.line = element_line(colour = "black"), 
+          axis.text = element_text(colour = "black", size = "12"),
+          axis.title = element_text(colour = "black", size = "12"),
+          strip.text =  element_text(colour = "black", size = "12"),
+          plot.title = element_text(colour = "black", size = "12"),
+          legend.text = element_text(size = "12"),
+          legend.title = element_text(size = "12"),
+          legend.position = "top") +
+    guides(fill = guide_legend(title = NULL, ncol = 3,  nrow = 1)) 
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
+                      main_project, "/figures/panel4_MSR_A_",project_id,".svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  
+  ########################################
+  ## STATISTICAL TEST - MSR_DONOR
+  ########################################
+  
+  
+  wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_D),
+              y = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
+              alternative = "less",
+              correct = T,
+              paired = T)
+  wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
+              y = df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_D),
+              alternative = "less",
+              paired = T)
+  
+  t.test(x = df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_D),
+         y = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_D),
+         alternative = "less",
+         paired = T)
+  
+  
+  ## EFFECT SIZE 
+  
+  df_MSRD <- df_age_groups_tidy %>%
+    distinct(ref_junID, sample_type, .keep_all = T) %>%
+    dplyr::select(ref_junID,
+                  sample_type,
+                  MSR_D) %>%
+    mutate(MSR_D = MSR_D %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_D)
+  
+  df_MSRD %>%
+    filter(`20-39` < `40-59`,
+           `40-59` < `60-79`)
+  df_MSRD %>%
+    filter(`20-39` > `40-59`,
+           `40-59` > `60-79`)
+  
+  
+  rstatix::wilcox_effsize(data = df_MSRD %>%
+                            tidyr::gather(key = ref_junID, value = year),
+                          formula = ref_junID  ~ year )
+  
+  ########################################
+  ## STATISTICAL TEST - MSR_ACCEPTOR
+  ########################################
+  
+  ## EFFECT SIZE 
+  
+  df_MSRA <- df_age_groups_tidy %>%
+    distinct(ref_junID, sample_type, .keep_all = T) %>%
+    dplyr::select(ref_junID,
+                  sample_type,
+                  MSR_A) %>%
+    mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
+    spread(sample_type, MSR_A)
+  
+  df_MSRA %>%
+    filter(`20-39` < `40-59`,
+           `40-59` < `60-79`)
+  df_MSRA %>%
+    filter(`20-39` > `40-59`,
+           `40-59` > `60-79`)
+  
+  df_MSRA_tidy <- df_MSRA %>%
+    tidyr::gather(key = ref_junID, value = year) %>%
+    dplyr::rename(MSR = year) %>%
+    mutate(year = as.numeric(factor(as.matrix(ref_junID))) ) %>%
+    as_tibble() %>%
+    dplyr::select(MSR, year)
+  
+  rstatix::wilcox_effsize(data = df_MSRA_tidy,
+                          formula = MSR  ~ year )
+  
+  wilcox.test(x = df_MSRA$`20-39`,
+              y = df_MSRA$`40-59`,
+              alternative = "less",
+              paired = T)
+  
+  
+  
+  wilcox.test(x = df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_A),
+              y = df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_A),
+              alternative = "less",
+              correct = T)
+  
+  
+  
+  df_age_groups_tidy %>% filter(sample_type == "20-39") %>% pull(MSR_A) %>% summary()
+  df_age_groups_tidy %>% filter(sample_type == "40-59") %>% pull(MSR_A) %>% summary()
+  df_age_groups_tidy %>% filter(sample_type == "60-79") %>% pull(MSR_A) %>% summary()
+  
+}
+
+
+age_stratification_plot_MSR_across_tissues <- function(age_projects = c("BRAIN", "BLOOD","MUSCLE"),
+                                                       age_groups = c("60-79", "40-59", "20-39")) {
+  
+  
+  #######################################
+  ## CONNECT TO THE DATABASE
+  #######################################
+  
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query)
+  
+  
+  df_age_groups_MSR <- map_df(age_projects, function(project_id) {
+    
+    # project_id <- (df_metadata$SRA_project %>% unique())[1]
+    
+    print(paste0(Sys.time(), " --> ", project_id))
+    
+    age_groups <- df_metadata %>%
+      filter(SRA_project == project_id) %>%
+      distinct(cluster) %>%
+      pull()
+    
+    df_age_groups <- map_df(age_groups, function(age_group) {
+      
+      # age_group <- age_groups[1]
+      print(paste0(Sys.time(), " --> ", age_group))
+      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_nevermisspliced'")
+      introns <- dbGetQuery(con, query) %>% as_tibble()
+      
+      query <- paste0("SELECT ref_junID, ref_type, MSR_D, MSR_A FROM '", age_group, "_", project_id, "_misspliced'")
+      introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+      
+      return(introns %>%
+               mutate(sample_type = age_group,
+                      project_id = project_id))
+      
+    })
+    
+    
+    ## GET ONLY COMMON JUNCTIONS ACROSS AGE GROUPS
+    
+    common_introns <- df_age_groups %>%
+      group_by(sample_type) %>%
+      distinct(ref_junID, .keep_all = T) %>%
+      ungroup() %>%
+      dplyr::count(ref_junID) %>%
+      filter(n == age_groups %>% length() ) %>% 
+      dplyr::select(-n)
+    
+    
+    ## Filter the INTRONS table by the common mis-spliced introns
+    df_age_groups_tidy <- df_age_groups %>%
+      inner_join(y = common_introns ,
+                 by = c("ref_junID" = "ref_junID")) %>%
+      distinct(sample_type, ref_junID, .keep_all = T) %>%
+      mutate(sample_type = factor(sample_type, levels = c( "20-39", "40-59", "60-79" ))) %>%
+      group_by(sample_type) %>%
+      mutate(mean_MSRD = MSR_D  %>% mean()) %>%
+      mutate(mean_MSRA = MSR_A  %>% mean()) %>%
+      mutate(median_MSRD = MSR_D  %>% median()) %>%
+      mutate(median_MSRA = MSR_A  %>% median()) %>%
+      ungroup()
+    
+    
+    df_age_groups_tidy %>% 
+      return()
+  })
+  
+  
+  ###############################################
+  ## QC
+  ###############################################
+  
+  any(df_age_groups_MSR %>% filter(sample_type == "never") %>% pull(MSR_D) > 0)
+  any(df_age_groups_MSR %>% filter(sample_type == "never") %>% pull(MSR_A) > 0)
+  
+  intersect(df_age_groups_MSR %>% filter(sample_type == "never") %>% pull(ref_junID),
+            df_age_groups_MSR %>% filter(sample_type != "never") %>% pull(ref_junID))
+  
+  
+  
+  
+  
+  
+  #######################################
+  ## PLOT - DONOR
+  #######################################
+  
+  
+  
+  
+  df_age_groups_tidy_donor <- df_age_groups_MSR %>% 
+    dplyr::select(sample_type, project_id, mean_MSRD) %>%
+    distinct(project_id, sample_type, mean_MSRD) %>%
+    mutate(sample_type = factor(sample_type, levels = c( "20-39", "40-59", "60-79" ))) 
+  
+  
+  ggplot(df_age_groups_tidy_donor %>%
+           mutate(mean_MSRD = mean_MSRD %>% log10()), 
+         aes(project_id, sample_type, fill= mean_MSRD)) + 
+    geom_tile()+
+    scale_fill_gradient(low="white", high="blue")
+  
+  
+  
+  
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
+                      main_project, "/figures/heatmap_MSR_D_all_tissues.svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  
+  #######################################
+  ## PLOT - ACCEPTOR
+  #######################################
+  
+  
+  df_age_groups_tidy_acceptor <- df_age_groups_MSR %>% 
+    dplyr::select(sample_type, project_id, mean_MSRA) %>%
+    distinct(project_id, sample_type, mean_MSRA)  %>%
+    mutate(sample_type = factor(sample_type, levels = c( "20-39", "40-59", "60-79" ))) 
+  
+  ggplot(df_age_groups_tidy_acceptor, 
+         aes(project_id, sample_type, fill= mean_MSRA)) + 
+    geom_tile()+
+    scale_fill_gradient(low="white", high="blue")
+  
+  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, "/", 
+                      main_project, "/figures/heatmap_MSR_A_all_tissues.svg")
+  ggplot2::ggsave(filename = file_name, width = 183, height = 183, units = "mm", dpi = 300)
+  
+  
+}
+
 
 ################################
 ## CALLS
