@@ -225,16 +225,15 @@ RBP_corrected_TPM_analysis <- function(project_id) {
   tpm_corrected <- map_df((df_metadata$region %>% unique()), function(cluster) {
     
     print(paste0(Sys.time(), " - ", cluster, " ... "))
-    if (file.exists(paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+    if (file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", project_id, "/",
                            cluster, "/tpm_ensembl105_residuals.csv"))) {
-    read.csv(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/EXPRESSION_ANALYSIS/RBP/",
+    read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", project_id, "/",
                            cluster, "/tpm_ensembl105_residuals.csv"), header = T) %>%
       mutate(tissue = cluster)
     } else {
       return(NULL)
     }
-    
-    
+ 
   })
   
   
@@ -535,15 +534,16 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
 
 ## Only for the subsampled samples - age stratification subsampled to correct by RIN
 
-projects_used <- readRDS(file = paste0(getwd(), "/results/all_final_projects_used.rds"))
+projects_used <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
 
 for (project_id in projects_used) {
   
   # project_id <- projects_used[1]
-  
   # project_id <- "BRAIN"
-  
 
+  
+  message(Sys.time(), " - ", project_id)
+  
   ## Load clusters used
   if (str_detect(main_project,pattern = "age")) {
     clusterIDs <- c("20-39","40-59","60-79")
@@ -552,7 +552,7 @@ for (project_id in projects_used) {
   }
   
   ## Get metadata
-  metadata <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/splicing/base_data/", project_id, "_samples_metadata.rds"))
+  metadata <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/",main_project,"/base_data/", project_id, "_samples_metadata.rds"))
  
   
   for (cluster_id in clusterIDs) {
@@ -561,7 +561,7 @@ for (project_id in projects_used) {
 
     if (str_detect(main_project,pattern = "age")) {
       ## Get metadata
-      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/", cluster_id, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
       cluster_metadata <- metadata %>%
         filter(external_id %in% samples_used)
     } else {
@@ -607,7 +607,7 @@ for (project_id in projects_used) {
         pivot_wider(names_from = sample, values_from = tpm, values_fill = 0)
       
       ## Save data
-      folder_name <- paste0(getwd(), "/results/RBP_EXPRESSION/", type, "/", project_id, "/", cluster_id, "/")
+      folder_name <- paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/", type, "/", project_id, "/", cluster_id, "/")
       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
       
       write.csv(x = dds_tpm_pv %>% tibble::column_to_rownames("gene"),

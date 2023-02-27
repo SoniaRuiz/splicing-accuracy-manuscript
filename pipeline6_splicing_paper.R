@@ -42,6 +42,18 @@ get_mode <- function(data) {
 }
 
 
+custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
+                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         axis.ticks = element_line(colour = "black", linewidth = 2),
+                         axis.text = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.line = element_line(colour = "black"),
+                         axis.title = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 1, vjust = 0),
+                         strip.text = element_text(size = 7, family="Arial", colour = "black"),
+                         legend.position = "top",
+                         legend.box = "vertical")
+
 ########################################
 ## FUNCTIONS - produce figures for the
 ## paper
@@ -182,35 +194,53 @@ get_junc_length <- function() {
   tables <- dbListTables(con)
   tables
   
-  query <- paste0("SELECT * from 'intron'")
+  ## Get all annotated introns
+  query <- paste0("SELECT DISTINCT ref_junID, ref_length from 'intron'")
   db_introns <- dbGetQuery(con, query) %>% as_tibble()
   db_introns %>% distinct(ref_junID) %>% nrow()
-  db_introns %>%
-    dplyr::count(misspliced)
+  db_introns %>% head()
   
-  
-  query <- paste0("SELECT * from 'novel'")
+  ## Get all novel junctions
+  query <- paste0("SELECT DISTINCT novel_junID, novel_length from 'novel'")
   db_novel <- dbGetQuery(con, query) %>% as_tibble()
   db_novel %>% distinct(novel_junID) %>% nrow()
-  db_novel %>% dplyr::count(novel_type)
   
-  
-  ## HISTOGRAM PLOT
+  ## Join both datasets of junction lengths
   df_all_lengths_tidy <- rbind(db_introns %>%
                                  dplyr::select(length = ref_length) %>%
                                  mutate(type = "annotated intron"),
                                db_novel %>%
                                  dplyr::select(length = novel_length) %>%
                                  mutate(type = "novel junction"))
+  df_all_lengths_tidy %>% head()
   
   
+  ## Get the mode length of the annotated introns
   get_mode( df_all_lengths_tidy %>%
               filter(type == "annotated intron") %>%
               pull(length) )
+  
+  ## Get the mean length of the annotated introns
   df_all_lengths_tidy %>%
     filter(type == "annotated intron") %>%
     pull(length) %>% mean()
   
+  
+  ## Get the mode length of the novel junctions
+  get_mode( df_all_lengths_tidy %>%
+              filter(type == "novel junction") %>%
+              pull(length) )
+  
+  ## Get the mean length of the novel junctions
+  df_all_lengths_tidy %>%
+    filter(type == "novel junction") %>%
+    pull(length) %>% mean()
+  
+  
+  
+  #############################################
+  ## PLOT IMPLIED INTRON LENGTHS
+  #############################################
   
   df_all_lengths_tidy$type = factor( df_all_lengths_tidy$type, 
                                      levels = c( "novel junction", "annotated intron" ) )
@@ -221,18 +251,10 @@ get_junc_length <- function() {
            filter(length <= 200)) + 
     geom_count(aes(x = length, 
                    colour = type), 
-               #dplyr::mutate(df_all_lengths, z = FALSE), 
                alpha = 0.7,
                stat = "count",
                position = "identity") +
-    #geom_histogram(aes(x = length, fill = type), binwidth = 5, 
-    #               dplyr::mutate(df_all_lengths, z = TRUE), 
-    #               alpha = 0.7, position = "identity") +
-    # ggforce::facet_zoom(xlim = c(0, 200),
-    #                    ylim = c(0, 710000),
-    #                    zoom.data = z, horizontal = FALSE) +
     xlim(c(0,200))+
-    ## ggtitle(paste0("Length of the annotated, partially unannotated and completely unannotated junctions.\nAll samples used - ", tissue)) +
     xlab("Implied intron length (in bp)") +
     ylab("Number of unique junctions") +
     theme_light() +
@@ -245,16 +267,14 @@ get_junc_length <- function() {
     scale_colour_manual(values = c("#661100", "#009E73"), 
                         name = "Category",
                         breaks = c("annotated intron", "novel junction"),
-                        labels = c("annotated intron", "novel junctions")) +
-    theme(legend.position = "top",
-          legend.text = element_text(size = 11)) %>%
+                        labels = c("Annotated intron", "Novel junction")) +
+    custom_ggtheme %>%
     return()
   
   ## Save plot
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project,"/figures/junction_length")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/junction_length")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 180, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 150, height = 100, units = "mm", dpi = 300)
   
 }
 
@@ -388,6 +408,7 @@ get_contamination_rates_all_tissues <- function () {
   }
   
   
+  ## Prepare the dataframe before plotting it
   df_contamination_tidy <- df_contamination %>% 
     dplyr::select(kept_annotation, in_annotation, tissue) %>%
     tidyr::gather(key = "type", value = "prop", -tissue ) 
@@ -400,7 +421,13 @@ get_contamination_rates_all_tissues <- function () {
     arrange(type , prop) %>%
     mutate(tissue = fct_inorder(tissue))
   
+  
   # colours <- ifelse(str_detect(string = as.factor(df_contamination_tidy$tissue), pattern = "Brain"), "red", "black")
+  
+  ###############################
+  ## CONTAMINATION RATES 
+  ## BAR PLOT
+  ###############################
   
   ## GETTING CONTAMINATION RATES - % OF INDIVIDUALS
   ggplot(data = df_contamination_tidy) +
@@ -416,15 +443,8 @@ get_contamination_rates_all_tissues <- function () {
                       labels = c( "novel junctions mantaining category", "novel junctions entring annotation" )) +
     #scale_fill_viridis_d(option = "A") +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          #axis.text.x = element_text(colour = "black", size = "12"),
-          legend.position = "top",
-          axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)
-    ) +
+    custom_ggtheme +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) %>%
     return()
   
@@ -433,7 +453,7 @@ get_contamination_rates_all_tissues <- function () {
   file_name <- paste0(figures_path, "/contamination_rates_all_tissues")
   
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 250, height = 140, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
   
@@ -498,6 +518,7 @@ get_contamination_rates_FCTX <- function () {
   gtf_versions <- c("76", "81", "90", "97", "104")
   dates <- c("2014", "2015", "2017", "2019", "2021")
   
+  ## Load saved file
   if ( !file.exists( paste0(getwd(), "/results/", project_id, "/v", reference_gtf_version, "/", main_project,
                             "/", cluster, "_contamination_rates.rds") ) ) {
     
@@ -582,6 +603,7 @@ get_contamination_rates_FCTX <- function () {
   }
   
   
+  ## Tidy the dataframe prior display
   df_contamination$contamination_rates = factor(df_contamination$contamination_rates, 
                                                 levels = c("v76\n(2014)",
                                                            "v81\n(2015)",
@@ -603,53 +625,15 @@ get_contamination_rates_FCTX <- function () {
     geom_point() +
     xlab(NULL) +
     ylab("contamination rates (%)\nas compared to Ensembl v105") +
-    #scale_fill_viridis_d(option = "E")  +
-    #ggtitle(paste0("Brain - Frontal Cortex (BA9)\nContamination rates compared with Ensembl v105")) +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = NULL,
-          axis.text.y = element_text(vjust = 0.5,hjust = 1)) +
+    custom_ggtheme +
     guides(fill = "none")
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/contamination_rates_FCTX_lineplot")
   ggplot2::ggsave(paste0(file_name, ".svg"),  width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"),  width = 70, height = 70, units = "mm", dpi = 300)
-  
-  
-  ################################
-  ## BAR PLOT
-  ################################
-  
-  ggplot(data = df_contamination) +
-    geom_bar(aes(x = contamination_rates, 
-                 y = in_annotation ), 
-             stat = "identity") + 
-    coord_flip() +
-    xlab(NULL) +
-    ylab("contamination rates (%) as compared to Ensembl v105") +
-    #scale_fill_viridis_d(option = "E")  +
-    #ggtitle(paste0("Brain - Frontal Cortex (BA9)\nContamination rates compared with Ensembl v105")) +
-    theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = NULL,
-          axis.text.y = element_text(#angle = 50, 
-            vjust = 0.5,
-            hjust = 1)) +
-    guides(fill = "none")
-  
-  file_name <- paste0(getwd(), "/results/_paper/figures/contamination_rates_FCTX")
-  ggplot2::ggsave(paste0(file_name, ".svg"),  width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"),  width = 183, height = 183, units = "mm", dpi = 300)
-  
+  ggplot2::ggsave(paste0(file_name, ".png"),  width = 180, height = 90, units = "mm", dpi = 300)
+
 }
 
 
@@ -837,17 +821,10 @@ get_unique_donor_acceptor_jxn <- function() {
                       labels = c( "Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, 
-                               nrow = 1))+
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.text.x = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text = element_text(colour = "black", size = "12"), 
-          legend.text = element_text(colour = "black", size = "12"),
-          plot.caption = element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.title = element_text(colour = "black", size = "12"),
-          legend.position = "top") 
+                               nrow = 1)) +
+    custom_ggtheme + 
+    theme(legend.position = "right")
+    
   
   junx_violin_plot
   
@@ -856,74 +833,7 @@ get_unique_donor_acceptor_jxn <- function() {
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), 
                   width = 183, height = 130, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), 
-                  width = 100, height = 100, units = "mm", dpi = 300)
-  
-  ######################
-  ## BAR PLOT
-  ######################
-  
-  df_proportions <- df_proportions %>%
-    dplyr::select(tissue, 
-                  donor = donor_prop, 
-                  acceptor = acceptor_prop, 
-                  annotated_intron = annotated_prop) %>%
-    tidyr::gather(key = "type", value = "prop", -tissue ) 
-  
-  df_proportions %>% head()
-
-  
-  ## First, order by junction type
-  df_proportions$type <- factor(df_proportions$type, 
-                             levels = c( "acceptor", 
-                                         "annotated_intron",
-                                         "donor"))
-  
-  df_proportions_final <- df_proportions %>% 
-    ungroup() %>%
-    arrange(type , prop) %>%
-    mutate(tissue = fct_inorder(tissue))
-  
-  
-  # colours <- ifelse(str_detect(string = as.factor(df_proportions_final$tissue), 
-  #                              pattern = "Brain"), "red", "black")
-  
-  
-  ggplot(df_proportions_final %>% filter(type %in% c("donor", "acceptor")), 
-         aes(x = tissue, y = prop * 100, 
-             group = type, fill = type)) +
-    geom_col(position = position_dodge()) +
-    #geom_text(aes(label = round(x = prop, digits = 2)), 
-    #          position = position_stack(vjust = 0.5, reverse = TRUE), colour = "white", size = 1.5) +
-    coord_flip() +
-    theme_light() +
-    ylab("unique novel junctions across samples (%)") +
-    xlab("") +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          #axis.text.x = element_text(color = colours),
-          axis.text.y = element_text(#color = colours,
-                                     #angle = 70, 
-                                     vjust = 1,
-                                     hjust = 1),
-          axis.title.x = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "9"),
-          plot.title = element_text(size = "9"),
-          legend.title = element_text(size = "9"),
-          legend.position = "top") +
-    scale_fill_manual(values = c( "#0D0887FF", "#EF7F4FFF"),
-                      breaks = c( "acceptor", "donor"),# "annotated_intron"),
-                      labels = c( "novel acceptor", "novel donor")) + #, "annotated intron")) +
-    guides(fill = guide_legend(title = NULL,
-                               ncol = 2, 
-                               nrow = 1))
-  
-  ## Save the figure 3
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/percent_unique_donor_acceptor")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), 
-                  width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), 
-                  width = 183, height = 183, units = "mm", dpi = 300)
+                  width = 90, height = 90, units = "mm", dpi = 300)
 }
 
 get_unique_donor_acceptor_reads <- function() {
@@ -1089,99 +999,28 @@ get_unique_donor_acceptor_reads <- function() {
                       breaks = c( "donor", "acceptor"),
                       labels = c( "Novel Donor", "Novel Acceptor")) + 
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))+
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.text.x = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text = element_text(colour = "black", size = "12"), 
-          legend.text = element_text(colour = "black", size = "12"),
-          plot.caption = element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.title = element_text(colour = "black", size = "12"),
-          legend.position = "top") 
+    custom_ggtheme + 
+    theme(legend.position = "right")
+    
   
   reads_violin_plot
   file_name <- paste0(getwd(), "/results/_paper/figures/unique_donor_acceptor_reads_violin")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 150, height = 150, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
   
   
   
   ggpubr::ggarrange(junx_violin_plot,
                     reads_violin_plot,
                     common.legend = T,
-                    labels = c("c", "d"),
-                    align = "v",
+                    labels = c("b", "c"),
+                    align = "h",
                     ncol = 2,
                     nrow = 1)
   
   file_name <- paste0(getwd(), "/results/_paper/figures/donor_acceptor_junx_reads_violin")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 150, height = 150, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 200, height = 100, units = "mm", dpi = 300)
-  
-  #####################
-  ## BAR PLOT
-  #####################
-  
-  ## PREPARE DATA FOR PLOTTING
-  ## Spread
-  df_mean_counts <- df_mean_counts %>% 
-    dplyr::select( -sum_counts) %>%
-    #filter(tissue %in% all_clusters) %>%
-    tidyr::spread(key = "type", value = "prop_counts")
-
-  
-  
-  ## Gather
-  df_mean_counts_tidy <- df_mean_counts %>% 
-    #dplyr::select(annotated = annotated_p, acceptor = acceptor_p, donor = donor_p, tissue) %>%
-    tidyr::gather(key = "type", value = "mean", -tissue, - samples )
-  
-  
-  df_mean_counts_tidy$type = factor(df_mean_counts_tidy$type, 
-                                    levels = c("annotated", "acceptor", "donor"))
-  
-  df_mean_counts_tidy = df_mean_counts_tidy %>% 
-    ungroup() %>%
-    arrange(type , desc(mean)) %>%
-    mutate(tissue = fct_inorder(tissue))
-  
-  #colours <- ifelse(str_detect(string = as.factor(df_mean_counts_tidy$tissue), pattern = "Brain"), "red", "black")
-  
-  
-  ggplot(data = df_mean_counts_tidy %>% filter(type %in% c("acceptor", "donor"))) +
-    geom_col(mapping = aes(x = tissue, y = mean, fill = type), 
-             position = position_dodge(), 
-             alpha = 0.9) +
-    #coord_cartesian( ylim=c(0,1) ) +
-    coord_flip() +
-    xlab("") +
-    ylab("read counts across samples (%)") +
-    theme_light() +
-    scale_color_viridis_d() +
-    scale_y_continuous(breaks = c(0,0.5,0.75,1)) +
-    
-    scale_fill_manual(values =  c("#A41F9AFF","#0D0887FF","#EF7F4FFF"),#c( "#440154FF", "#35B779FF", "#39558CFF"),
-                      breaks = c("annotated", "acceptor", "donor"),
-                      labels = c("annotated introns", "novel acceptor", "novel donor")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          axis.text.y = element_text(#color = colours,
-                                     #angle = 70, 
-                                     vjust = 1,
-                                     hjust = 1),
-          legend.text = element_text(size = "9"),
-          legend.title = element_text(size = "9"),
-          legend.position = "top") +
-    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) 
-  
-  file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/",
-                      main_project, "/figures/unique_donor_acceptor_reads")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
 }
@@ -1356,23 +1195,18 @@ get_maxentscan_score <- function() {
     ylim(c(0, 0.3)) +
     xlim(c(-40, 20)) +
     theme_light() +
+    xlab("MES Donor (5'ss) score") +
     scale_fill_manual(values = c("#A41F9AFF", "#EF7F4FFF"), 
                       breaks=c("intron", "novel_donor"),
                       labels=c("Annotated Intron  ", "Novel Donor")) +
-    theme(axis.line = element_line(colour = "black" ),
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top") +
-    xlab("MES Donor (5'ss) score") +
+    custom_ggtheme +
     guides(fill = guide_legend(title = element_blank(),
                                ncol = 2, nrow = 1))
   
   ss5plot
   file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss5plot")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
   
   
   ## ss3score -----------------------------------------------------------
@@ -1390,20 +1224,15 @@ get_maxentscan_score <- function() {
     scale_fill_manual(values = c("#A41F9AFF", "#0D0887FF"), 
                       breaks = c("intron", "novel_acceptor"),
                       labels = c("Annotated Intron  ", "Novel Acceptor")) +
-    theme(axis.line = element_line(colour = "black" ),
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top") +
     xlab("MES Acceptor (3'ss) score") +
+    custom_ggtheme +
     guides(fill = guide_legend(title = element_blank(), ncol = 2, nrow = 1))
   
   
   ss3plot
   file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss3plot")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
   
   
   ## COMBO
@@ -1413,8 +1242,8 @@ get_maxentscan_score <- function() {
                      ncol = 2, 
                      nrow = 1)
   file_name <- paste0(getwd(), "/results/_paper/figures/MES_combo_supplementary")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
   ## Delta MES -----------------------------------------------------------
@@ -1436,18 +1265,13 @@ get_maxentscan_score <- function() {
     scale_fill_manual(values =  c("#35B779FF"),
                       breaks = c("diff_ss5score"),
                       labels = c("Delta MES Donor")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.title = element_text(colour = "black", size = "11"),
-          legend.text = element_text(size = "11"),
-          legend.title = element_text(size = "11"),
-          legend.position = "top") +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
   
   deltaplot5ss
   file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_5ss")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
   
  
   df_delta_3ss <- df_mes %>%
@@ -1466,19 +1290,14 @@ get_maxentscan_score <- function() {
     scale_fill_manual(values =  c("#64037d"),
                       breaks = c("diff_ss3score"),
                       labels = c("Delta MES Acceptor")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.title = element_text(colour = "black", size = "11"),
-          legend.text = element_text(size = "11"),
-          legend.title = element_text(size = "11"),
-          legend.position = "top") +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
   
   deltaplot3ss
   
   file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_3ss")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
   
   ##############
   ## COMBO
@@ -1491,8 +1310,8 @@ get_maxentscan_score <- function() {
                      nrow = 1)
   
   file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_combo")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 70, units = "mm", dpi = 300)
   
   
   ##############
@@ -1682,16 +1501,7 @@ get_distances <- function() {
     guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
                                override.aes = list(size = 3),
                                ncol = 2, nrow = 1 )) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.text.x = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          strip.text = element_text(colour = "black", size = "10"), 
-          legend.text = element_text(colour = "black", size = "10"),
-          plot.caption = element_text(colour = "black", size = "10"),
-          plot.title = element_text(colour = "black", size = "10"),
-          legend.title = element_text(colour = "black", size = "10"),
-          legend.position = "top") 
+    custom_ggtheme
   
   
   distance_rectangle <- ggplot() +
@@ -1700,7 +1510,7 @@ get_distances <- function() {
     geom_text(aes(x = 15, y = 55),  size = 5, label = "exon") +
     geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15,y = 70),  size =5, label = "intron") +
+    geom_text(aes(x = -15, y = 70),  size = 5, label = "intron") +
     theme_void()
   
   
@@ -1723,13 +1533,14 @@ get_distances <- function() {
     inner_join(df_master_introns,
                by = "ref_junID") %>%
     filter(protein_coding %in% c(0,100)) %>%
-    mutate(type_PC = ifelse(protein_coding == 100, "protein coding (PC)", "non PC")) %>%
-    mutate(novel_type = str_replace(string = novel_type,
+    mutate(type_PC = ifelse(protein_coding == 100, "protein coding (PC)", "non PC"),
+           novel_type = str_replace(string = novel_type,
                                     pattern = "_",
-                                    replacement = " "))
+                                    replacement = " "),
+           novel_type = str_to_title(novel_type))
   
   df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
-                                    levels = c("novel donor", "novel acceptor"))
+                                    levels = c("Novel Donor", "Novel Acceptor"))
   
   df_novel_tidy$type_PC = factor(df_novel_tidy$type_PC, 
                                  levels = c("protein coding (PC)", "non PC"))
@@ -1753,67 +1564,58 @@ get_distances <- function() {
     scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
                        breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
     scale_fill_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("novel donor", "novel acceptor"),
-                      labels = c("novel donor", "novel acceptor")) +
+                      breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.text.x = element_text(colour = "black", size = "11"),
-          axis.title = element_text(colour = "black", size = "11"),
-          strip.text.y = element_blank(), 
-          legend.text = element_text(colour = "black", size = "11"),
-          plot.caption = element_text(colour = "black", size = "11"),
-          plot.title = element_text(colour = "black", size = "11"),
-          legend.title = element_text(colour = "black", size = "11"),
-          legend.position = "none") +
+    custom_ggtheme +
+    theme(legend.position = "none") +
     geom_segment(data = data.frame(x = 5.8, xend = 9.2, linewidth =1,
                                    y = 980, yend = 980,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 5.9, xend = 5.9, linewidth =1, 
                         y = 960, yend = 980,
                         colour = "#333333",
-                        novel_type="novel acceptor"),
+                        novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 9.1, xend = 9.1, linewidth =1,
                                    y = 960, yend = 980,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
     geom_segment(data = data.frame(x = 9.1, xend = 12.6, linewidth =1,
                                    y = 680, yend = 680,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 9.2, xend = 9.2, linewidth =1, 
                                    y = 660, yend = 680,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 12.5, xend = 12.5, linewidth =1,
                                    y = 660, yend = 680,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
   geom_segment(data = data.frame(x = 12.1, xend = 15.3, linewidth =1,
                                  y = 440, yend = 440,
                                  colour = "#333333",
-                                 novel_type="novel acceptor"),
+                                 novel_type="Novel Acceptor"),
                aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 12.2, xend = 12.2, linewidth =1, 
                                    y = 420, yend = 440,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 15.2, xend = 15.2, linewidth =1,
                                    y = 420, yend = 440,
                                    colour = "#333333",
-                                   novel_type="novel acceptor"),
+                                   novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
-    ggplot2::facet_grid(vars(factor(novel_type, levels=c('novel donor','novel acceptor'))))
+    ggplot2::facet_grid(vars(factor(novel_type, levels=c('Novel Donor','Novel Acceptor'))))
   
   
   distance_rectangle <- ggplot() +
@@ -1853,19 +1655,9 @@ get_distances <- function() {
     scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
                        breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
     scale_fill_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("novel donor", "novel acceptor"),
-                      labels = c("Novel Donor", "Novel Acceptor")) +
+                      breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.text.x = element_text(colour = "black", size = "11"),
-          axis.title = element_text(colour = "black", size = "11"),
-          strip.text.y = element_blank(), 
-          legend.text = element_text(colour = "black", size = "11"),
-          plot.caption = element_text(colour = "black", size = "11"),
-          plot.title = element_text(colour = "black", size = "11"),
-          legend.title = element_text(colour = "black", size = "11"),
-          legend.position = "top") 
+    custom_ggtheme 
   
   plot_legend <- ggpubr::get_legend(plot_NPC)
   
@@ -1902,8 +1694,8 @@ get_distances <- function() {
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX_all")
-  #ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 369, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
   #########################################
@@ -2148,23 +1940,16 @@ get_modulo <- function() {
     ylab("Modulo3 of the distance") +
     xlab("% of novel junctions") +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          axis.text.y = element_text(size = "10", vjust = 1, hjust = 1),
-          legend.text = element_text(colour = "black",size = "12"),
-          strip.text = element_text(colour = "black", size = "12"),
-          plot.caption = element_text(colour = "black",size = "12"),
-          legend.title = element_text(colour = "black", size = "12"),
-          legend.position = "none") +
+    custom_ggtheme +
+    theme(legend.position = "none") +
     scale_x_continuous(breaks = c(30,35,40),
                        labels = c("30%","35%","40%")) +
     scale_y_discrete(expand = c(0,0.5,1,0))
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/modulo3_alltissues_density")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 80, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
   
   
@@ -2269,16 +2054,7 @@ get_MSR_FCTX <- function()  {
     scale_fill_manual(values = c("#35B779FF","#64037d"),
                       breaks = c("MSR_D","MSR_A"),
                       labels = c("MSR Donor","MSR Acceptor")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "8"),
-          
-          axis.title = element_text(colour = "black", size = "11"),
-          strip.text =  element_text(colour = "black", size = "11"),
-          plot.title = element_text(colour = "black", size = "11"),
-          legend.text = element_text(size = "11"),
-          legend.title = element_text(size = "11"),
-          legend.position = "top",
-          axis.text.x = element_text(hjust = 0.5, vjust = 1)) +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, 
                                nrow = 1))
@@ -2300,16 +2076,7 @@ get_MSR_FCTX <- function()  {
     scale_fill_manual(values = c("#35B779FF","#64037d"),
                       breaks = c("MSR_D","MSR_A"),
                       labels = c("MSR Donor","MSR Acceptor")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "8"),
-          
-          axis.title = element_text(colour = "black", size = "11"),
-          strip.text =  element_text(colour = "black", size = "11"),
-          plot.title = element_text(colour = "black", size = "11"),
-          legend.text = element_text(size = "11"),
-          legend.title = element_text(size = "11"),
-          legend.position = "top",
-          axis.text.x = element_text(hjust = 0.5, vjust = 1)) +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, 
                                nrow = 1))
@@ -2318,15 +2085,15 @@ get_MSR_FCTX <- function()  {
   
   ggpubr::ggarrange(plot1,
                     plot2,
-                    labels = c("", "b"),
+                    labels = c("", ""),
                     nrow = 2,
                     ncol = 1,
                     common.legend = T)
   
 
   file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_all_alternative")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 160, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   ##############################################################################
   ## CORRECT BY MEAN COVERAGE
@@ -2352,9 +2119,7 @@ get_MSR_FCTX <- function()  {
   plot_BS <- ggplot(data = df_biotype_result_tidy %>% distinct(ref_junID,.keep_all = T)) +
     geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.8) +
     ggtitle("Before subsampling") +
-    theme(legend.position = "top",
-          legend.text = element_text(size = 12),
-          text = element_text(size = 12)) +
+    custom_ggtheme +
     scale_fill_discrete(name = "Transcript biotype: ") +
     xlab("log10 mean read coverage")
   
@@ -2398,9 +2163,7 @@ get_MSR_FCTX <- function()  {
     ggtitle("After subsampling") +
     #ggtitle("Mean read coverage per annotated intron across all samples\nfrom 54 GTEx v8 tissues - Subsampling performed.") +
     scale_fill_discrete(name = "Transcript biotype: ") +
-    theme(legend.position = "top",
-          legend.text = element_text(size = 12),
-          text = element_text(size = 12)) +
+    custom_ggtheme +
     xlab("log10 mean read coverage")
   
   
@@ -2410,8 +2173,8 @@ get_MSR_FCTX <- function()  {
                     common.legend = T)
   
   file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_subsampling")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
   
@@ -2511,17 +2274,7 @@ get_MSR_FCTX <- function()  {
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
                       labels = c("Protein-coding","Non-protein-coding")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          strip.text =  element_text(colour = "black", size = "10"),
-          plot.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top",
-          axis.text.x = element_text(#angle = 20, 
-            hjust = 0.5,
-            vjust = 1)) +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, nrow = 1))
   plotMSR_donor
@@ -2540,17 +2293,7 @@ get_MSR_FCTX <- function()  {
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
                       labels = c("Protein-coding","Non-protein-coding")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          strip.text =  element_text(colour = "black", size = "10"),
-          plot.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(size = "10"),
-          legend.title = element_text(size = "10"),
-          legend.position = "top",
-          axis.text.x = element_text(#angle = 20, 
-            hjust = 0.5,
-            vjust = 1)) +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL,
                                ncol = 2, nrow = 1))
   
@@ -2567,8 +2310,8 @@ get_MSR_FCTX <- function()  {
   
   print(paste0(Sys.time(), " - saving plot..."))
   file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_final")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 160, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
   
   
@@ -3073,16 +2816,7 @@ get_lm_single_tissue <- function() {
               space = "free", 
               scales = "free_y",
               strip.position = "left") + 
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text.x = element_text(colour = "black", size = "8"),
-          axis.text.y = element_text(colour = "black", size = "10"),
-          axis.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(colour = "black", size = "9"),
-          legend.title = element_text(colour = "black", size = "9"),
-          legend.position='top', 
-          #legend.justification = c(0,0),
-          strip.text = element_text(colour = "black", size = "11"),
-          axis.ticks = element_line(colour = "black", linewidth = 2)) +  
+    custom_ggtheme +
     ylab("Covariates") +
     geom_hline(yintercept = seq(from = 0,
                                 to = length((fit_donor$coefficients %>% names)[-1]) + .5,
@@ -3147,17 +2881,7 @@ get_lm_single_tissue <- function() {
                                 scales = "free_y",
                                 strip.position = "left") +
                       theme_light()+ 
-                      
-                      theme(axis.line = element_line(colour = "black"), 
-                            axis.text.x = element_text(colour = "black", size = "8"),
-                            axis.text.y = element_text(colour = "black", size = "10"),
-                            axis.title = element_text(colour = "black", size = "10"),
-                            legend.text = element_text(colour = "black", size = "9"),
-                            legend.title = element_text(colour = "black", size = "9"),
-                            legend.justification="left",
-                            legend.position = "top",
-                            strip.text = element_text(colour = "black", size = "10"),
-                            axis.ticks = element_line(colour = "black", linewidth = 2)),
+                      custom_ggtheme,
                     ncol = 2,
                     nrow = 1)
     
@@ -3177,8 +2901,8 @@ get_lm_single_tissue <- function() {
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/lm_FTCX")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 210, height = 100, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
   
   ############################################
@@ -3580,13 +3304,7 @@ plot_estimate_variance_across_tissues <- function() {
     ylab("Distribution of the significant estimate beta values (q<0.05)") +
     xlab(" ") +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top") +
+    custom_ggtheme +
     scale_fill_manual(breaks = c("MSR_Donor","MSR_Acceptor"),
                        labels = c("MSR_Donor","MSR_Acceptor")) +
     theme(axis.text.y = element_text(#angle = 70, 
@@ -3597,8 +3315,8 @@ plot_estimate_variance_across_tissues <- function() {
   
   plotTissuesMSRDonor
   file_name <- paste0(getwd(), "/results/_paper/figures/lm_donor_alltissues")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
   
   
@@ -3611,13 +3329,7 @@ plot_estimate_variance_across_tissues <- function() {
     ylab("Distribution of the significant estimate beta values (q<0.05)") +
     xlab(" ") +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          strip.text = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top") +
+    custom_ggtheme +
     scale_fill_manual(breaks = c("MSR_Donor","MSR_Acceptor"),
                       labels = c("MSR_Donor","MSR_Acceptor")) +
     theme(axis.text.y = element_text(#angle = 70, 
@@ -3628,8 +3340,8 @@ plot_estimate_variance_across_tissues <- function() {
   
   plotTissues3ssLM
   file_name <- paste0(getwd(), "/results/_paper/figures/lm_accepor_alltissues")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
   
   #######################################
@@ -4409,30 +4121,22 @@ plot_effect_size_data <- function() {
     geom_bar(aes(fill = MSR_type), 
              stat = "identity", color = "black", 
              linewidth = 0.25, width = 0.80, position = "dodge") + 
-    #geom_hline(aes(yintercept = 0.1), linewidth = 0.25) + geom_hline(aes(yintercept = 0.3), linewidth = 0.25) + geom_hline(aes(yintercept = 0.5), linewidth = 0.25) + 
     scale_y_continuous(limits = c(0,0.8),
                        expand = expansion(mult = c(0, 0.02)), 
                        breaks = seq(0, 0.8, 0.1),
                        labels = c("0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "", "")) +
     scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
-    #coord_flip() +
-    # viridis::scale_fill_viridis(option="viridis", discrete = T, begin = 0.20, end = 0.75, 
-    #                             name = "Splice site:",
-    #                             labels = c("MSR_A" = "Acceptor", "MSR_D" = "Donor"),
-    #                             guide = guide_legend(reverse = T)) +
     labs(x = "Target gene shRNA knockdown", y = "Median MSR difference between\ngene knockdown vs. control") + 
     facet_row(facets = vars(Category), 
                scales = "free_x", space = "free",
-               #ncol = 4, 
-               #nrow=1,
                labeller = labeller(Category = category_labels),
                drop = T,
               shrink = T) +
     scale_fill_manual(values = c("#35B779FF","#64037d"),
                       labels = c("MSR_A" = "MSR Acceptor", "MSR_D" = "MSR Donor"),
                       breaks = c("MSR_D", "MSR_A")) +
-  guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
-                             order = 1, 
+    guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
+                               order = 1, 
                              ncol = 2, 
                              nrow = 1 )) +
     theme_light() 
@@ -4453,24 +4157,16 @@ plot_effect_size_data <- function() {
                        guide = guide_colourbar(frame.colour = "black", frame.linewidth = 0.4,
                                                order = 2,
                                                ticks.colour = "black", barwidth = 10, barheight = 1.5)) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.text.y = element_text(colour = "black", size = "9"),
-          axis.text.x = element_text(colour = "black", size = "9",angle = 90,hjust = 1,vjust = 1),
-          axis.title = element_text(colour = "black", size = "10"),
-          strip.text = element_text(colour = "black", size = "11"),
-          plot.caption = element_text(colour = "black", size = "10"),
-          plot.title = element_text(colour = "black", size = "10"),
-          legend.text = element_text(colour = "black", size = "9"),
-          legend.title = element_text(colour = "black", size = "9"),
-          legend.position = "top") 
+    custom_ggtheme +
+    theme(axis.text.x = element_text(angle = 90),
+          legend.box = "horizontal") 
   
   # Save the graph
   ggsave(file = paste0(getwd(), "/results/_paper/figures/Effect_size_combined_top", max_genes, ".png"), 
-         width = 200, height = 100, units = "mm", dpi = 300)
+         width = 180, height = 90, units = "mm", dpi = 300)
 }
 
-plot_data_AQR_U2AF1 <- function() {
+plot_data_AQR_U2AF2 <- function() {
   
   
   
@@ -4582,14 +4278,11 @@ plot_data_AQR_U2AF1 <- function() {
   
 
   
-  plot_aqr_u2af1 <- ggplot(RBP_novel %>%
+  plot_aqr_u2af2 <- ggplot(RBP_novel %>%
                              filter(novel_type == "novel_acceptor") %>%
-                             mutate(novel_type = str_replace(string = novel_type,
-                                                             pattern = "_",
-                                                             replacement = " ")) %>%
+                             mutate(novel_type = str_replace(string = novel_type, pattern = "_", replacement = " ")) %>%
                              filter(abs(distance) < limit_bp) %>%
-                             mutate(target_gene = factor(x = target_gene,
-                                                         levels = target_RBPs))) + 
+                             mutate(target_gene = factor(x = target_gene, levels = target_RBPs))) + 
     geom_histogram(aes(x = distance, fill = cluster),
                    bins = 60, 
                    binwidth = 1, 
@@ -4597,44 +4290,32 @@ plot_data_AQR_U2AF1 <- function() {
                    alpha = 1, 
                    color = "black", 
                    linewidth = 0.1) +
-    scale_x_continuous(#expand = expansion(mult = c(0, 0)), 
-                       #limits = c((limit_bp * -1), limit_bp), 
-                       breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
-    
-    scale_fill_manual(values = c("#F5986FFF","#333333"),
-                      breaks = c("gene knockdown", "control"),
-                      labels = c("gene knockdown  ", "control")) +
-    
+    scale_x_continuous(breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
+    # ggsci::scale_fill_npg()+
+    scale_fill_manual(values = c("#91D1C2B2", "#999999"),
+                     breaks = c("gene knockdown", "control"),
+                     labels = c("gene knockdown  ", "control")) +
     labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
-    # ggforce::facet_col(vars(novel_type), 
-    #                    labeller = labeller(novel_type = c("novel_acceptor" = "Novel acceptor"))) +
     facet_wrap(vars(target_gene)) +
-    guides(fill = guide_legend(title = "Sample type: ", #title = "Junction category & Strand",
-                               #override.aes = list(size = 3),
-                               ncol = 2, nrow = 1 )) +
+    guides(fill = guide_legend(title = "Sample type: ", ncol = 2, nrow = 1 )) +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.text.x = element_text(colour = "black", size = "11" ),
-          axis.title = element_text(colour = "black", size = "11"),
-          strip.text = element_text(colour = "black", size = "11"), 
-          legend.text = element_text(colour = "black", size = "11"),
-          plot.caption = element_text(colour = "black", size = "11"),
-          plot.title = element_text(colour = "black", size = "11"),
-          legend.title = element_text(colour = "black", size = "11"),
-          legend.position = "none") 
+    custom_ggtheme +
+    theme(legend.position = "none") 
   
   
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 30),  size = 3.3, label = "exon") +
+    geom_text(aes(x = 15, y = 30),  size = 3, label = "exon") +
     geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15, y = 51),  size = 3.3, label = "intron") +
+    geom_text(aes(x = -15, y = 51),  size = 3, label = "intron") +
     theme_void()
   
   
-  distances_acceptor <- plot_aqr_u2af1 / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
+  distances_acceptor <- plot_aqr_u2af2 / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
   distances_acceptor
+  
+  #mypal = ggsci::pal_npg("nrc", alpha = 0.7)(10)
+  #scales::show_col(mypal)
   
   # ggsave(file = paste0(getwd(), "/results/_paper/figures/distance_stacked_",target_RBPs[1],"_",target_RBPs[2],".png"), 
   #        width = 183, height = 110, dpi = 300, units = "mm")
@@ -4726,31 +4407,24 @@ plot_data_AQR_U2AF1 <- function() {
                linetype="dashed", linewidth=0.9) +
     facet_wrap(vars(RBP)) +
     geom_text(data = delta_mes_acceptor, 
-              aes(label = paste0("p = ", format(p.value, digits = 2, scientific = T)), 
-                  x=25, y=0.08), colour = "#333333") +
-    scale_fill_manual(values = c("#F5986FFF","#333333"),
+              aes(label = paste0("p = ", format(p.value, digits = 2, scientific = T))), 
+              x=25, y=0.08, family= "Arial", size = 3, 
+              colour = "#333333") +
+    scale_fill_manual(values = c("#91D1C2B2", "#999999"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("Gene knockdown  ", "Control")) + 
-    scale_colour_manual(values = c("#F5986FFF","#333333"),
+    scale_colour_manual(values = c("#91D1C2B2", "#999999"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("Gene knockdown  ", "Control")) + 
     labs(x = "Delta MES Acceptor", y = "Density") +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "11"),
-          axis.text.x = element_text(colour = "black", size = "11"),
-          axis.title = element_text(colour = "black", size = "11"),
-          strip.text = element_text(colour = "black", size = "11"), 
-          plot.caption = element_text(colour = "black", size = "11"),
-          plot.title = element_text(colour = "black", size = "12"),
-          legend.title = element_text(colour = "black", size = "11"),
-          legend.text = element_text(colour = "black", size = "11"),
-          legend.position = "top",
-          legend.box = "vertical") +
+    custom_ggtheme +
     guides(fill = guide_legend(title = "Sample type: ",
                                ncol = 2, nrow = 1 ),
            colour = guide_legend(title = "Median Delta MES: ",
                                ncol = 2, nrow = 1 )) 
+  delta_mes
+  
   
   ggpubr::ggarrange(delta_mes,
                     distances_acceptor,
@@ -4761,9 +4435,9 @@ plot_data_AQR_U2AF1 <- function() {
   
   
   ggsave(file = paste0(getwd(),"/results/_paper/figures/", target_RBPs[1], "_", target_RBPs[2], "_distances_delta_MES.png"), 
-         width = 180, height = 170, dpi = 300, units = "mm")
+         width = 180, height = 180, dpi = 300, units = "mm")
   
-  ##
+ 
 
   ## DISTANCES LONGER ------------------------
   
@@ -4785,49 +4459,33 @@ plot_data_AQR_U2AF1 <- function() {
                    position = "identity", 
                    alpha = 1, 
                    color = "#333333", 
-                   linewidth = 0.01) +
-    scale_x_continuous(#expand = expansion(mult = c(0, 0)), 
-                       limits = c((limit_bp * -1), limit_bp), 
+                   linewidth = 0.02) +
+    scale_x_continuous(limits = c((limit_bp * -1), limit_bp), 
                        breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
     scale_y_continuous(expand = expansion(mult = c(0, 0.05))) + 
-    scale_fill_manual(values = c("#F5986FFF","#333333"),
+    scale_fill_manual(values =  c("#91D1C2B2", "#999999"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("Gene knockdown  ", "Control")) +
     labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
-    #ggtitle(paste0(target_RBP)) + 
     facet_grid(novel_type~target_gene, 
                labeller = labeller(novel_type = c("novel donor" = "Novel donor", "novel acceptor" = "Novel acceptor"))) +
-    guides(fill = guide_legend(title = "Sample type: ", #title = "Junction category & Strand",
-                               override.aes = list(size = 3),
-                               ncol = 2, nrow = 1 )) +
     theme_light() +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "12"),
-          axis.text.x = element_text(colour = "black", size = "12"),
-          axis.title = element_text(colour = "black", size = "12"),
-          
-          strip.text = element_text(colour = "black", size = "11"), 
-          
-          plot.caption = element_text(colour = "black", size = "12"),
-          plot.title = element_text(colour = "black", size = "12"),
-          
-          legend.text = element_text(colour = "black", size = "12"),
-          legend.title = element_text(colour = "black", size = "12"),
-          legend.position = "none") 
+    custom_ggtheme +
+    theme(legend.position = "none") 
   
   
   distance_rectangle_longer <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
-    geom_text(aes(x = 100, y = 30),  size = 4, label = "exon") +
+    geom_text(aes(x = 100, y = 30),  size = 3, label = "exon") +
     geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -100, y = 51),  size = 4, label = "intron") +
+    geom_text(aes(x = -100, y = 51),  size = 3, label = "intron") +
     theme_void()
   
   
   plot_aqr_long_distances / (distance_rectangle_longer) + patchwork::plot_layout(heights = c(8, 1))
   
   ggsave(file = paste0(getwd(), "/results/_paper/figures/distance_stacked_AQR_200bp.png"), 
-         width = 200, height = 95, dpi = 300, units = "mm")
+         width = 170, height = 80, dpi = 300, units = "mm")
   
   
   ## This analysis identified a significant reduction (pval) in the strength of the novel 3’ss compared 

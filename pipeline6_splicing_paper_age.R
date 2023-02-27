@@ -20,6 +20,17 @@ dbListTables(con)
 age_projects <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
 
 
+custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
+                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         axis.ticks = element_line(colour = "black", linewidth = 2),
+                         axis.text = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.line = element_line(colour = "black"),
+                         axis.title = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
+                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 1, vjust = 0),
+                         strip.text = element_text(size = 7, family="Arial", colour = "black"),
+                         legend.position = "top",
+                         legend.box = "vertical")
 
 ##################################
 ## STATS
@@ -428,7 +439,7 @@ get_effsize_MSR_with_age <- function() {
 
 plot_effsize_MSR_with_age <- function() {
   
-  
+  folder_results <- paste0(getwd(), "/results/_paper/results/")
   file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
   df_wilcoxon <- readRDS(file = file_name)
   
@@ -473,19 +484,12 @@ plot_effsize_MSR_with_age <- function() {
     facet_wrap(vars(MSR_type)) +
     theme_light() +
     ylab("") +
-    xlab("Median MSR difference between\n20-39yrs vs. 60-79yrs") +
+    xlab("Probability of superior MSR in\n60-79yrs compared to 20-39yrs") +
     scale_color_manual(values = c("#35B779FF","#64037d"),
                        breaks = c("MSR Donor", "MSR Acceptor"),
                        labels = c("MSR Donor", "MSR Acceptor")) +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "10"),
-          axis.text.x = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          strip.text = element_text(colour = "black", size = "12")
-    ) + 
-    scale_size(range = c(7, 1))+
+    custom_ggtheme + 
+    scale_size(range = c(5, 1))+
     theme(legend.position="top", 
           legend.box="vertical", 
           legend.margin=margin()) +
@@ -499,7 +503,7 @@ plot_effsize_MSR_with_age <- function() {
   ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.svg"), 
                   width = 183, height = 183, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.png"), 
-                  width = 183, height = 120, units = "mm", dpi = 300)
+                  width = 180, height = 80, units = "mm", dpi = 300)
   
   
   
@@ -768,15 +772,11 @@ age_stratification_brain_GO <- function() {
     dplyr::select(ref_junID, sample_type, MSR_A, gene_name, gene_id) %>%
     spread(sample_type, MSR_A)
   
-  ## Introns increasing noise with age
+  ## Introns increasing MSR with age
   df_MSRD_increasing <- df_MSRD %>%
-    filter((`20-39` < `40-59` & `40-59` < `60-79`) |
-             (`20-39` == `40-59` & `40-59` < `60-79`) |
-             (`20-39` < `40-59` & `40-59` == `60-79`))
+    filter((`20-39` < `40-59` & `40-59` < `60-79`))
   df_MSRA_increasing <- df_MSRA %>%
-    filter((`20-39` < `40-59` & `40-59` < `60-79`) |
-             (`20-39` == `40-59` & `40-59` < `60-79`) |
-             (`20-39` < `40-59` & `40-59` == `60-79`))
+    filter((`20-39` < `40-59` & `40-59` < `60-79`))
   
   c(df_MSRD_increasing %>% distinct(ref_junID) %>% pull(),
     df_MSRA_increasing %>% distinct(ref_junID) %>% pull()) %>% unique() %>% length()
@@ -833,25 +833,25 @@ age_stratification_brain_GO <- function() {
   
   ## DOTPLOT
   
-  edox2 <- enrichplot::pairwise_termsim(ego_MSR, showCategory = 30)
+  #edox2 <- enrichplot::pairwise_termsim(ego_MSR, showCategory = 30)
   #clusterProfiler::heatplot(ego_MSR,showCategory = 30)
   
   
   plotGO <- clusterProfiler::dotplot(ego_MSR %>%
-                                       filter(Description != "RNA splicing, via transesterification reactions with bulged adenosine as nucleophile"), 
-                                     x = "GeneRatio", showCategory = 20, split="ONTOLOGY") +
+                                       filter(Description != "RNA splicing, via transesterification reactions with bulged adenosine as nucleophile",
+                                              Description != "plasma membrane bounded cell projection cytoplasm",
+                                              ONTOLOGY == "CC"), 
+                                     x = "GeneRatio", 
+                                     showCategory = 30, 
+                                     split="ONTOLOGY") +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free_x", space = "free") +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text.y = element_text(colour = "black", size = "9"),
-          axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
+    custom_ggtheme +
+    theme(axis.text.x = element_text(angle = 90),
+          legend.spacing.y = unit(0, 'cm'),
           legend.position = "top",
-          legend.box="vertical",
-          strip.text = element_text(colour = "black", size = "12")) + 
+          legend.box="horizontal") + 
     scale_size(range = c(1, 5))+
     coord_flip() +
     guides(size = guide_legend(title = "Gene Count: "),
@@ -860,22 +860,33 @@ age_stratification_brain_GO <- function() {
   plotGO
   
   plotKEGG <-  clusterProfiler::dotplot(ekegg_MSR %>%
-                                          mutate(ONTOLOGY = "KEGG"), 
+                                          mutate(ONTOLOGY = "KEGG") %>%
+                                          filter(Description %in% c("Lysosome", 
+                                                                    "Thyroid hormone signaling pathway", 
+                                                                    "Huntington disease"     ,                          
+                                                                    "Synaptic vesicle cycle",                         
+                                                                    "Spliceosome",                 
+                                                                    "Pathways of neurodegeneration - multiple diseases", 
+                                                                    "Parkinson disease",
+                                                                    "Glutamatergic synapse", 
+                                                                    "Ubiquitin mediated proteolysis",
+                                                                    "Amyotrophic lateral sclerosis",                    
+                                                                    "Neurotrophin signaling pathway",
+                                                                    "Dopaminergic synapse",                            
+                                                                    "Nucleocytoplasmic transport",
+                                                                    "RNA degradation")), 
                                       showCategory = 20, split="ONTOLOGY") +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 40)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free", space = "free") +
-    theme(axis.line = element_line(colour = "black"), 
-          axis.text.y = element_text(colour = "black", size = "9"),
-          axis.text.x = element_text(colour = "black", size = "9", hjust = 1,vjust = 0, angle = 90),
-          axis.title = element_text(colour = "black", size = "12"),
-          legend.text = element_text(size = "12"),
-          legend.title = element_text(size = "12"),
-          legend.position = "top",
-          legend.box="vertical",
-          strip.text = element_text(colour = "black", size = "12")) + 
-    scale_size(range = c(1, 5))+
-    coord_flip()# +
+    coord_flip() +
+    custom_ggtheme +
+    theme(
+      axis.text.x = element_text(angle = 90),
+      legend.position = "top",
+      legend.box="horizontal",
+      legend.spacing.y = unit(0, 'cm')) + 
+    scale_size(range = c(1, 5))
   
   plotKEGG
   
@@ -883,11 +894,11 @@ age_stratification_brain_GO <- function() {
                     plotKEGG + ggpubr::rremove("ylab"), 
                     common.legend = T,
                     ncol = 2,nrow = 1,
-                    widths = c(3,1))
+                    widths = c(1.5,1))
   
   ggplot2::ggsave(filename = paste0(getwd(), 
                                     "/results/_paper/figures/go_dotplot_ALL_age_brain.png"), 
-                  width = 300, height = 180, units = "mm", dpi = 300)
+                  width = 180, height = 90, units = "mm", dpi = 300)
   
   ############################################
   ## BAR PLOT -------------------------------
@@ -1262,10 +1273,106 @@ plot_GO_Enrichment <- function() {
   
 }
 
+
+
+
 ####################################
 # SPLICEOSOMAL RBPs AND THEIR TPMs
 ####################################
 
+age_stratification_RBP_uncorrected_TPM_lm <- function() {
+  
+  
+  # Only measure RBPs that are splicing regulator, spliceosome, and Exon.Junction.Complex
+  all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/RBPs_subgroups.xlsx', 
+                              header = TRUE,
+                              sheetIndex = 1) %>% 
+    as_tibble() %>%
+    drop_na()
+  
+
+  
+  
+  # 1. The age stratification database has been corrected by RIN number
+  
+  # 2. Per RBP, get their TPM values across the age groups
+  
+  project_id <- "BRAIN"
+  
+  con <- dbConnect(RSQLite::SQLite(), database_path)
+  dbListTables(con)
+  
+  query <- paste0("SELECT * FROM 'master'")
+  df_metadata <- dbGetQuery(con, query) %>%
+    filter(SRA_project == project_id)
+  
+    
+  ## Get the MSR values of the RBPs across the age groups
+  brain_rbp_MSR_age <- map_df(df_metadata$cluster %>% unique(), function(age_group) {
+    
+    # age_group <- (df_metadata$cluster %>% unique())[1]
+      
+    print(paste0(age_group))
+    
+    ###########################################
+    ## GET DATA FROM THE DATABASE
+        
+    query <- paste0("SELECT DISTINCT ref_junID, ref_type, gene_tpm, transcript_id
+                    FROM '", age_group, "_", project_id, "_misspliced'")
+    introns <- dbGetQuery(con, query) %>% as_tibble()
+        
+        
+    
+    ## Add never-misspliced info
+    query <- paste0("SELECT ref_junID, ref_type, gene_tpm, transcript_id 
+                        FROM '", 
+                    age_group, "_", project_id, "_nevermisspliced'")
+    introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+    
+    
+    
+    ## Add transcript info
+    query <- paste0("SELECT id, gene_id FROM 'transcript' WHERE id IN (", 
+                    paste(introns$transcript_id %>% unique(), collapse =","), ")")
+    introns %>% nrow()
+    introns <- introns %>%
+      inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                 by = c("transcript_id" = "id"))
+    
+    
+    ## Add gene info
+    query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", 
+                    paste(introns$gene_id %>% unique(), collapse =","), ")")
+    introns <- introns %>%
+      inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                 by = c("gene_id" = "id"))
+    
+    
+    introns %>%
+      filter(gene_name %in% all_RBPs$name) %>%
+      mutate(age_cluster = age_group) %>%
+      dplyr::select(-c("transcript_id", "gene_id")) %>%
+      return()
+  })
+  
+  brain_rbp_MSR_age <- brain_rbp_MSR_age %>% as_tibble()
+  
+  # 3. Get theannotated introns present in the 3 age groups
+  common_introns <- brain_rbp_MSR_age %>%
+    dplyr::count(ref_junID) %>%
+    filter(n == 3) %>%
+    pull(ref_junID)
+  
+  brain_rbp_MSR_age_common <- brain_rbp_MSR_age %>%
+    filter(ref_junID %in% common_introns) 
+  
+  # 4. Compare the TPM values
+  ggplot(data = brain_rbp_MSR_age_common %>%
+           mutate(gene_tpm = log10(gene_tpm))) +
+    geom_tile(aes(x = age_cluster, y = gene_name, fill = gene_tpm))
+  
+  
+}
 
 age_stratification_RBP_uncorrected_TPM_lm <- function(project_id = c("BRAIN")) {
   
@@ -1514,7 +1621,7 @@ age_stratification_RBPs_affected_age <- function (project_id = "BRAIN") {
   # LOAD RBPs ORIGINAL PAPER AND TIDY
   ####################################
   
-  all_RBPs_tidy <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/data/all_RBPs_tidy.rds"))  %>%
+  all_RBPs_tidy <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/data/RBPs_subgroups.xlsx"))  %>%
     dplyr::select(RBP_name = name, ensembl_gene_id = id) %>%
     distinct(RBP_name, .keep_all = T) 
   
