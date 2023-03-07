@@ -49,7 +49,8 @@ custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = 
                          axis.line = element_line(colour = "black"),
                          axis.title = element_text(size = 7, family="Arial", colour = "black"),
                          axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
-                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 1, vjust = 0),
+                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", 
+                                                    hjust = 0.5, vjust = 0.5),
                          strip.text = element_text(size = 7, family="Arial", colour = "black"),
                          legend.position = "top",
                          legend.box = "vertical")
@@ -273,7 +274,7 @@ get_junc_length <- function() {
   
   ## Save plot
   file_name <- paste0(getwd(), "/results/_paper/figures/junction_length")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 180, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 150, height = 100, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 150, height = 100, units = "mm", dpi = 300)
   
 }
@@ -431,11 +432,9 @@ get_contamination_rates_all_tissues <- function () {
   
   ## GETTING CONTAMINATION RATES - % OF INDIVIDUALS
   ggplot(data = df_contamination_tidy) +
-    geom_bar(mapping = aes(x = tissue, y = prop, fill = type), 
-             stat = "identity", position = "identity") + 
+    geom_bar(mapping = aes(x = tissue, y = prop, fill = type), stat = "identity", position = "identity") + 
     #coord_flip() +
-    ggforce::facet_zoom(ylim = c(0,1.5), 
-                        zoom.size = 3) +
+    ggforce::facet_zoom(ylim = c(0,1.5), zoom.size = 3) +
     ylab("% unique novel junctions") +
     xlab("Tissue") +
     scale_fill_manual(values = c( "#a6a6a6", "#1a1a1a" ),
@@ -444,7 +443,8 @@ get_contamination_rates_all_tissues <- function () {
     #scale_fill_viridis_d(option = "A") +
     theme_light() +
     custom_ggtheme +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1).
+          ax) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) %>%
     return()
   
@@ -452,7 +452,7 @@ get_contamination_rates_all_tissues <- function () {
   dir.create(file.path(figures_path), recursive = TRUE, showWarnings = T)
   file_name <- paste0(figures_path, "/contamination_rates_all_tissues")
   
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 100, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
@@ -828,12 +828,33 @@ get_unique_donor_acceptor_jxn <- function() {
   
   junx_violin_plot
   
-  ## Save the figure 3
-  file_name <- paste0(getwd(), "/results/_paper/figures/percent_unique_donor_acceptor_violin")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), 
-                  width = 183, height = 130, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), 
-                  width = 90, height = 90, units = "mm", dpi = 300)
+  reads_violin_plot <- get_unique_donor_acceptor_reads()
+  
+  # file_name <- paste0(getwd(), "/results/_paper/figures/unique_donor_acceptor_reads_violin")
+  # ggplot2::ggsave(paste0(file_name, ".svg"), width = 150, height = 150, units = "mm", dpi = 300)
+  # ggplot2::ggsave(paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
+  # 
+  
+  
+  ggpubr::ggarrange(junx_violin_plot,
+                    reads_violin_plot,
+                    common.legend = T,
+                    labels = c("b", "c"),
+                    align = "h",
+                    ncol = 2,
+                    nrow = 1)
+  
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel2bc")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+  
+  
+  # ## Save the figure 3
+  # file_name <- paste0(getwd(), "/results/_paper/figures/percent_unique_donor_acceptor_violin")
+  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), 
+  #                 width = 183, height = 130, units = "mm", dpi = 300)
+  # ggplot2::ggsave(filename = paste0(file_name, ".png"), 
+  #                 width = 90, height = 90, units = "mm", dpi = 300)
 }
 
 get_unique_donor_acceptor_reads <- function() {
@@ -1004,23 +1025,6 @@ get_unique_donor_acceptor_reads <- function() {
     
   
   reads_violin_plot
-  file_name <- paste0(getwd(), "/results/_paper/figures/unique_donor_acceptor_reads_violin")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 150, height = 150, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
-  
-  
-  
-  ggpubr::ggarrange(junx_violin_plot,
-                    reads_violin_plot,
-                    common.legend = T,
-                    labels = c("b", "c"),
-                    align = "h",
-                    ncol = 2,
-                    nrow = 1)
-  
-  file_name <- paste0(getwd(), "/results/_paper/figures/donor_acceptor_junx_reads_violin")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 150, height = 150, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
 }
@@ -1204,10 +1208,10 @@ get_maxentscan_score <- function() {
                                ncol = 2, nrow = 1))
   
   ss5plot
-  file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss5plot")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
-  
+  # file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss5plot")
+  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
+  # 
   
   ## ss3score -----------------------------------------------------------
   
@@ -1230,10 +1234,10 @@ get_maxentscan_score <- function() {
   
   
   ss3plot
-  file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss3plot")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
-  
+  # file_name <- paste0(getwd(), "/results/_paper/figures/MES_ss3plot")
+  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
+  # 
   
   ## COMBO
   ggpubr::ggarrange( ss5plot, 
@@ -1241,7 +1245,7 @@ get_maxentscan_score <- function() {
                      labels = c("a", "b"),
                      ncol = 2, 
                      nrow = 1)
-  file_name <- paste0(getwd(), "/results/_paper/figures/MES_combo_supplementary")
+  file_name <- paste0(getwd(), "/results/_paper/figures/supplementary_fig3")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
@@ -1269,10 +1273,10 @@ get_maxentscan_score <- function() {
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
   
   deltaplot5ss
-  file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_5ss")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
-  
+  # file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_5ss")
+  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
+  # 
  
   df_delta_3ss <- df_mes %>%
     filter(novel_type == "novel_acceptor") %>% 
@@ -1295,10 +1299,10 @@ get_maxentscan_score <- function() {
   
   deltaplot3ss
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_3ss")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
-  
+  # file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_3ss")
+  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 90, height = 90, units = "mm", dpi = 300)
+  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 90, height = 90, units = "mm", dpi = 300)
+  # 
   ##############
   ## COMBO
   ##############
@@ -1309,9 +1313,9 @@ get_maxentscan_score <- function() {
                      ncol = 2, 
                      nrow = 1)
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/MES_delta_combo")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 70, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel3ab")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 175, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 175, height = 55, units = "mm", dpi = 300)
   
   
   ##############
@@ -1471,6 +1475,7 @@ get_distances <- function() {
                                     pattern = "_",
                                     replacement = " "))
   
+  
   df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
                                     levels = c("novel donor", "novel acceptor"))
   
@@ -1507,10 +1512,10 @@ get_distances <- function() {
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 55),  size = 5, label = "exon") +
+    geom_text(aes(x = 15, y = 55),  size = 3, label = "exon") +
     geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15, y = 70),  size = 5, label = "intron") +
+    geom_text(aes(x = -15, y = 70),  size = 3, label = "intron") +
     theme_void()
   
   
@@ -1568,63 +1573,120 @@ get_distances <- function() {
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
     custom_ggtheme +
     theme(legend.position = "none") +
-    geom_segment(data = data.frame(x = 5.8, xend = 9.2, linewidth =1,
+    
+    #########
+    geom_segment(data = data.frame(x = 5.8, xend = 9.1, linewidth = 1,
                                    y = 980, yend = 980,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 5.9, xend = 5.9, linewidth =1, 
+    geom_segment(data = data.frame(x = 5.9, xend = 5.9, linewidth = 1, 
                         y = 960, yend = 980,
                         colour = "#333333",
                         novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 9.1, xend = 9.1, linewidth =1,
+    geom_segment(data = data.frame(x = 9.0, xend = 9.0, linewidth = 1,
                                    y = 960, yend = 980,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
-    geom_segment(data = data.frame(x = 9.1, xend = 12.6, linewidth =1,
-                                   y = 680, yend = 680,
+  
+    geom_segment(data = data.frame(x = 8.8, xend = 12.1, linewidth =1,
+                                   y = 780, yend = 780,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 9.2, xend = 9.2, linewidth =1, 
-                                   y = 660, yend = 680,
+    geom_segment(data = data.frame(x = 8.9, xend = 8.9, linewidth =1, 
+                                   y = 760, yend = 780,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 12.5, xend = 12.5, linewidth =1,
-                                   y = 660, yend = 680,
+    geom_segment(data = data.frame(x = 12.0, xend = 12.0, linewidth =1,
+                                   y = 760, yend = 780,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
-  geom_segment(data = data.frame(x = 12.1, xend = 15.3, linewidth =1,
+    geom_segment(data = data.frame(x = 11.8, xend = 15.1, linewidth =1,
+                                 y = 550, yend = 550,
+                                 colour = "#333333",
+                                 novel_type="Novel Acceptor"),
+               aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 11.9, xend = 11.9, linewidth =1, 
+                                   y = 530, yend = 550,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 15.0, xend = 15.0, linewidth =1,
+                                   y = 530, yend = 550,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    
+
+    #########
+    geom_segment(data = data.frame(x = 14.8, xend = 18.1, linewidth =1,
                                  y = 440, yend = 440,
                                  colour = "#333333",
                                  novel_type="Novel Acceptor"),
                aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 12.2, xend = 12.2, linewidth =1, 
+    geom_segment(data = data.frame(x = 14.9, xend = 14.9, linewidth =1, 
                                    y = 420, yend = 440,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 15.2, xend = 15.2, linewidth =1,
+    geom_segment(data = data.frame(x = 18.0, xend = 18.0, linewidth =1,
                                    y = 420, yend = 440,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
+    
+    #########
+    geom_segment(data = data.frame(x = 17.8, xend = 21.1, linewidth =1,
+                                 y = 350, yend = 350,
+                                 colour = "#333333",
+                                 novel_type="Novel Acceptor"),
+               aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 17.9, xend = 17.9, linewidth =1, 
+                                   y = 330, yend = 350,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 21.0, xend = 21.0, linewidth =1,
+                                   y = 330, yend = 350,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    
+    
+    #########
+  geom_segment(data = data.frame(x = 20.8, xend = 24.1, linewidth =1,
+                                 y = 290, yend = 290,
+                                 colour = "#333333",
+                                 novel_type="Novel Acceptor"),
+               aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 20.9, xend = 20.9, linewidth =1, 
+                                   y = 270, yend = 290,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 24.0, xend = 24.0, linewidth =1,
+                                   y = 270, yend = 290,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    
     ggplot2::facet_grid(vars(factor(novel_type, levels=c('Novel Donor','Novel Acceptor'))))
   
   
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 55),  size = 4, label = "exon") +
+    geom_text(aes(x = 15, y = 55),  size = 3, label = "exon") +
     geom_rect(aes(xmin = (limit_bp * -1), xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15,y = 80),  size = 4, label = "intron") +
+    geom_text(aes(x = -15,y = 80),  size = 3, label = "intron") +
     theme_void()
   
   
@@ -1632,9 +1694,9 @@ get_distances <- function() {
   plot_PC
   
   
-  # file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesPC")
-  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
-  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesPC")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
   
   
   
@@ -1693,7 +1755,7 @@ get_distances <- function() {
   plot
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX_all")
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel3cd")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
@@ -1947,9 +2009,9 @@ get_modulo <- function() {
     scale_y_discrete(expand = c(0,0.5,1,0))
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/modulo3_alltissues_density")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel3e")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 55, units = "mm", dpi = 300)
   
   
   
@@ -2086,14 +2148,14 @@ get_MSR_FCTX <- function()  {
   ggpubr::ggarrange(plot1,
                     plot2,
                     labels = c("", ""),
-                    nrow = 2,
-                    ncol = 1,
+                    nrow = 2, ncol = 1,
+                    heights = c(1,1.5),
                     common.legend = T)
   
 
-  file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_all_alternative")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel4a")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 75, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 75, units = "mm", dpi = 300)
   
   ##############################################################################
   ## CORRECT BY MEAN COVERAGE
@@ -2309,12 +2371,62 @@ get_MSR_FCTX <- function()  {
   
   
   print(paste0(Sys.time(), " - saving plot..."))
-  file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_final")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel4bc")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 55, units = "mm", dpi = 300)
+  
+  ####################################
   
   
   
+  plotMSR_donor_zoomed <- ggplot(data = df_introns_biotype_tidy %>% 
+                                   filter(MSR_type == "MSR_D")) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge", linewidth = .5, color = "#333333")+
+    ggtitle("MSR Donor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("") +
+    scale_y_continuous(limits =c(0,750), position = "right") +
+    theme_light() +
+    scale_fill_manual(values = c("#333333","#999999"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding","Non-protein-coding")) +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = NULL, 
+                               ncol = 2, nrow = 1))
+  plotMSR_donor_zoomed
+  
+  
+  ## Non-protein-coding
+  plotMSR_acceptor_zoomed <- ggplot(data = df_introns_biotype_tidy %>% 
+                                   filter(MSR_type == "MSR_A")) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge", linewidth = .5, color = "#333333")+
+    ggtitle("MSR Acceptor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("") +
+    scale_y_continuous(limits =c(0,750), position = "right") +
+    theme_light() +
+    scale_fill_manual(values = c("#333333","#999999"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding","Non-protein-coding")) +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = NULL, 
+                               ncol = 2, nrow = 1))
+  plotMSR_acceptor_zoomed
+  
+  
+  ggpubr::ggarrange(plotMSR_donor_zoomed,
+                    plotMSR_acceptor_zoomed,
+                    nrow = 1,
+                    ncol = 2,
+                    common.legend = T,
+                    labels = c("b", "c"))
+  
+  print(paste0(Sys.time(), " - saving plot..."))
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel4bc-zoomed")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 55, units = "mm", dpi = 300)
   
   
   ####################################
@@ -2704,27 +2816,22 @@ get_lm_single_tissue <- function() {
                   CDTS_5ss = ref_CDTS5score,
                   CDTS_3ss = ref_CDTS3score,
                   protein_coding = protein_coding,
-                  mean_phastCons20way_5ss = ref_cons5score,
-                  mean_phastCons20way_3ss = ref_cons3score,
+                  #mean_phastCons20way_5ss = ref_cons5score,
+                  #mean_phastCons20way_3ss = ref_cons3score,
                   MSR_D,
                   MSR_A)
   
-  idb %>% nrow()
-  # idb <- introns %>%
-  #   as.data.frame() %>%
-  #   dplyr::distinct(ref_junID, .keep_all = T) %>%
-  #   dplyr::rename(intron_length = ref_length,
-  #                 intron_5ss_score = ref_ss5score,
-  #                 intron_3ss_score = ref_ss3score,
-  #                 gene_length = gene_width,
-  #                 gene_tpm = gene_tpm,
-  #                 gene_num_transcripts = n_transcripts,
-  #                 CDTS_5ss = ref_CDTS5score,
-  #                 CDTS_3ss = ref_CDTS3score,
-  #                 protein_coding = protein_coding,
-  #                 mean_phastCons20way_5ss = ref_cons5score,
-  #                 mean_phastCons20way_3ss = ref_cons3score)
   
+  idb %>% nrow()
+  
+  idb <-idb %>% 
+    left_join(y = db_introns_tidy %>% 
+                as_tibble() %>%
+                distinct(ref_junID, .keep_all = T) %>%
+                dplyr::select(ref_junID, 
+                              mean_phastCons20way_5ss = phastCons20way_3ss_mean,
+                              mean_phastCons20way_3ss = phastCons20way_5ss_mean),
+              by = "ref_junID")
   
   #########################
   ## LINEAR MODELS
@@ -2821,7 +2928,8 @@ get_lm_single_tissue <- function() {
     geom_hline(yintercept = seq(from = 0,
                                 to = length((fit_donor$coefficients %>% names)[-1]) + .5,
                                 by = 1),
-               colour = "#999999")
+               linewidth = 0.2,
+               colour = "#999999" )
   
   plotLM
   
@@ -2866,54 +2974,39 @@ get_lm_single_tissue <- function() {
                                                          "PhastCons20 5'ss","PhastCons20 3'ss") %>% rev())
   tiles_data$type <- factor(tiles_data$type, levels= c("MSR Donor",
                                                          "MSR Acceptor"))
+
   
   ggpubr::ggarrange(plotLM ,
                     ggplot() + 
                       geom_tile(data = tiles_data %>%
                                   dplyr::rename("log10(q)"=q), 
-                                mapping = aes(x = type, y = col_label, fill = `log10(q)`))+
+                                mapping = aes(x = type, y = col_label, fill = `log10(q)`, colour = "q>0.05")) +
                       scale_fill_gradient(low = "red",high = "white", na.value = '#cccccc') +
-                      theme(legend.position = "top") +
+                      scale_colour_manual(values = c( "q>0.05" = "#cccccc")) +
                       xlab(" ") + 
                       ylab("") + 
                       facet_col(~group_label,
                                 space = "free",
                                 scales = "free_y",
                                 strip.position = "left") +
-                      theme_light()+ 
-                      custom_ggtheme,
+                      theme_light() +
+                      custom_ggtheme  + 
+                      theme(legend.box = "horizontal",
+                            legend.box.margin=margin(b = -11,l = -20))+
+                      guides(colour = guide_legend(override.aes = list(fill = '#cccccc'),
+                                                   title = NULL,
+                                                   label.position = "bottom",
+                                                   order = 2)),
                     ncol = 2,
                     nrow = 1)
-    
-    # geom_point(data = summary(fit_acceptor)$coefficients[,4] %>% 
-    #              as_tibble() %>%
-    #              mutate(names = names(summary(fit_acceptor)$coefficients[,4] ))  %>%
-    #              dplyr::rename(pvalue = value) %>%
-    #              filter(names != "(Intercept)") %>%
-    #              rev(),
-    #            aes(x = 0.003,
-    #                y = c(11, 10, 9, 8, 7, 6, 5, 4, 3, 2, 1), 
-    #                size = pvalue),
-    #            colour = "#64037d") +
-    # scale_size(range=c(8, 1), breaks=c(0, 1e-174, 1e-31, 1e-12, 1e-1))  +
-    # theme(legend.position="top", legend.box="vertical", legend.margin=margin())
+
+  
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel4c")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 70, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 70, units = "mm", dpi = 300)
   
   
-  
-  file_name <- paste0(getwd(), "/results/_paper/figures/lm_FTCX")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
-  
-  
-  ############################################
-  ## STATS
-  ############################################
-  
-  fit_donor %>% summary()
-  fit_acceptor %>% summary()
-  
-  
-  
+
 }
 
 
@@ -3314,9 +3407,9 @@ plot_estimate_variance_across_tissues <- function() {
   
   
   plotTissuesMSRDonor
-  file_name <- paste0(getwd(), "/results/_paper/figures/lm_donor_alltissues")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel5a")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 57, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 57, units = "mm", dpi = 300)
   
   
   
@@ -3339,9 +3432,9 @@ plot_estimate_variance_across_tissues <- function() {
   
   
   plotTissues3ssLM
-  file_name <- paste0(getwd(), "/results/_paper/figures/lm_accepor_alltissues")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
+  file_name <- paste0(getwd(), "/results/_paper/figures/panel5b")
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 57, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 57, units = "mm", dpi = 300)
   
   
   #######################################
@@ -4101,10 +4194,12 @@ plot_effect_size_data <- function() {
   ######
   ## METADATA KEFF
   ######
+  
   project_path <- "/home/grocamora/RytenLab-Research/09-ENCODE_Gene_expression/"
   metadata_kEff_path <- paste0(project_path, "variables/metadata_kEff.tsv")
   metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
-    mutate(kEff_text = ifelse(is.na(kEff_avg), "", paste0(round(kEff_avg), "%")))
+    mutate(kEff_text = ifelse(is.na(kEff_avg), kEff_avg, paste0(round(kEff_avg), "%"))) %>%
+    mutate(kEff_text = kEff_text %>% as.factor())
   
   
   MSR_graph_data <- MSR_graph_data %>%
@@ -4126,7 +4221,7 @@ plot_effect_size_data <- function() {
                        breaks = seq(0, 0.8, 0.1),
                        labels = c("0", "0.1", "0.2", "0.3", "0.4", "0.5", "0.6", "", "")) +
     scale_x_discrete(expand = expansion(add = c(0.7, 0.7))) +
-    labs(x = "Target gene shRNA knockdown", y = "Median MSR difference between\ngene knockdown vs. control") + 
+    labs(x = "Target gene shRNA knockdown", y = "Probability of superior MSR in\ngene knockdown vs. untreated samples") + 
     facet_row(facets = vars(Category), 
                scales = "free_x", space = "free",
                labeller = labeller(Category = category_labels),
@@ -4134,11 +4229,8 @@ plot_effect_size_data <- function() {
               shrink = T) +
     scale_fill_manual(values = c("#35B779FF","#64037d"),
                       labels = c("MSR_A" = "MSR Acceptor", "MSR_D" = "MSR Donor"),
-                      breaks = c("MSR_D", "MSR_A")) +
-    guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
-                               order = 1, 
-                             ncol = 2, 
-                             nrow = 1 )) +
+                      breaks = c("MSR_D", "MSR_A"))  +
+    guides(fill = guide_legend(title = NULL, order = 2, ncol = 2,  nrow = 1 )) +
     theme_light() 
     
   plot_effectsize
@@ -4146,23 +4238,37 @@ plot_effect_size_data <- function() {
   plot_effectsize +
     ggnewscale::new_scale_fill() +
     #geom_hline(data = data.frame(hline = c(0.1, 0.3, 0.5)), aes(yintercept = hline), linewidth = 0.25) +
-    geom_tile(stat = "identity", aes(y = 0.68, fill = kEff_avg), 
-              linewidth = 0.5, color = "black", width = 1, height = 0.045) +
+    geom_tile(stat = "identity", aes(y = 0.68, fill = kEff_avg, color = "No data\navailable"), 
+              linewidth = 0.5, width = 1, height = 0.045) + 
     geom_text(aes(y = 0.76, label = kEff_text),
-              color = "black", size = 3) +
-    viridis::scale_fill_viridis(option = "inferno", na.value = "#999999",
-                       name = "Knockdown\nEfficiency", 
-                       limits = c(0, 100), breaks = seq(0, 100, 25),
-                       labels = paste0(seq(0, 100, 25), "%"),
-                       guide = guide_colourbar(frame.colour = "black", frame.linewidth = 0.4,
-                                               order = 2,
-                                               ticks.colour = "black", barwidth = 10, barheight = 1.5)) +
+              color = "black", 
+              size = 3) +
+    viridis::scale_fill_viridis(option = "inferno", 
+                               # na.value = "#999999",
+                                name = "Knockdown\nEfficiency", 
+                                limits = c(0, 100), 
+                                breaks = c(NA, seq(0, 100, 25)),
+                                labels = c("none", paste0(seq(0, 100, 25), "%")),
+                                guide = guide_colourbar(frame.colour = "black", 
+                                                        frame.linewidth = 0.4,
+                                                        order = 1, 
+                                                        ticks.colour = "black", 
+                                                        barwidth = 10, 
+                                                        barheight = 1.5)) +
+    scale_colour_manual(values = c( "No data\navailable" = "black")) +
     custom_ggtheme +
     theme(axis.text.x = element_text(angle = 90),
-          legend.box = "horizontal") 
+          legend.box = "horizontal") +
+    guides(colour = guide_legend(override.aes = list(fill = '#999999'),
+                                 title = NULL,
+                                 label.position = "bottom",
+                                 order = 1))
+
   
   # Save the graph
   ggsave(file = paste0(getwd(), "/results/_paper/figures/Effect_size_combined_top", max_genes, ".png"), 
+         width = 180, height = 90, units = "mm", dpi = 300)
+  ggsave(file = paste0(getwd(), "/results/_paper/figures/Effect_size_combined_top", max_genes, ".svg"), 
          width = 180, height = 90, units = "mm", dpi = 300)
 }
 
@@ -4305,9 +4411,9 @@ plot_data_AQR_U2AF2 <- function() {
   
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 30),  size = 3, label = "exon") +
+    geom_text(aes(x = 15, y = 33),  size = 3, label = "exon") +
     geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15, y = 51),  size = 3, label = "intron") +
+    geom_text(aes(x = -15, y = 48),  size = 3, label = "intron") +
     theme_void()
   
   
@@ -4390,10 +4496,12 @@ plot_data_AQR_U2AF2 <- function() {
     mutate(medianMSR = delta_ss3score %>% median()) %>% 
     ungroup() %>%
     group_by(RBP) %>%
-    mutate(p.value = wilcox.test(delta_ss3score ~ cluster)$p.value) %>%
+    mutate(p.value = format(x = wilcox.test(delta_ss3score ~ cluster)$p.value,
+                            digits = 2, scientific = T)) %>%
     ungroup() %>%
     mutate(target_gene = factor(x = target_gene,levels = target_RBPs)) %>%
-    mutate(RBP = factor(x = RBP, levels = target_RBPs))
+    mutate(RBP = factor(x = RBP, levels = target_RBPs)) %>%
+    mutate(p.value = ifelse(p.value == "0e+00", "2.2e-100",p.value))
   
 
 
@@ -4407,7 +4515,7 @@ plot_data_AQR_U2AF2 <- function() {
                linetype="dashed", linewidth=0.9) +
     facet_wrap(vars(RBP)) +
     geom_text(data = delta_mes_acceptor, 
-              aes(label = paste0("p = ", format(p.value, digits = 2, scientific = T))), 
+              aes(label = paste0("p = ", p.value)), 
               x=25, y=0.08, family= "Arial", size = 3, 
               colour = "#333333") +
     scale_fill_manual(values = c("#91D1C2B2", "#999999"),
@@ -4418,24 +4526,27 @@ plot_data_AQR_U2AF2 <- function() {
                       labels = c("Gene knockdown  ", "Control")) + 
     labs(x = "Delta MES Acceptor", y = "Density") +
     theme_light() +
-    custom_ggtheme +
     guides(fill = guide_legend(title = "Sample type: ",
                                ncol = 2, nrow = 1 ),
            colour = guide_legend(title = "Median Delta MES: ",
-                               ncol = 2, nrow = 1 )) 
-  delta_mes
+                               ncol = 2, nrow = 1 )) +
+    custom_ggtheme 
+  delta_mes + theme(legend.box = "horizontal")
   
   
-  ggpubr::ggarrange(delta_mes,
-                    distances_acceptor,
+  ggpubr::ggarrange(x = distances_acceptor,
+                    y = delta_mes + theme(legend.box = "horizontal"),
+                    labels = c("a", "b"),
                     ncol = 1,
                     nrow = 2,
                     common.legend = T)
   
   
   
-  ggsave(file = paste0(getwd(),"/results/_paper/figures/", target_RBPs[1], "_", target_RBPs[2], "_distances_delta_MES.png"), 
-         width = 180, height = 180, dpi = 300, units = "mm")
+  ggsave(file = paste0(getwd(),"/results/_paper/figures/panel6ab.png"), 
+         width = 180, height = 140, dpi = 300, units = "mm")
+  ggsave(file = paste0(getwd(),"/results/_paper/figures/panel6ab.svg"), 
+         width = 180, height = 140, dpi = 300, units = "mm")
   
  
 
@@ -4484,9 +4595,10 @@ plot_data_AQR_U2AF2 <- function() {
   
   plot_aqr_long_distances / (distance_rectangle_longer) + patchwork::plot_layout(heights = c(8, 1))
   
-  ggsave(file = paste0(getwd(), "/results/_paper/figures/distance_stacked_AQR_200bp.png"), 
-         width = 170, height = 80, dpi = 300, units = "mm")
-  
+  ggsave(file = paste0(getwd(), "/results/_paper/figures/panel6c.png"), 
+         width = 180, height = 65, dpi = 300, units = "mm")
+  ggsave(file = paste0(getwd(), "/results/_paper/figures/panel6c.svg"), 
+         width = 180, height = 65, dpi = 300, units = "mm")
   
   ## This analysis identified a significant reduction (pval) in the strength of the novel 3’ss compared 
   ## to paired annotated sites in case versus control samples, suggesting that the spliceosome was no 

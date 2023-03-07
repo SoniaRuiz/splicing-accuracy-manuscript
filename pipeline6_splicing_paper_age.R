@@ -439,10 +439,10 @@ get_effsize_MSR_with_age <- function() {
 
 plot_effsize_MSR_with_age <- function() {
   
+  
   folder_results <- paste0(getwd(), "/results/_paper/results/")
   file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
   df_wilcoxon <- readRDS(file = file_name)
-  
   
   #######################################################
   ## PLOTS
@@ -469,13 +469,16 @@ plot_effsize_MSR_with_age <- function() {
                                 pattern = "_",
                                 replacement = " ")) %>%
     group_by(MSR_type) %>%
-    mutate(tissue = fct_reorder(tissue, effsize)) %>%
+    mutate(tissue = fct_reorder(tissue, plyr::desc(effsize))) %>%
     ungroup()  
   
   
   
   write.csv(x = df_wilcoxon_tidy,
             file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
+  
+  
+  
   
   ## PLOT 1
   ggplot(data = df_wilcoxon_tidy_final ,
@@ -489,10 +492,12 @@ plot_effsize_MSR_with_age <- function() {
                        breaks = c("MSR Donor", "MSR Acceptor"),
                        labels = c("MSR Donor", "MSR Acceptor")) +
     custom_ggtheme + 
-    scale_size(range = c(5, 1))+
+    scale_size(range = c(4, 1))+
     theme(legend.position="top", 
-          legend.box="vertical", 
-          legend.margin=margin()) +
+          legend.box="horizontal", 
+          
+          plot.margin = margin(0,0,0,0),
+          legend.box.margin=margin(b = -11)) +
     guides(color = guide_legend(title = ""))+
     scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
   
@@ -500,13 +505,40 @@ plot_effsize_MSR_with_age <- function() {
   folder_figures <- paste0(getwd(), "/results/_paper/figures/")
   dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
   
-  ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.svg"), 
-                  width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(folder_figures, "/effsize_common_introns_all_tissues.png"), 
-                  width = 180, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a.svg"), 
+                  width = 180, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a.png"), 
+                  width = 180, height = 55, units = "mm", dpi = 300)
   
   
+  ###################################
+  ## STATS - DONOR
+  ###################################
   
+  df_wilcoxon_tidy_final %>%
+    filter(MSR_type == "MSR Donor", 
+           q < 0.05) %>%
+    arrange(effsize)
+  
+  df_wilcoxon_tidy_final %>%
+    filter(MSR_type == "MSR Donor", 
+           q < 0.05) %>%
+    arrange(q)
+  
+  
+  ###################################
+  ## STATS - ACCEPTOR
+  ###################################
+  
+  df_wilcoxon_tidy_final %>%
+    filter(MSR_type == "MSR Acceptor", 
+           q < 0.05) %>%
+    arrange(effsize)
+  
+  df_wilcoxon_tidy_final %>%
+    filter(MSR_type == "MSR Acceptor", 
+           q < 0.05) %>%
+    arrange(q)
   
   
 }
@@ -848,10 +880,12 @@ age_stratification_brain_GO <- function() {
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free_x", space = "free") +
     custom_ggtheme +
-    theme(axis.text.x = element_text(angle = 90),
-          legend.spacing.y = unit(0, 'cm'),
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5),
           legend.position = "top",
-          legend.box="horizontal") + 
+          legend.box="horizontal",
+          plot.margin = margin(0,0,0,0),
+          legend.margin=margin(0,0,0,0),
+          legend.box.margin=margin(b = -9)) + 
     scale_size(range = c(1, 5))+
     coord_flip() +
     guides(size = guide_legend(title = "Gene Count: "),
@@ -875,30 +909,40 @@ age_stratification_brain_GO <- function() {
                                                                     "Dopaminergic synapse",                            
                                                                     "Nucleocytoplasmic transport",
                                                                     "RNA degradation")), 
-                                      showCategory = 20, split="ONTOLOGY") +
+                                      showCategory = 20, 
+                                      split="ONTOLOGY") +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 40)) +
     xlab("Gene Ratio") +
     ggforce::facet_row(ONTOLOGY~., scales = "free", space = "free") +
     coord_flip() +
     custom_ggtheme +
-    theme(
-      axis.text.x = element_text(angle = 90),
+    theme(axis.text.x = element_text(angle = 90,vjust = 0.5,hjust = 1),
       legend.position = "top",
       legend.box="horizontal",
-      legend.spacing.y = unit(0, 'cm')) + 
-    scale_size(range = c(1, 5))
+      #legend.margin=margin(0,0,0,0),
+      plot.margin = margin(0,0,0,0),
+      legend.box.margin=margin(b = -9)) + 
+    scale_size(range = c(1, 5))+
+    guides(colour = guide_legend(title = "q: "))
   
   plotKEGG
   
-  ggpubr::ggarrange(plotGO,
-                    plotKEGG + ggpubr::rremove("ylab"), 
+  plot_legend <- ggpubr::get_legend(plotKEGG)
+  
+  ggpubr::ggarrange(plotGO + ggpubr::rremove("legend"),
+                    plotKEGG + ggpubr::rremove("ylab")+ ggpubr::rremove("legend"), 
                     common.legend = T,
-                    ncol = 2,nrow = 1,
-                    widths = c(1.5,1))
+                    ncol = 2,
+                    nrow = 1,
+                    widths = c(1.5,1),
+                    legend.grob = plot_legend)
   
   ggplot2::ggsave(filename = paste0(getwd(), 
-                                    "/results/_paper/figures/go_dotplot_ALL_age_brain.png"), 
-                  width = 180, height = 90, units = "mm", dpi = 300)
+                                    "/results/_paper/figures/panel7b.svg"), 
+                  width = 180, height = 80, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(getwd(), 
+                                    "/results/_paper/figures/panel7b.png"), 
+                  width = 180, height = 80, units = "mm", dpi = 300)
   
   ############################################
   ## BAR PLOT -------------------------------
