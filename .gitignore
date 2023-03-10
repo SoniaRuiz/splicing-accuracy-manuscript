@@ -39,6 +39,7 @@ vignettes/*.pdf
 .Renviron
 
 ############################
+markdowns
 markdowns/*.html
 markdowns/*.tsv
 markdowns/*.csv
@@ -47,7 +48,7 @@ markdowns/*.png
 .Renviron
 
 paper_figures
-data
+
 database
 
 .Rproj.user

@@ -5,19 +5,19 @@ library(GenomicRanges)
 library(DBI)
 library(dplyr)
 
-# source("/home/sruiz/PROJECTS/splicing-project-recount3/init.R")
+# source("~/PROJECTS/splicing-accuracy-manuscript/init.R")
 
 #biomaRt::biomartCacheClear()
 
 .libPaths( c( "/home/sruiz/R/x86_64-pc-linux-gnu-library/4.0/", .libPaths()) )
 
-setwd("~/PROJECTS/splicing-project-recount3/")
+setwd("~/splicing-accuracy-manuscript/")
 
-dependencies_folder <- paste0(getwd(), "/../introverse-app/database_generation/dependencies/")
+dependencies_folder <- paste0(getwd(), "/dependencies/")
 
-# source(paste0(getwd(), "/pipeline3_junction_pairing.R"))
- source(paste0(getwd(), "/pipeline3_database_SQL_helper.R"))
-# source(paste0(getwd(), "/pipeline3_database_SQL_generation.R"))
+source(paste0(getwd(), "/database_junction_pairing.R"))
+source(paste0(getwd(), "/database_SQL_helper.R"))
+source(paste0(getwd(), "/database_SQL_generation.R"))
 
 
 
@@ -552,42 +552,42 @@ splicing_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",          
 
 for (gtf_version in gtf_versions) {
   
-  # gtf_version <- gtf_versions[1]
-  
-  # init_recount3_gtex_data(projects_used = all_projects,
-  #                         gtf_version = gtf_version)
   
   
-  # tidy_recount3_data_per_tissue(projects_used = splicing_projects,
-  #                               main_project,
-  #                               gtf_version = gtf_version)
+  init_recount3_gtex_data(projects_used = all_projects,
+                          gtf_version = gtf_version)
   
   
-  # junction_pairing(projects_used = splicing_projects[-c(1:2)],
-  #                  main_project,
-  #                  gtf_version = gtf_version)
+  tidy_recount3_data_per_tissue(projects_used = splicing_projects,
+                                main_project,
+                                gtf_version = gtf_version)
   
   
-  # get_all_annotated_split_reads(projects_used = splicing_projects,
-  #                               gtf_version = gtf_version,
-  #                               main_project = main_project)
-  # 
-  # 
-  # get_all_raw_distances_pairings(projects_used = splicing_projects,
-  #                                gtf_version = gtf_version,
-  #                                main_project = main_project)
+  junction_pairing(projects_used = splicing_projects,
+                   main_project,
+                   gtf_version = gtf_version)
   
   
-  # tidy_data_pior_sql(projects_used = splicing_projects,
-  #                    gtf_version = gtf_version,
-  #                    main_project = main_project)
+  get_all_annotated_split_reads(projects_used = splicing_projects,
+                                gtf_version = gtf_version,
+                                main_project = main_project)
+
+
+  get_all_raw_distances_pairings(projects_used = splicing_projects,
+                                 gtf_version = gtf_version,
+                                 main_project = main_project)
   
   
-  # generate_transcript_biotype_percentage(projects_used = splicing_projects,
-  #                                        homo_sapiens_v105_path = paste0(dependencies_folder, 
-  #                                                                        "/Homo_sapiens.GRCh38.105.chr.gtf"),
-  #                                        main_project,
-  #                                        gtf_version = gtf_version)
+  tidy_data_pior_sql(projects_used = splicing_projects,
+                     gtf_version = gtf_version,
+                     main_project = main_project)
+  
+  
+  generate_transcript_biotype_percentage(projects_used = splicing_projects,
+                                         homo_sapiens_v105_path = paste0(dependencies_folder,
+                                                                         "/Homo_sapiens.GRCh38.105.chr.gtf"),
+                                         main_project,
+                                         gtf_version = gtf_version)
   
   
   all_final_projects_used <- readRDS(file = paste0(getwd(),"/results/all_final_projects_used.rds"))
@@ -596,94 +596,18 @@ for (gtf_version in gtf_versions) {
                         gtf_version = gtf_version,
                         main_project = main_project)
   
-  # database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
-  # dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
-  # database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
+  database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
+  dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
+  database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
 
-  # sql_database_generation(database_path = database_path,
-  #                         projects_used = all_final_projects_used,
-  #                         main_project = main_project,
-  #                         gtf_version = gtf_version,
-  #                         remove_all = F)
+  sql_database_generation(database_path = database_path,
+                          projects_used = all_final_projects_used,
+                          main_project = main_project,
+                          gtf_version = gtf_version,
+                          remove_all = F)
   
   
   # rm(list = ls(envir = .GlobalEnv), envir = .GlobalEnv)
   # gc()
 }
 
-
-
-
-# gtf_versions <- c("76","81","90","104")
-# splicing_projects <- "BRAIN"
-# 
-# # gtf_versions <- c("97")
-# 
-# for (gtf_version in gtf_versions) {
-#   
-#   # gtf_version <- gtf_versions[1]
-#   
-#   ## re-annotate them
-#   if ( file.exists(paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")) ) {
-#     gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".chr.gtf")
-#   } else {
-#     gtf_path <- paste0("/data/references/ensembl/gtf_gff3/v", gtf_version, "/Homo_sapiens.GRCh38.", gtf_version, ".gtf")
-#   }
-#   
-#   edb <- ensembldb::ensDbFromGtf(gtf_path, outfile = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-#   edb <- ensembldb::EnsDb(x = file.path(tempdir(), "Homo_sapiens.GRCh38.sqlite"))
-#   
-#   ## Per each project
-#   for (project_id in splicing_projects) {
-#     
-#     # project_id <- splicing_projects[1]
-#     
-#     folder_results <- paste0(getwd(), "/results/", project_id, "/v105/", main_project, "/base_data/")
-#     
-#     if ( file.exists( paste0(folder_results, "/", project_id, "_clusters_used.rds")) ) {
-#       
-#       all_clusters <- readRDS(file = paste0(folder_results, "/", project_id, "_clusters_used.rds"))
-#       
-#       if (project_id == "BRAIN" && gtf_version != "97") {
-#         all_clusters <- all_clusters[6]
-#       }
-#       
-#       ## Per each cluster
-#       for ( cluster_id in all_clusters ) {
-#         
-#         # cluster_id <- all_clusters[1]
-#         
-#         ## get the QC split reads
-#         if ( #!file.exists(paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, 
-#               #                   "/base_data/", project_id, "_", cluster_id, "_all_split_reads.rds")) &&
-#              file.exists(paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds")) ) {
-#           
-#           print(paste0(Sys.time(), " - annotating ", cluster_id, " version ", gtf_version, "..."))
-#           
-#           all_split_reads <- readRDS(file = paste0(folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds"))
-#           
-#           
-#           all_split_reads_details_w_symbol <- dasper::junction_annot(junctions = all_split_reads %>%
-#                                                                        dplyr::select(junID, seqnames, start, end, strand) %>%
-#                                                                        GRanges(), 
-#                                                                      ref = edb)
-#           
-#           
-#           folder_path <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/")
-#           dir.create(file.path(folder_path), recursive = TRUE, showWarnings = T)
-#           saveRDS(object = all_split_reads_details_w_symbol,
-#                   file = paste0(folder_path, "/", project_id, "_", cluster_id, "_all_split_reads.rds") )
-#         } 
-#         
-#       }
-#     }
-#     
-#     
-#   }
-#   
-#   rm(all_split_reads)
-#   rm(all_split_reads_details_w_symbol)
-#   rm(edb)
-#   gc()
-# 
-# }

@@ -11,15 +11,12 @@ library(doParallel)
 ## CONNECT TO THE SPLICING DATABASE ################
 ####################################################
 
-# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper.R")
 
 ## CONNECT TO THE DATABASE ------------------------------
 
-setwd("~/PROJECTS/splicing-project-recount3/")
+setwd("~/splicing-accuracy-manuscript/")
 gtf_version <- 105
 main_project <- "splicing"
-# database_path <- paste0("~/PROJECTS/splicing-project-recount3/database/v",
-#                         gtf_version, "/", main_project, "/", main_project, ".sqlite")
 getwd()
 database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project,
                           "/", main_project, ".sqlite")
@@ -443,8 +440,7 @@ get_contamination_rates_all_tissues <- function () {
     #scale_fill_viridis_d(option = "A") +
     theme_light() +
     custom_ggtheme +
-    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1).
-          ax) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) %>%
     return()
   
@@ -2816,27 +2812,31 @@ get_lm_single_tissue <- function() {
                   CDTS_5ss = ref_CDTS5score,
                   CDTS_3ss = ref_CDTS3score,
                   protein_coding = protein_coding,
-                  #mean_phastCons20way_5ss = ref_cons5score,
-                  #mean_phastCons20way_3ss = ref_cons3score,
+                  mean_phastCons20way_5ss = ref_cons5score,
+                  mean_phastCons20way_3ss = ref_cons3score,
                   MSR_D,
                   MSR_A)
   
   
   idb %>% nrow()
   
-  idb <-idb %>% 
-    left_join(y = db_introns_tidy %>% 
-                as_tibble() %>%
-                distinct(ref_junID, .keep_all = T) %>%
-                dplyr::select(ref_junID, 
-                              mean_phastCons20way_5ss = phastCons20way_3ss_mean,
-                              mean_phastCons20way_3ss = phastCons20way_5ss_mean),
-              by = "ref_junID")
+  #########################
+  #########################
+  #########################
+  
+  # idb <- idb %>% 
+  #   left_join(y = db_introns_all %>% 
+  #               as_tibble() %>%
+  #               distinct(ref_junID, .keep_all = T) %>%
+  #               dplyr::select(ref_junID, 
+  #                             mean_phastCons20way_5ss = phastCons20way_3ss_mean,
+  #                             mean_phastCons20way_3ss = phastCons20way_5ss_mean),
+  #             by = "ref_junID")
   
   #########################
   ## LINEAR MODELS
   #########################
-  
+
   
   fit_donor <- lm(MSR_D ~ 
                     gene_length +
@@ -3179,6 +3179,16 @@ get_estimate_variance_across_tissues <- function() {
       introns <- introns %>%
         dplyr::rename(gene_num_transcripts = n_transcripts )
       
+      
+      introns <- introns %>%
+        dplyr::select(-mean_phastCons20way_5ss,-mean_phastCons20way_3ss) %>%
+        left_join(y = db_introns_all %>%
+                    as_tibble() %>%
+                    distinct(ref_junID, .keep_all = T) %>%
+                    dplyr::select(ref_junID,
+                                  mean_phastCons20way_5ss = phastCons20way_3ss_mean,
+                                  mean_phastCons20way_3ss = phastCons20way_5ss_mean),
+                  by = "ref_junID")
       
       ####################################
       ## LINEAR MODELS

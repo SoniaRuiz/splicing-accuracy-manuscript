@@ -5,14 +5,14 @@ library(ggforce)
 library(DBI)
 
 
-## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-2_age_stratification.R")
+## source("~/PROJECTS/splicing-accuracy-manuscript/database_age_stratification_generation.R")
 
-setwd("~/PROJECTS/splicing-project-recount3/")
-dependencies_folder <- paste0(getwd(), "/../introverse-app/database_generation/dependencies/")
+setwd("~/splicing-accuracy-manuscript/")
+dependencies_folder <- paste0(getwd(), "/dependencies/")
 
-source(paste0(getwd(), "/pipeline3_junction_pairing.R"))
-source(paste0(getwd(), "/pipeline3_database_SQL_helper.R"))
-source(paste0(getwd(), "/pipeline3_database_SQL_generation.R"))
+source(paste0(getwd(), "/database_junction_pairing.R"))
+source(paste0(getwd(), "/database_SQL_helper.R"))
+source(paste0(getwd(), "/database_SQL_generation.R"))
 
 
 gtf_version <- 105
@@ -415,7 +415,7 @@ age_stratification_junction_pairing <- function (age_groups,
 
 ## Only if the database does not exist, we run this code to generate it from scratch
 
-#if ( !file.exists(paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/", main_project , ".sqlite")) ) {
+if ( !file.exists(paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/", main_project , ".sqlite")) ) {
 
   project_init <- age_stratification_init_data(projects_id = age_projects,
                                                gtf_version = gtf_version,
@@ -424,67 +424,60 @@ age_stratification_junction_pairing <- function (age_groups,
 
   age_projects <- project_init$project %>% unique()
 
-  # for (project_id in age_projects) {
-  # 
-  # 
-  #   # project_id <- age_projects[1]
-  #   # project_id <- "BRAIN"
-  #   # project_id <- "MUSCLE"
-  #   # project_id <- "LIVER"
-  #   # project_id <- "KIDNEY"
-  # 
-  #   print(paste0(Sys.time(), " --> ", project_id))
-  # 
-  #   project_init_local <- project_init %>% filter(project == project_id)
-  # 
-  #   if ( !file.exists(paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/results/",
-  #                            (project_init_local$age_group %>% unique())[1], "/",
-  #                            (project_init_local$age_group %>% unique())[1], "_raw_distances_tidy.rds")) ) {
-  # 
-  # 
-  # 
-  #     age_stratification_annotate(age_groups = project_init_local$age_group %>% unique(),
-  #                                 project_id = project_id,
-  #                                 gtf_version = gtf_version,
-  #                                 main_project = main_project,
-  #                                 age_samples_clusters = project_init_local)
-  # 
-  # 
-  #     age_stratification_junction_pairing(age_groups = project_init_local$age_group %>% unique(),
-  #                                         project_id = project_id,
-  #                                         gtf_version = gtf_version,
-  #                                         main_project = main_project,
-  #                                         age_samples_clusters = project_init_local)
-  # 
-  # 
-  # 
-  #   } else {
-  #     print(paste0("File '", (project_init_local$age_group %>% unique())[1], "_raw_distances_tidy.rds' exists!"))
-  #   }
-  # 
-  # 
-  # 
-  # }
+  for (project_id in age_projects) {
+
+    print(paste0(Sys.time(), " --> ", project_id))
+
+    project_init_local <- project_init %>% filter(project == project_id)
+
+    if ( !file.exists(paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/results/",
+                             (project_init_local$age_group %>% unique())[1], "/",
+                             (project_init_local$age_group %>% unique())[1], "_raw_distances_tidy.rds")) ) {
 
 
-  # get_all_annotated_split_reads(projects_used = age_projects,
-  #                               gtf_version = gtf_version,
-  #                               all_clusters = project_init$age_group %>% unique(),
-  #                               main_project = main_project)
-  # 
-  # get_all_raw_distances_pairings(projects_used = age_projects,
-  #                                gtf_version = gtf_version,
-  #                                all_clusters = project_init$age_group %>% unique(),
-  #                                main_project = main_project)
 
-  # filter_recount3_tpm(projects_used = age_projects,
-  #                     gtf_version = gtf_version,
-  #                     main_project = main_project)
+      age_stratification_annotate(age_groups = project_init_local$age_group %>% unique(),
+                                  project_id = project_id,
+                                  gtf_version = gtf_version,
+                                  main_project = main_project,
+                                  age_samples_clusters = project_init_local)
+
+
+      age_stratification_junction_pairing(age_groups = project_init_local$age_group %>% unique(),
+                                          project_id = project_id,
+                                          gtf_version = gtf_version,
+                                          main_project = main_project,
+                                          age_samples_clusters = project_init_local)
+
+
+
+    } else {
+      print(paste0("File '", (project_init_local$age_group %>% unique())[1], "_raw_distances_tidy.rds' exists!"))
+    }
+
+
+
+  }
+
+
+  get_all_annotated_split_reads(projects_used = age_projects,
+                                gtf_version = gtf_version,
+                                all_clusters = project_init$age_group %>% unique(),
+                                main_project = main_project)
+
+  get_all_raw_distances_pairings(projects_used = age_projects,
+                                 gtf_version = gtf_version,
+                                 all_clusters = project_init$age_group %>% unique(),
+                                 main_project = main_project)
+
+  filter_recount3_tpm(projects_used = age_projects,
+                      gtf_version = gtf_version,
+                      main_project = main_project)
   
-  # tidy_data_pior_sql(projects_used = age_projects,
-  #                    gtf_version = gtf_version,
-  #                    all_clusters = project_init$age_group %>% unique(),
-  #                    main_project = main_project)
+  tidy_data_pior_sql(projects_used = age_projects,
+                     gtf_version = gtf_version,
+                     all_clusters = project_init$age_group %>% unique(),
+                     main_project = main_project)
 
   sql_database_generation(database_path = database_path,
                           projects_used = age_projects,
@@ -492,22 +485,5 @@ age_stratification_junction_pairing <- function (age_groups,
                           gtf_version = gtf_version,
                           remove_all = F)
 
-#}
-
-# project_init <- age_stratification_init_data(projects_id = age_projects,
-#                                              gtf_version = gtf_version,
-#                                              main_project = main_project) %>%
-#   as_tibble()
-# 
-# age_projects <- project_init$project %>% unique()
-# 
-# sql_database_generation(database_path = database_path,
-#                         projects_used = age_projects,
-#                         main_project = main_project,
-#                         gtf_version = gtf_version,
-#                         remove_all = T)
-
-
-
-
+}
 
