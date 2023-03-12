@@ -6,13 +6,17 @@ library(biomaRt)
 library(DBI)
 
 ## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-3_RBP_expression.R")
-setwd("~/PROJECTS/splicing-project-recount3/")
+setwd("~/splicing-accuracy-manuscript/")
 
 
 gtf_version <- 105
-main_project <- "age_subsampled"
+main_project <- "splicing"
+
+
+dependencies_folder <- paste0(getwd(), "/dependencies/")
+
 ## Load reference GTF and get only the genes
-ensembl105 <- rtracklayer::import(con = "/data/references/ensembl/gtf_gff3/v105/Homo_sapiens.GRCh38.105.chr.gtf") %>% 
+ensembl105 <- rtracklayer::import(con = paste0(dependencies_folder, "/Homo_sapiens.GRCh38.105.chr.gtf")) %>% 
   as_tibble() %>% 
   dplyr::select(gene_id, gene_name) %>%
   distinct(gene_id, .keep_all = T)
@@ -27,7 +31,7 @@ get_genes_to_analyse_expression <- function(type, ensembl105) {
   if (type == "RBP") {
     
     ## Load the RBPs and add the ensemblID
-    genes_annotated <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/RBPs_subgroups.xlsx', 
+    genes_annotated <- xlsx::read.xlsx(file = paste0(dependencies_folder, '/RBPs_subgroups.xlsx'), 
                                 header = TRUE,
                                 sheetIndex = 1) %>%  
       as_tibble() %>%
@@ -39,7 +43,7 @@ get_genes_to_analyse_expression <- function(type, ensembl105) {
   } else {
     
     ## Load the NMD molecules
-    all_NMD <- read.delim(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/NMD.txt',
+    all_NMD <- read.delim(file = paste0(dependencies_folder, '/NMD.txt'),
                           sep = '\t', header = TRUE) %>% as_tibble() %>% 
       dplyr::select(hgnc_symbol = Name) %>%
       distinct(hgnc_symbol)
@@ -205,120 +209,7 @@ tidy_sample_metadata <- function(sample_metadata, samples) {
            dplyr::select(all_of(covariates))))
 }
 
-RBP_corrected_TPM_analysis <- function(project_id) {
-  
-  # project_id <- "BRAIN"
-  # project_id <- "BLOOD"
-  # project_id <- "MUSCLE"
-  
- 
-  
-  ## CONNECT TO THE DATABASE
-  
-  con <- dbConnect(RSQLite::SQLite(), database_path)
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) %>%
-    filter(SRA_project == project_id)
-  
-  ## LOAD TPM CORRECTED VALUES
-  tpm_corrected <- map_df((df_metadata$region %>% unique()), function(cluster) {
-    
-    print(paste0(Sys.time(), " - ", cluster, " ... "))
-    if (file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", project_id, "/",
-                           cluster, "/tpm_ensembl105_residuals.csv"))) {
-    read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", project_id, "/",
-                           cluster, "/tpm_ensembl105_residuals.csv"), header = T) %>%
-      mutate(tissue = cluster)
-    } else {
-      return(NULL)
-    }
- 
-  })
-  
-  
-  ## INIT AGE SUPERGROUPS
-  age_samples_clusters_tidy <- age_stratification_init_data(projects_id = project_id,
-                                                            gtf_version = gtf_version,
-                                                            main_project = main_project)
-  
-  
-  
-  ## FIlter TPM by age group and merge
-  tpm_20_39 <- tpm_corrected %>%
-    filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "20-39") %>% 
-                     pull(individual))) %>%
-    gather(key = "RBP", value = "TPM", -X ) %>%
-    mutate(age_text = paste("20-39_", X)) %>%
-    mutate(age = "20-39") %>% 
-    as_tibble()
-  
-  
-  tpm_40_59 <-tpm_corrected %>%
-    filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "40-59") %>% 
-                     pull(individual)))  %>%
-    gather(key = "RBP", value = "TPM", -X ) %>%
-    mutate(age_text = paste("40-59_", X)) %>%
-    mutate(age = "40-59") %>% as_tibble()
-  
-  
-  tpm_60_79 <- tpm_corrected %>%
-    filter(X %in% (age_samples_clusters_tidy %>%
-                     filter(age_group == "60-79") %>% 
-                     pull(individual))) %>%
-    gather(key = "RBP", value = "TPM", -X ) %>%
-    mutate(age_text = paste("60-79_", X)) %>%
-    mutate(age = "60-79") %>% as_tibble()
-  
-  
-  gattered_matrix <- do.call("rbind", list(tpm_20_39, tpm_40_59, tpm_60_79)) %>%
-    dplyr::rename(sample = X) %>% 
-    as_tibble() %>%
-    group_by(age, RBP) %>%
-    
-    mutate(TPM = TPM %>% as.double()) %>%
-  
-    mutate(mean_tpm = (TPM %>% mean())) %>%
-    distinct(mean_tpm, .keep_all = T)  %>%
-    ungroup() %>%
-    arrange(age , mean_tpm) %>%
-    mutate(RBP = fct_inorder(RBP)) %>%
-    drop_na()
-  
-  
-  ## PLOT HEATMAP
-  ggplot(data = gattered_matrix, 
-         aes(x = age, y = RBP, fill = mean_tpm)) +
-    geom_tile() + 
-    scale_fill_gradient(low = "green", high = "red") +
-    ggtitle(paste0("Mean RBP level of expression across samples\nfrom each age cluster - ", project_id
-                   ,".\nTPM values have been covariate corrected.")) +
-    ylab("RBP") +
-    xlab("age cluster") +
-    theme(axis.text.y = element_blank()) 
-  
-  ggsave(filename = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id,
-                           "/results/pipeline3/rbp/heatmap.png"))
-  
-  
-  
-  
-  ## GET RBPs decreasing
-  spread_matrix <- gattered_matrix %>%
-    dplyr::select(RBP, age, mean_tpm) %>%
-    spread(key = age, value = mean_tpm)
-  spread_matrix %>%
-    filter(`20-39` > `40-59` ,
-           `40-59` > `60-79`)
-  write_csv(x = spread_matrix,
-            file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/", project_id,
-                          "/results/pipeline3/rbp/tpm_age_spread.csv"))
-  
-}
-
-RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
+RBP_uncorrected_TPM_lm <- function(projects_used = c("BRAIN")) {
   
   
   ################################
@@ -326,27 +217,27 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   ################################
   
   if ( !exists("all_RBPs") ) {
-    all_RBPs <- xlsx::read.xlsx(file = '/home/sruiz/PROJECTS/splicing-project-recount3/data/RBPs_subgroups.xlsx', 
+    all_RBPs <- xlsx::read.xlsx(file = paste0(dependencies_folder, '/RBPs_subgroups.xlsx'), 
                                 header = TRUE,
                                 sheetIndex = 1) %>%  as_tibble() 
   }
   
   
   all_RBPs_tidy <- all_RBPs %>%
-    #mutate(type = ifelse(Splicing.regulation == 1, "splicing regulation", "other")) %>%
-    #dplyr::select(name, ensembl_gene_id = id, type) %>%
     distinct(name, .keep_all = T) 
   
 
   
-  for (project_id in projects_id) {
+  for (project_id in projects_used) {
+    
     ## project_id <- "BRAIN"
     
     ## Load clusters used
-    if (str_detect(main_project,pattern = "age")) {
+    if (str_detect(main_project, pattern = "age")) {
       all_clusters <- c("20-39","40-59","60-79")
     } else {
-      all_clusters <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/base_data/", project_id, "_clusters_used.rds"))  
+      all_clusters <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", 
+                                            gtf_version, "/", main_project, "/base_data/", project_id, "_clusters_used.rds"))  
     }
     
     
@@ -354,8 +245,10 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     tpm_uncorrected <- map_df(all_clusters, function(cluster_id) {
       
       print(paste0(Sys.time(), " - ", cluster_id, " ... "))
-      if ( file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/", cluster_id, "/tpm_ensembl105.csv")) ) {
-        read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/", cluster_id, "/tpm_ensembl105.csv"), 
+      if ( file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", 
+                              project_id, "/", cluster_id, "/tpm_ensembl105.csv")) ) {
+        read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", 
+                               project_id, "/", cluster_id, "/tpm_ensembl105.csv"), 
                  header = T, fileEncoding = "UTF-8") 
       } else {
         return(NULL)
@@ -373,8 +266,10 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     sample_metadata <- map_df(all_clusters, function(cluster_id) {
       
       print(paste0(Sys.time(), " - ", cluster_id, " ... "))
-      if (file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/",cluster_id, "/covariates.csv"))) {
-        read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/RBP/", project_id, "/",cluster_id, "/covariates.csv"), 
+      if (file.exists(paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", 
+                             project_id, "/", cluster_id, "/covariates.csv"))) {
+        read.csv(file = paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/RBP/", 
+                               project_id, "/", cluster_id, "/covariates.csv"), 
                  header = T, fileEncoding = "UTF-8") 
       } else {
         return(NULL)
@@ -394,8 +289,6 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
     RBPs <- (tpm_uncorrected_tidy$gene)
     
     
-  
-    
     # tpm_uncorrected[rowSums(tpm_uncorrected[, c(2:ncol(tpm_uncorrected))]),]
     
     ## Obtain values and run lm
@@ -410,7 +303,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
         mutate(gene = "tpm") %>%
         as_tibble()
       
-      if ( rowSums(tpm[, c(2:ncol(tpm))], na.rm = T) != 0) {
+      if ( rowSums(tpm[, c(2:ncol(tpm))], na.rm = T) != 0 ) {
         
 
         
@@ -479,20 +372,19 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
       arrange(Estimate)
     
     
-    if (exists("RBPs_annotated")) {
-      RBPs_annotated_tidy <- left_join(x = RBPs_annotated %>% as_tibble(), 
-                                       y = all_RBPs_tidy %>% as_tibble(), 
-                                       by = c("ensembl_gene_id" = "ensembl_gene_id"))
-    } else {
-      RBPs_annotated_tidy <- all_RBPs_tidy
-    }
+    # if ( exists("RBPs_annotated") ) {
+    #   RBPs_annotated_tidy <- left_join(x = RBPs_annotated %>% as_tibble(), 
+    #                                    y = all_RBPs_tidy %>% as_tibble(), 
+    #                                    by = c("ensembl_gene_id" = "ensembl_gene_id"))
+    # } else {
+    #   RBPs_annotated_tidy <- all_RBPs_tidy
+    # }
     
     ## Add gene SYMBOL info
     df_lm_age_tidy <- left_join(x = df_lm_output_age, 
-                                y = RBPs_annotated_tidy %>% drop_na(), 
+                                y = all_RBPs_tidy %>% drop_na(), 
                                 by = c("RBP_ID" = "id")) %>%
-      group_by(RBP_ID) #%>%
-    #distinct(pval, .keep_all = T)
+      group_by(RBP_ID) 
     
     
     write_csv(x = df_lm_age_tidy,
@@ -508,10 +400,13 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
   RBP_decrease <- df_lm_age_tidy %>%
     filter(Estimate < 0) %>%
     arrange(desc(abs(Estimate)))
+  RBP_decrease %>% print(n=50)
+  
 
   RBP_increase <- df_lm_age_tidy %>%
     filter(Estimate > 0) %>%
     arrange(desc(Estimate))
+  RBP_increase$name %>% sort
 
   intersect(RBP_decrease$name,
             RBP_increase$name)
@@ -534,7 +429,7 @@ RBP_uncorrected_TPM_lm <- function(projects_id = c("BRAIN")) {
 
 ## Only for the subsampled samples - age stratification subsampled to correct by RIN
 
-projects_used <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
+projects_used <- readRDS(file = paste0(getwd(), "/results/all_final_projects_used.rds"))
 
 for (project_id in projects_used) {
   
@@ -552,7 +447,8 @@ for (project_id in projects_used) {
   }
   
   ## Get metadata
-  metadata <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/",main_project,"/base_data/", project_id, "_samples_metadata.rds"))
+  metadata <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", 
+                                    gtf_version, "/",main_project,"/base_data/", project_id, "_samples_metadata.rds"))
  
   
   for (cluster_id in clusterIDs) {
@@ -607,7 +503,8 @@ for (project_id in projects_used) {
         pivot_wider(names_from = sample, values_from = tpm, values_fill = 0)
       
       ## Save data
-      folder_name <- paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/", type, "/", project_id, "/", cluster_id, "/")
+      folder_name <- paste0(getwd(), "/results/RBP_EXPRESSION/", main_project, "/", type, "/", 
+                            project_id, "/", cluster_id, "/")
       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
       
       write.csv(x = dds_tpm_pv %>% tibble::column_to_rownames("gene"),

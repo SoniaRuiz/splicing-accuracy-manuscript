@@ -24,6 +24,7 @@ Contact 'mina.ryten@ucl.ac.uk' for data download queries.
 
 Conversely, the file 'phastcons20_way_proximal_intronic_sequences.txt', contains the main instructions to calculate the phastcons20_way scores that overlap the proximal splicing signals.
 
+The map of sequence constraint CDTS scores has been downloaded from: http://www.hli-opendata.com/noncoding.
 
 
 2. 'hg38-blacklist.v2.bed'
