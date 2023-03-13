@@ -1,6 +1,7 @@
-source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
+main_path <- normalizePath(path = "./")
+source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_TranscriptTable, "Transcript table tests not executed. Variable test_TranscriptTable set to FALSE in global options.")
-source(paste0(getwd(), "/testthat/helper_Files/helper_TranscriptTable.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_TranscriptTable.R"))
 
 context("\tTest that transcript exists in the reference transcriptome")
 test_that("Test that transcript exists in the reference transcriptome", {
@@ -19,6 +20,7 @@ test_that("Test reference between transcript and gene table", {
   ## All `transcript_id`` are properly referenced to a row in the gene table
   expect_true(all(gene_id %in% df_gene$id))
 })
+
 
 context("\tTest that transcript maximum TSL number is correct")
 test_that("Test that transcript maximum TSL number is correct", {

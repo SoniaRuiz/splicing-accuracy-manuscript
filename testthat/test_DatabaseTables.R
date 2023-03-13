@@ -1,6 +1,7 @@
-source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
+main_path <- normalizePath(path = "./")
+source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_DatabaseTables, "Database tables tests not executed. Variable test_DatabaseTables set to FALSE in global options.")
-source(paste0(getwd(), "/testthat/helper_Files/helper_DatabaseTables.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_DatabaseTables.R"))
 
 context("\tTest existence of Main tables")
 test_that("Test existence of Main tables", {

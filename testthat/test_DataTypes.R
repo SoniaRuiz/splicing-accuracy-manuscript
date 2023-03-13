@@ -1,7 +1,8 @@
-source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
+main_path <- normalizePath(path = "./")
+source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_DataTypes, "Data types and foreign keys tests not executed. Variable test_DataTypes set to FALSE in global options.")
-source(paste0(getwd(), "/testthat/helper_Files/helper_DatabaseTables.R"))
-source(paste0(getwd(), "/testthat/helper_Files/helper_DataTypes.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_DatabaseTables.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_DataTypes.R"))
 
 context("\tTest that gene table data types and foreign keys are correctly set up")
 test_that("Test that gene table data types and foreign keys are correctly set up", {

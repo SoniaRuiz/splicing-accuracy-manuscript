@@ -1,6 +1,6 @@
-source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_GeneTable, "Gene table tests not executed. Variable test_GeneTable set to FALSE in global options.")
-source(paste0(getwd(), "/testthat/helper_Files/helper_GeneTable.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_GeneTable.R"))
 
 context("\tTest that genes exists in the reference transcriptome")
 test_that("Test that genes exists in the reference transcriptome", {

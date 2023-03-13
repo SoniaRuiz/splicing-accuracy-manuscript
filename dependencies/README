@@ -17,12 +17,12 @@
 ** './dependencies' folder
 ******************************************************/
 
-1. 'CNC_CDTS_CONS_gr.rds'  
+1. 'CNC_CDTS_CONS_gr.rda'  
 =======================
 Contains the inter-species conservation scores across 20 species (human, 16 primates, dog, mouse and tree shrew - http://hgdownload.cse.ucsc.edu/goldenPath/hg38/phastCons20way/) and the constraint regions across in the human genome.
 Contact 'mina.ryten@ucl.ac.uk' for data download queries.
 
-Conversely, the file 'phastcons20_way_proximal_intronic_sequences.txt', contains the main instructions to calculate the phastcons20_way scores that overlap the proximal splicing signals.
+Conversely, the file 'phastcons20_way_proximal_intronic_sequences.txt', contains the main instructions to calculate from scratch the phastcons20_way scores overlapping the proximal splicing signals.
 
 The map of sequence constraint CDTS scores has been downloaded from: http://www.hli-opendata.com/noncoding.
 
@@ -38,6 +38,7 @@ This file has been downloaded from: https://github.com/Boyle-Lab/Blacklist/blob/
 ========================================================
 Original BED files downloaded from the IAOD database:
 https://introndb.lerner.ccf.org/sitepages/downloads/
+
 
 
 4. 'MANE.GRCh38.v1.0.ensembl_genomic.gtf'
@@ -81,17 +82,38 @@ samtools faidx ./Homo_sapiens.GRCh38.dna.primary_assembly.fa
 
 9. MAXENTSCAN score software
 ==============================
-Software downloaded from 'http://hollywood.mit.edu/burgelab/software.html'
-"../fordownload/..."
+Software downloaded from 'http://hollywood.mit.edu/burgelab/software.html'. More info: http://hollywood.mit.edu/burgelab/maxent/download/
+
+```sh
+$ wget http://hollywood.mit.edu/burgelab/maxent/download/fordownload.tar.gz
+$ tar -zxvf fordownload.tar.gz
+```
+
 
 10. Bedtools
 =============
-bedtools software
+bedtools software - more info: https://bedtools.readthedocs.io/en/latest/content/installation.html
+
+```sh
+$ wget https://github.com/arq5x/bedtools2/releases/download/v2.29.1/bedtools-2.29.1.tar.gz
+$ tar -zxvf bedtools-2.29.1.tar.gz
+$ cd bedtools2
+$ make
+```
+
+Alternatively:
+
+```sh
+$ apt-get install bedtools
+```
 
 
 ######################################################
 ## 3. TESTING FRAMEWORK
 ######################################################
 
-* Unit test implemented by: Guillermo Rocamora - https://github.com/guillermo1996
-* Library used: https://testthat.r-lib.org/
+* Unit test implemented by: [Guillermo Rocamora](https://github.com/guillermo1996)
+* R Library used: https://testthat.r-lib.org/
+
+
+######################################################

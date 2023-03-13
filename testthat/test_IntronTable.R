@@ -1,6 +1,7 @@
-source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
+main_path <- normalizePath(path = "./")
+source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_IntronTable, "Intron table tests not executed. Variable test_IntronTable set to FALSE in global options.")
-source(paste0(getwd(), "/testthat/helper_Files/helper_IntronTable.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_IntronTable.R"))
 
 context("\tTest consistent junction IDs with other tables")
 test_that("Test consistent junction IDs with other tables", {
@@ -319,6 +320,66 @@ test_that("Test that the biotypes percentage values are corrently obtained", {
   expect_equal(df_combined$protein_coding, df_combined$percent_PC)
 })
 
+context("\tTest that the MANE information is properly assigned")
+test_that("Test that the MANE information is properly assigned", {
+  
+  ## Extract MANE exons and convert them to introns
+  df_mane_exons <- hg_mane %>% as_tibble() %>% dplyr::filter(type == "exon")
+  df_mane_introns <- ggtranscript::to_intron(df_mane_exons, "transcript_name") %>%
+    mutate(start = start + 1, end = end - 1) %>%
+    mutate(intronID = paste0(seqnames, ":", start, "-", end, ":", strand)) %>%
+    mutate(MANE = 1) %>%
+    distinct(intronID, .keep_all = T)
+  
+  df_mane_introns <- df_mane_introns %>%
+    mutate(transcript_id = str_sub(string = transcript_id,
+                                   start = 1,
+                                   end = 15)) 
+  
+  df_mane_introns <- df_mane_introns %>%
+    inner_join(y = df_transcript,
+              by = c("transcript_id" = "transcript_id"))
+  
+  df_mane_introns %>%
+    dplyr::count(MANE.x)
+  
+  
+  ## Connect to the database
+  
+  df_intron_tidy <- df_intron %>% 
+    left_join(y = df_mane_introns %>% 
+                dplyr::select(id, MANE.x) %>% distinct(id, .keep_all = T),
+              by = c("transcript_id" = "id")) %>%
+    as_tibble()
+  
+  df_intron_tidy %>%
+     dplyr::count(MANE)
+  df_intron_tidy %>%
+    dplyr::count(MANE.x)
+  
+  
+  df_intron_tidy[c("MANE")][is.na(df_intron_tidy[c("MANE")])] <- 0
+  
+  # df_intron_tidy %>%
+  #   dplyr::count(MANE)
+  # 
+  # query = paste0("ALTER TABLE 'intron' ADD MANE NUMERIC NOT NULL DEFAULT 0");
+  # DBI::dbSendQuery(con, query)
+  # 
+  # query = paste0("UPDATE 'intron' SET MANE = 1 WHERE ref_junID IN (", paste(df_intron_tidy %>%
+  #                                                                             filter(MANE == 1) %>%
+  #                                                                             pull(ref_junID), collapse = ","), ")")
+  # DBI::dbSendQuery(con, query)
+  # 
+  # 
+  # query = paste0("UPDATE 'intron' SET MANE = 0 WHERE ref_junID IN (", paste(df_intron_tidy %>%
+  #                                                                             filter(MANE == 0) %>%
+  #                                                                             pull(ref_junID), collapse = ","), ")")
+  # DBI::dbSendQuery(con, query)
+  # 
+  
+  ###################################################
+})
 # context("\tTest that the MANE information is properly calculated")
 # test_that("Test that the MANE information is properly calculated", {
 #   skip_if(!test_MANE, "No MANE test. Variable test_MANE set to FALSE in global options.")

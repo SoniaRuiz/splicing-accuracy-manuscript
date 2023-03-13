@@ -4,11 +4,12 @@ library(GenomicRanges)
 library(tidyverse, warn.conflicts = FALSE)
 
 #################### Main testing parameters
-gtf_version <- "105"
+gtf_version <- 105
 main_project <- "splicing"
-main_path <- getwd()
-database_path <- paste0("./database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
-projects_path <- paste0("./results/")
+## Change this path accordingly. It should point to the 'splicing-accuracy-manuscript' root folder
+main_path <- normalizePath(path = "./")
+database_path <- paste0(main_path, "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
+projects_path <- paste0(main_path, "/results/")
 
 #################### Control what is being tested
 ### Specific tests
@@ -36,21 +37,21 @@ num_cores <- 8
 
 #################### Additional files and paths
 ## Additional Files
-reference_transcriptome_path <- path.expand(paste0("./dependencies/Homo_sapiens.GRCh38.105.chr.gtf"))
-clinvar_path <- path.expand(paste0("./dependencies/clinvar_intronic_tidy.rda"))
-CNC_CDTS_CONS_gr_path <- path.expand(paste0( "./dependencies/CNC_CDTS_CONS_gr.rda"))
-hg_mane_transcripts_path <- path.expand(paste0( "./dependencies/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
+reference_transcriptome_path <- path.expand(paste0(main_path, "/dependencies/Homo_sapiens.GRCh38.105.chr.gtf"))
+clinvar_path <- path.expand(paste0(main_path, "/dependencies/clinvar_intronic_tidy.rda"))
+CNC_CDTS_CONS_gr_path <- path.expand(paste0( main_path, "/dependencies/CNC_CDTS_CONS_gr.rda"))
+hg_mane_transcripts_path <- path.expand(paste0(main_path, "/dependencies/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
 
 # df_all_introns_introverse_tidy_path <- path.expand(paste0(main_path, "/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
 # all_annotated_SR_details_length_105_raw_biotype_path <-paste0(main_path, "/results/all_split_reads_all_tissues_PC_biotype.rds")
 
-df_all_introns_introverse_tidy_path <- path.expand(paste0("./database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
-all_annotated_SR_details_length_105_raw_biotype_path <-paste0( "./results/all_split_reads_all_tissues_PC_biotype.rds")
+df_all_introns_introverse_tidy_path <- path.expand(paste0(main_path, "/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
+all_annotated_SR_details_length_105_raw_biotype_path <-paste0(main_path, "/results/all_split_reads_all_tissues_PC_biotype.rds")
 
-## MaxEntScan path
-bedtools_path <- path.expand("./tools/bedtools/")
-fasta_path <- path.expand("./dependencies/Homo_sapiens.GRCh38.dna.primary_assembly.fa")
-fordownload_path <- path.expand("./tools/fordownload/")
+## MaxEntScan requirements
+bedtools_path <- path.expand(path = "/tools/bedtools2/")
+fasta_path <- path.expand(paste0(main_path, "/dependencies/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
+fordownload_path <- path.expand(paste0(main_path, "/dependencies/fordownload/"))
 
 #################### Variables to validate the data
 ### Database tables:
@@ -83,7 +84,8 @@ generateClusterSplitReadsPath <- function(table_name, projects_path, gtf_version
   project <- full_name[2]
   cluster <- full_name[1]
   
-  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "/base_data/", project, "_", cluster, "_split_read_counts.rds")
+  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", 
+                                     main_project, "/base_data/", project, "_", cluster, "_split_read_counts.rds")
   return(cluster_split_reads_path)
 }
 
@@ -103,7 +105,8 @@ generateAnnotatedSRdetailsPath <- function(table_name, projects_path, gtf_versio
   project <- full_name[2]
   cluster <- full_name[1]
   
-  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "/base_data/", project, "_", cluster, "_all_split_reads.rds")
+  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", 
+                                     main_project, "/base_data/", project, "_", cluster, "_all_split_reads.rds")
   return(cluster_split_reads_path)
 }
 
@@ -123,7 +126,8 @@ generateTPMpath <- function(table_name, projects_path, gtf_version, main_project
   project <- full_name[2]
   cluster <- full_name[1]
   
-  tpm_path <- paste0(projects_path, project, "/v", gtf_version, "/", main_project, "/results/tpm/", project, "_", cluster, "_tpm.rds")
+  tpm_path <- paste0(projects_path, project, "/v", gtf_version, "/", 
+                     main_project, "/results/tpm/", project, "_", cluster, "_tpm.rds")
   return(tpm_path)
 }
 
@@ -286,15 +290,10 @@ generateMaxEntScore <- function(GRdata,
   ## Donor sequence
   data.table::fwrite(donor_df, file = tmp_file, quote = F, sep = "\t", row.names = F, col.names = F, scipen = 50)
   rm(donor_df)
-  system2(
-    command = paste0(bedtools_path, "bedtools"),
-    args = c(
-      "getfasta -nameOnly -s",
-      "-fi", fasta_path,
-      "-bed", tmp_file,
-      "-tab -fo", tmp_file_seq
-    )
-  )
+  system(paste0("bedtools getfasta -name -s -fi ", fasta_path, 
+                " -bed ", tmp_file, 
+                " -tab -fo ", tmp_file_seq))
+  
   donor_sequences_input <- read.delim(tmp_file_seq, header = F)
   stopifnot(identical(
     gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(donor_sequences_input$V1)))),
@@ -304,15 +303,10 @@ generateMaxEntScore <- function(GRdata,
   ## Acceptor sequence
   data.table::fwrite(acceptor_df, file = tmp_file, quote = F, sep = "\t", row.names = F, col.names = F, scipen = 50)
   rm(acceptor_df)
-  system2(
-    command = paste0(bedtools_path, "bedtools"),
-    args = c(
-      "getfasta -nameOnly -s",
-      "-fi", fasta_path,
-      "-bed", tmp_file,
-      "-tab -fo", tmp_file_seq
-    )
-  )
+  system(paste0("bedtools getfasta -name -s -fi ", fasta_path, 
+                " -bed ", tmp_file, 
+                " -tab -fo ", tmp_file_seq))
+  
   acceptor_sequences_input <- read.delim(tmp_file_seq, header = F)
   stopifnot(identical(
     gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(acceptor_sequences_input$V1)))),

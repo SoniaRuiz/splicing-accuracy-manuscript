@@ -36,9 +36,14 @@ intron_expected_types <- c(ref_junID = "NUMERIC",
                            lncRNA = "INTEGER", 
                            protein_coding = "INTEGER", 
                            misspliced = "BOOL", 
-                           transcript_id = "INTEGER")
-intron_expected_notnull <- c(ref_junID = 1, ref_coordinates = 1, ref_length = 1, ref_ss5score = 1, ref_ss3score = 1, ref_cons5score = 1, ref_cons3score = 1, ref_CDTS5score = 1, ref_CDTS3score = 1, u2_intron = 0, u12_intron = 0, clinvar = 1, lncRNA = 1, protein_coding = 1, misspliced = 1, transcript_id = 1)
-intron_expected_pk <- c(ref_junID = 1, ref_coordinates = 0, ref_length = 0, ref_ss5score = 0, ref_ss3score = 0, ref_cons5score = 0, ref_cons3score = 0, ref_CDTS5score = 0, ref_CDTS3score = 0, u2_intron = 0, u12_intron = 0, clinvar = 0, lncRNA = 0, protein_coding = 0, misspliced = 0, transcript_id = 0)
+                           transcript_id = "INTEGER",
+                           MANE = "NUMERIC")
+intron_expected_notnull <- c(ref_junID = 1, ref_coordinates = 1, ref_length = 1, ref_ss5score = 1, ref_ss3score = 1, ref_cons5score = 1, ref_cons3score = 1, ref_CDTS5score = 1, 
+                             ref_CDTS3score = 1, u2_intron = 0, u12_intron = 0, clinvar = 1, lncRNA = 1, protein_coding = 1, misspliced = 1, transcript_id = 1, MANE = 1)
+
+intron_expected_pk <- c(ref_junID = 1, ref_coordinates = 0, ref_length = 0, ref_ss5score = 0, ref_ss3score = 0, ref_cons5score = 0, ref_cons3score = 0, ref_CDTS5score = 0, 
+                        ref_CDTS3score = 0, u2_intron = 0, u12_intron = 0, clinvar = 0, lncRNA = 0, protein_coding = 0, misspliced = 0, transcript_id = 0, MANE = 0)
+
 intron_expected_foreign <- c(table = "transcript", from = "transcript_id", to = "id")
 
 ### Novel table

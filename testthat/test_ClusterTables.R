@@ -1,6 +1,7 @@
-source(paste0(getwd(), "/testthat/helper_Files/helper_Global.R"))
+main_path <- normalizePath(path = "./")
+source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_ClusterTables, "Cluster tables tests not executed. Variable test_ClusterTables set to FALSE in global options.")
-source(paste0(getwd(), "/testthat/helper_Files/helper_ClusterTables.R"))
+source(paste0(main_path, "/testthat/helper_Files/helper_ClusterTables.R"))
 
 context("\tTest junction IDs and their reference with intron and novel tables")
 test_that("Test junction IDs and their reference with intron and novel tables", {
@@ -180,8 +181,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
       annotated_SR_details_sample <- annotated_SR_details %>%
         inner_join(
           y = split_read_counts_sample,
-          by = "junID",
-          sort = T
+          by = "junID"
         ) %>%
         dplyr::rename(counts = all_of(sample)) %>%
         GenomicRanges::GRanges()
