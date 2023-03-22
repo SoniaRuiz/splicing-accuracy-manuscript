@@ -5,13 +5,7 @@ library(GenomicRanges)
 library(DBI)
 library(dplyr)
 
-# source("~/PROJECTS/splicing-accuracy-manuscript/init.R")
-
-#biomaRt::biomartCacheClear()
-
-.libPaths( c( "/home/sruiz/R/x86_64-pc-linux-gnu-library/4.0/", .libPaths()) )
-
-setwd("~/splicing-accuracy-manuscript/")
+setwd(normalizePath("."))
 
 dependencies_folder <- paste0(getwd(), "/dependencies/")
 

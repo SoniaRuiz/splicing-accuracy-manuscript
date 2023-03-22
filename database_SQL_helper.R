@@ -819,64 +819,21 @@ calculate_tpm <- function(rse, ref_tidy) {
   
 
   # Remove anything after . in ensembl id
-  rownames(rse) %>% head()
   rownames(rse) <- rownames(rse) %>% 
     str_remove("\\..*")
-  
-  
-  # ## WE FIRST CALCULATE THE RPKM VALUE
-  # 
-  # ## 1. Sum the total number of reads in each column 
-  # mapped <- colSums( SummarizedExperiment::assays(rse)$counts )
-  # mapped %>% head()
-  # 
-  # bg <- matrix(mapped, ncol = ncol(rse), nrow = nrow(rse), byrow = TRUE)
-  # bg %>% head()
-  # per_million_scalling_factor <- (bg / 1e6)
-  # 
-  # 
-  # ## 2. Get the length of the coding sequence of each gene
-  # len <- SummarizedExperiment::rowData(rse) %>%
-  #   as_tibble(rownames = "gene") %>%
-  #   left_join(ref_tidy,
-  #             by = c("gene" = "gene_id")) %>% 
-  #   pull(CDS_length)
-  # 
-  # wid <- matrix(len, nrow = nrow(rse), ncol = ncol(rse), byrow = FALSE)
-  # wid %>% head()
-  # gene_length_kilobases <- (wid / 1000)
-  # 
-  # 
-  # rkm <-  SummarizedExperiment::assays(rse)$counts / per_million_scalling_factor
-  # rpkm <-  rkm / gene_length_kilobases
-  # 
-  # rpkm %>% 
-  #   as_tibble(rownames = "gene") %>% 
-  #   filter(gene=="ENSG00000223972")
-  # 
-  # 
-  # 
-  # 
-  # ## WE NOW CONVERT THE RPKM VALUE INTO TPM
-  # tpm <- apply(rpkm, 2, function(x) {
-  #   (x / sum(x)) * 10^6
-  # })
-  # 
-  # tpm %>% 
-  #   as_tibble(rownames = "gene") %>% 
-  #   filter(gene=="ENSG00000223972")
-  
   
   
   # Convert to tpm, which is calculated by:
   # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
   # 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
   # 3. Divide the RPK values by the “per million” scaling factor.
+  
+  
   srp_rpk <- 
     rse %>% 
     SummarizedExperiment::assay() %>%
     as_tibble(rownames = "gene") %>% 
-    tidyr::pivot_longer(
+    tidyr::pivot_longer( ## equivalent to gather
       cols = -c("gene"),
       names_to = "recount_id",
       values_to = "counts"
@@ -884,11 +841,11 @@ calculate_tpm <- function(rse, ref_tidy) {
     dplyr::inner_join(
       ref_tidy %>% 
         as_tibble() %>% 
-        dplyr::select(gene_id, CDS_length),
+        dplyr::select(gene_id, width),
       by = c("gene" = "gene_id")
     ) %>% # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
     dplyr::mutate(
-      rpk = counts/CDS_length
+      rpk = counts/width
     ) 
   srp_rpk %>% head()
   
@@ -909,13 +866,12 @@ calculate_tpm <- function(rse, ref_tidy) {
     )   
     
   tpm <- tpm %>%
-    #head() %>%
-    dplyr::select(gene, recount_id, tpm) %>%
+    dplyr::select(gene, recount_id, tpm) %>% 
     spread(key = recount_id, value = tpm)
   
   
   
-  # tpm %>% head()
+  # tpm_recount <- tpm
   # tpm %>% filter(gene=="ENSG00000223972")
   
   
@@ -925,32 +881,27 @@ calculate_tpm <- function(rse, ref_tidy) {
 
 
 generate_recount3_tpm <- function(projects_used,
+                                  ref,
                                   gtf_version,
                                   main_project) {
   
   
   # Reference gtf
-  ref <- rtracklayer::import("/data/references/ensembl/gtf_gff3/v105/Homo_sapiens.GRCh38.105.chr.gtf")
   ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22), pruning.mode = "coarse") 
   ref %>% head()
   
-
+  
   ## Per each gene, calculate the length of its coding sequence
   ref_tidy <- ref %>%
-    as_tibble(rownames = "gene") %>% 
-    group_by(gene_id) %>% 
-    filter(type == "exon") %>%
-    mutate(CDS_length = width %>% sum()) %>%
-    ungroup() %>%
+    as_tibble() %>% 
+    filter(type == "gene") %>%
     distinct(gene_id, .keep_all = T) %>%
-    dplyr::select(gene_id, gene_name, CDS_length) %>%
-    as_tibble()
+    dplyr::select(gene_id, gene_name, width) 
   
   
   for (project_id in projects_used) {
     
     # project_id <- projects_used[1]
-    # project_id <- "HEART"
     
     
     ## 1. Get expression data from recount3 
@@ -959,87 +910,23 @@ generate_recount3_tpm <- function(projects_used,
       project_home = "data_sources/gtex",
       organism = "human",
       annotation = "gencode_v29",
-      jxn_format = c("UNIQUE"),
       type = "gene")
     
     ## 2. Transform raw counts
     SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
     
-    # recount_tpm <- SummarizedExperiment::assays(rse)$TPM %>%
-    #   as_tibble(rownames = "gene") %>%
-    #   mutate(gene = gene %>% str_remove("\\..*"))
-    # 
-    # rm(rse)
-    # gc()
-    
-    
-    recount_tpm <- calculate_tpm(rse, ref_tidy)
-    
-    
-    
-    
-    folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-    saveRDS(object = recount_tpm,
-            file = paste0(folder_root, "/tpm_all_samples.rds"))
-    
-    # ## 2. For each tissue within the current project, filter the RSE by its samples
-    # 
-    # folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-    # 
-    # if ( file.exists(paste0(folder_root, "/base_data/", project_id, "_samples_metadata.rds")) ) {
-    #   
-    #   metadata.info <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_samples_metadata.rds"))
-    #   
-    #   clusters_ID <- metadata.info$gtex.smtsd %>% unique()
-    #   
-    #   for ( cluster_id in clusters_ID ) {
-    #     
-    #     # cluster_id <- clusters_ID[1]
-    #     
-    #     samples <- metadata.info %>%
-    #       as_tibble() %>%
-    #       filter(gtex.smtsd == cluster_id,
-    #              gtex.smrin >= 6.0,
-    #              gtex.smafrze != "EXCLUDE") %>%
-    #       distinct(external_id) %>%
-    #       pull()
-    #     
-    #     if ( (main_project == "splicing" && length(samples) >= 70) ) {
-    #       
-    #       cluster_samples <- readRDS(file = paste0(folder_root, "/base_data/",
-    #                                                project_id, "_", cluster_id, "_samples_used.rds"))
-    #       
-    #       if ( !identical(samples, cluster_samples) ) {
-    #         print("ERROR - samples initially set and the ones obtained now are not identical")
-    #         break;
-    #       }
-    #       
-    #       ## Filter the object for the set of samples corresponding to the current cluster
-    #       recount_tpm_local <- recount_tpm %>%
-    #         dplyr::select(c("gene", all_of(cluster_samples)))
-    #       
-    #       ## Save results
-    #       folder_name <- paste0(folder_root, "/results/tpm/")
-    #       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
-    #       saveRDS(object = recount_tpm_local,
-    #               file = paste0(folder_name, project_id, "_", cluster_id, "_tpm.rds"))
-    #       
-    #       
-    #       rm(recount_tpm_local)
-    #       rm(cluster_samples)
-    #       gc()
-    #       
-    #     }
-    #     
-    #   }
-    # }
-    
+    ## 3. Calculate TPM using the length of the coding sequence
+    tpm <- calculate_tpm(rse, ref_tidy)
+    tpm %>% head() %>% print()
+   
+    ## 4. Free up memory and return
     print(paste0(Sys.time(), " - ", project_id, " finished!"))
-    
     rm(folder_root)
     rm(clusters_ID)
-    rm(recount_tpm)
     rm(rse)
+    
+    return(tpm)
+    
     gc()
     
   }

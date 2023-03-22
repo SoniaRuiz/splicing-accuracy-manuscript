@@ -14,10 +14,10 @@ library(doParallel)
 
 ## CONNECT TO THE DATABASE ------------------------------
 
-setwd("~/splicing-accuracy-manuscript/")
+setwd(normalizePath("."))
 gtf_version <- 105
 main_project <- "splicing"
-getwd()
+
 database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project,
                           "/", main_project, ".sqlite")
 
@@ -40,7 +40,7 @@ get_mode <- function(data) {
 
 
 custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
-                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         
                          axis.ticks = element_line(colour = "black", linewidth = 2),
                          axis.text = element_text(size = 7, family="Arial", colour = "black"),
                          axis.line = element_line(colour = "black"),
@@ -49,6 +49,9 @@ custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = 
                          axis.text.x = element_text(size = 7, family="Arial", colour = "black", 
                                                     hjust = 0.5, vjust = 0.5),
                          strip.text = element_text(size = 7, family="Arial", colour = "black"),
+                         
+                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         legend.title = element_blank(),
                          legend.position = "top",
                          legend.box = "vertical")
 
@@ -405,6 +408,24 @@ get_contamination_rates_all_tissues <- function () {
     df_contamination <- readRDS(file = contamination_file)
   }
   
+  
+  ## all tissues
+  df_contamination %>%
+    pull(in_annotation) %>% 
+    mean
+  df_contamination %>%
+    pull(in_annotation) %>% 
+    sd
+  
+  ## Only brain
+  df_contamination %>%
+    filter(str_detect(tissue, pattern = "Brain")) %>%
+    pull(in_annotation) %>% 
+    mean
+  df_contamination %>%
+    filter(str_detect(tissue, pattern = "Brain")) %>%
+    pull(in_annotation) %>% 
+    sd
   
   ## Prepare the dataframe before plotting it
   df_contamination_tidy <- df_contamination %>% 
@@ -1079,20 +1100,20 @@ get_mean_read_count_FTCX <- function() {
       
       return( data.frame(annotated_unique_junctions = c(db_never$ref_junID,
                                                         db_misspliced$ref_junID) %>% unique() %>% length(),
-                         annotated_median_count = c(db_never$ref_sum_counts,
+                         annotated_median_read_count = c(db_never$ref_sum_counts,
                                                     db_misspliced$ref_sum_counts) %>% median(),
-                         annotated_max_count = c(db_never$ref_sum_counts,
+                         annotated_max_read_count = c(db_never$ref_sum_counts,
                                                  db_misspliced$ref_sum_counts) %>% max(),
-                         annotated_min_count = c(db_never$ref_sum_counts,
+                         annotated_min_read_count = c(db_never$ref_sum_counts,
                                                  db_misspliced$ref_sum_counts) %>% min(),
                          novel_donor_unique_junctions = novel_donor$novel_junID %>% unique() %>% length(),
-                         novel_donor_median_count = novel_donor$novel_sum_counts %>% median(),
-                         novel_donor_max_count = novel_donor$novel_sum_counts %>% max(),
-                         novel_donor_min_count = novel_donor$novel_sum_counts %>% min(),
+                         novel_donor_median_read_count = novel_donor$novel_sum_counts %>% median(),
+                         novel_donor_max_read_count = novel_donor$novel_sum_counts %>% max(),
+                         novel_donor_min_read_count = novel_donor$novel_sum_counts %>% min(),
                          novel_acceptor_unique_junctions = novel_acceptor$novel_junID %>% unique() %>% length(),
-                         novel_acceptor_median_count = novel_acceptor$novel_sum_counts %>% median(),
-                         novel_acceptor_max_count = novel_acceptor$novel_sum_counts %>% max(),
-                         novel_acceptor_min_count = novel_acceptor$novel_sum_counts %>% min(),
+                         novel_acceptor_median_read_count = novel_acceptor$novel_sum_counts %>% median(),
+                         novel_acceptor_max_read_count = novel_acceptor$novel_sum_counts %>% max(),
+                         novel_acceptor_min_read_count = novel_acceptor$novel_sum_counts %>% min(),
                          tissue = cluster_id) )
       
     })
@@ -1102,8 +1123,7 @@ get_mean_read_count_FTCX <- function() {
   
   
   
-  write.csv(x = df_read_count %>%
-              relocate(tissue),
+  write.csv(x = df_read_count %>% relocate(tissue),
             file = paste0(getwd(), "/results/_paper/results/05_supplementary_data_read_count.csv"),
             row.names = F)
 
@@ -1310,8 +1330,8 @@ get_maxentscan_score <- function() {
                      nrow = 1)
   
   file_name <- paste0(getwd(), "/results/_paper/figures/panel3ab")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 175, height = 55, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 175, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   
   
   ##############
@@ -1450,15 +1470,6 @@ get_distances <- function() {
                   FROM '", cluster_id, "_", project_id, "_misspliced' AS tissue
                   INNER JOIN 'novel' ON novel.novel_junID = tissue.novel_junID")
   db_misspliced_introns <- dbGetQuery(con, query) %>% as_tibble()
-  # query <- paste0("SELECT * 
-  #                 FROM 'novel' WHERE novel_junID IN (",
-  #                 paste(introns$novel_junID, collapse = ","),")")
-  # introns <- merge(x = introns,
-  #                  y = dbGetQuery(con, query) %>% as_tibble(),
-  #                  by = "novel_junID",
-  #                  all.x = T) %>% 
-  #   as_tibble() 
-  
   
   
   #############################
@@ -1475,7 +1486,7 @@ get_distances <- function() {
   df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
                                     levels = c("novel donor", "novel acceptor"))
   
-  #title <- paste0("Distances - ", cluster)
+  
   
   
   #################################
@@ -1518,10 +1529,6 @@ get_distances <- function() {
   plot_all <- plot_all / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
   plot_all
   
-  # file_name <- paste0(getwd(), "/results/_paper/figures/distances_FCTX")
-  # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
   
   ###############################
   ## PROTEIN CODING
@@ -1552,13 +1559,55 @@ get_distances <- function() {
   ## GENERATE PLOT ################
   #################################
   
-  plot_PC <- ggplot(data = df_novel_tidy %>% 
-                      filter(type_PC == "protein coding (PC)")) + 
+  plot_legend <- ggpubr::get_legend(ggplot(data = df_novel_tidy %>% 
+                                             filter(type_PC == "protein coding (PC)")) + 
+                                      geom_histogram(aes(x = distance, fill = novel_type))+
+                                      scale_fill_manual(values = c("#35B779FF","#64037d"),
+                                                        breaks = c("Novel Donor", "Novel Acceptor")) + custom_ggtheme )
+  
+  plot_PC_donor <- ggplot(data = df_novel_tidy %>% 
+                             filter(type_PC == "protein coding (PC)",
+                                    novel_type == "Novel Donor")) + 
     geom_histogram(aes(x = distance, fill = novel_type),
                    bins = limit_bp * 2,
                    binwidth = 1,
                    position = "stack") +
     ggtitle("Protein-coding transcripts") +
+    xlab("Distance (in bp)") +
+    ylab("Unique novel junctions") +
+    theme_light() +
+    scale_x_continuous(limits = c(limit_bp,(limit_bp * -1)),
+                       breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6),
+                       trans = "reverse") +
+    scale_fill_manual(values = c("#35B779FF","#64037d"),
+                      breaks = c("Novel Donor", "Novel Acceptor")) +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
+    custom_ggtheme +
+    theme(legend.position = "none") 
+  plot_PC_donor
+  distance_rectangle_donor <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 49, ymax = 51),
+              fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = 15, y = 80),  size = 2.5, label = "intron") +
+    
+    geom_rect(aes(xmin = (limit_bp * -1), xmax = 0, ymin = 1, ymax = 100),
+              fill = "grey", color = "black") +
+    geom_text(aes(x = -15,y = 55),  size = 2.5, label = "exon") +
+    
+    theme_void()
+  plot_PC_donor <- plot_PC_donor / distance_rectangle_donor +  patchwork::plot_layout(heights = c(8, 2))
+  plot_PC_donor
+  
+  
+  
+  plot_PC_acceptor <- ggplot(data = df_novel_tidy %>% 
+                               filter(type_PC == "protein coding (PC)",
+                                      novel_type == "Novel Acceptor")) + 
+    geom_histogram(aes(x = distance, fill = novel_type),
+                   bins = limit_bp * 2,
+                   binwidth = 1,
+                   position = "stack") +
+    #ggtitle("Protein-coding transcripts") +
     xlab("Distance (in bp)") +
     ylab("Unique novel junctions") +
     theme_light() +
@@ -1637,7 +1686,6 @@ get_distances <- function() {
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
-    
     #########
     geom_segment(data = data.frame(x = 17.8, xend = 21.1, linewidth =1,
                                  y = 350, yend = 350,
@@ -1654,10 +1702,8 @@ get_distances <- function() {
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
-    
-    
     #########
-  geom_segment(data = data.frame(x = 20.8, xend = 24.1, linewidth =1,
+    geom_segment(data = data.frame(x = 20.8, xend = 24.1, linewidth =1,
                                  y = 290, yend = 290,
                                  colour = "#333333",
                                  novel_type="Novel Acceptor"),
@@ -1671,23 +1717,30 @@ get_distances <- function() {
                                    y = 270, yend = 290,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) ) +
-    
-    ggplot2::facet_grid(vars(factor(novel_type, levels=c('Novel Donor','Novel Acceptor'))))
+                 aes(x=x,y=y,yend=yend,xend=xend) )
   
   
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
               fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 55),  size = 3, label = "exon") +
+    geom_text(aes(x = 15, y = 55),  size = 2.5, label = "exon") +
     geom_rect(aes(xmin = (limit_bp * -1), xmax = 0, ymin = 49, ymax = 51),
               fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15,y = 80),  size = 3, label = "intron") +
+    geom_text(aes(x = -15,y = 82),  size = 2.5, label = "intron") +
     theme_void()
   
   
-  plot_PC <- plot_PC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
-  plot_PC
+  plot_PC_acceptor <- plot_PC_acceptor / distance_rectangle +  patchwork::plot_layout(heights = c(8, 2))
+  plot_PC_acceptor
+  
+  plot_PC <- ggpubr::ggarrange(plot_PC_donor,
+                                     plot_PC_acceptor,# + ggpubr::rremove("ylab")+ ggpubr::rremove("legend"),
+                                     common.legend = T,
+                                     legend = "top",
+                                     #labels = c("c", "d"),
+                                     align = "v",
+                                     ncol = 1, 
+                                     nrow = 2)
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesPC")
@@ -1698,43 +1751,82 @@ get_distances <- function() {
   
   df_novel_tidy %>% filter(lncRNA == 100) %>% distinct(ref_junID) %>% nrow()
   
-  plot_NPC <- ggplot(data = df_novel_tidy %>% 
-                       filter(type_PC == "non PC")) + 
+  plot_NPC_donor <- ggplot(data = df_novel_tidy %>% 
+                            filter(type_PC == "non PC",
+                                   novel_type == "Novel Donor")) + 
+    geom_histogram(aes(x = distance, fill = novel_type),
+                   bins = limit_bp * 2,
+                   binwidth = 1,
+                   position = "stack") +
+    ggtitle("Non-coding transcripts")+
+    xlab("Distance (in bp)") +
+    ylab("Unique novel junctions") +
+    theme_light() +
+    scale_x_continuous(limits = c(limit_bp,(limit_bp * -1)),
+                       breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6),
+                       trans = "reverse") +
+    scale_fill_manual(values = c("#35B779FF","#64037d"),
+                      breaks = c("Novel Donor", "Novel Acceptor")) +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
+    custom_ggtheme +
+    theme(legend.position = "none") 
+  plot_NPC_donor
+  distance_rectangle_donor <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 49, ymax = 51),
+              fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = 15, y = 80),  size = 2.5, label = "intron") +
+    
+    geom_rect(aes(xmin = (limit_bp * -1), xmax = 0, ymin = 1, ymax = 100),
+              fill = "grey", color = "black") +
+    geom_text(aes(x = -15,y = 55),  size = 2.5, label = "exon") +
+    
+    theme_void()
+  plot_NPC_donor <- plot_NPC_donor / distance_rectangle_donor +  patchwork::plot_layout(heights = c(8, 2))
+  plot_NPC_donor
+  
+  plot_NPC_acceptor <- ggplot(data = df_novel_tidy %>% 
+                                filter(type_PC == "non PC",
+                                       novel_type == "Novel Acceptor")) + 
     geom_histogram(aes(x = distance, fill = novel_type),
                    bins = limit_bp * 2,
                    binwidth = 1,
                    position = "stack"
     ) +
-    ggplot2::facet_grid(vars(novel_type)) +
     xlab("Distance (in bp)") +
-    ylab("") +
+    ylab("Unique novel junctions") +
     theme_light() +
-    ggtitle("Non-coding transcripts")+
     scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
                        breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
     scale_fill_manual(values = c("#35B779FF","#64037d"),
                       breaks = c("Novel Donor", "Novel Acceptor")) +
-    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
     custom_ggtheme 
   
-  plot_legend <- ggpubr::get_legend(plot_NPC)
+  #plot_legend <- ggpubr::get_legend(plot_NPC)
   
-  plot_NPC <- plot_NPC+ ggpubr::rremove("legend")
+  plot_NPC_acceptor <- plot_NPC_acceptor+ ggpubr::rremove("legend")
   
-  plot_NPC <- plot_NPC / distance_rectangle +  patchwork::plot_layout(heights = c(8, 1))
-  plot_NPC
+  plot_NPC_acceptor <- plot_NPC_acceptor / distance_rectangle +  patchwork::plot_layout(heights = c(8, 2))
+  plot_NPC_acceptor
   
   
   # file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesNPC_lncRNA")
   # ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
   # ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
   
-  
+  plot_NPC <- ggpubr::ggarrange(plot_NPC_donor,
+                                plot_NPC_acceptor,# + ggpubr::rremove("ylab")+ ggpubr::rremove("legend"),
+                                common.legend = T,
+                                legend = "top",
+                                #labels = c("c", "d"),
+                                align = "v",
+                                ncol = 1, 
+                                nrow = 2)
+  plot_NPC
   #######################################
   ## COMBINE ALL 2 PLOTS
   #######################################
   
-  plot <- ggpubr::ggarrange(plot_PC,
+  plot <- ggpubr::ggarrange(plot_PC+ ggpubr::rremove("ylab")+ ggpubr::rremove("legend"),
                             plot_NPC + ggpubr::rremove("ylab")+ ggpubr::rremove("legend"),
                             common.legend = T,
                             legend = "top",
@@ -1752,8 +1844,8 @@ get_distances <- function() {
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/panel3cd")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 110, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 110, units = "mm", dpi = 300)
   
   
   #########################################
@@ -2006,8 +2098,8 @@ get_modulo <- function() {
   
   
   file_name <- paste0(getwd(), "/results/_paper/figures/panel3e")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 55, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 55, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   
   
   
@@ -4284,8 +4376,6 @@ plot_effect_size_data <- function() {
 
 plot_data_AQR_U2AF2 <- function() {
   
-  
-  
   ## All plots only contain common introns across RBP projects 
   
   overwrite = F
@@ -4531,7 +4621,7 @@ plot_data_AQR_U2AF2 <- function() {
     scale_fill_manual(values = c("#91D1C2B2", "#999999"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("Gene knockdown  ", "Control")) + 
-    scale_colour_manual(values = c("#91D1C2B2", "#999999"),
+    scale_colour_manual(values = c("#3c907c", "#333333"),
                       breaks = c("gene knockdown", "control"),
                       labels = c("Gene knockdown  ", "Control")) + 
     labs(x = "Delta MES Acceptor", y = "Density") +
@@ -4541,8 +4631,9 @@ plot_data_AQR_U2AF2 <- function() {
            colour = guide_legend(title = "Median Delta MES: ",
                                ncol = 2, nrow = 1 )) +
     custom_ggtheme 
-  delta_mes + theme(legend.box = "horizontal")
   
+  delta_mes + theme(legend.box = "horizontal")
+
   
   ggpubr::ggarrange(x = distances_acceptor,
                     y = delta_mes + theme(legend.box = "horizontal"),
