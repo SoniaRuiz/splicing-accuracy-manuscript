@@ -1,5 +1,12 @@
 library(tidyverse)
 library(GenomicRanges)
+<<<<<<< HEAD
+=======
+library(DBI)
+library(dplyr)
+
+setwd(normalizePath("."))
+>>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
 
 setwd(normalizePath("."))
 dependencies_folder <- paste0(getwd(), "/dependencies/")

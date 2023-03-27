@@ -4,7 +4,7 @@ library(DBI)
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper_age.R")
 
 
-setwd("~/PROJECTS/splicing-project-recount3/")
+setwd(normalizePath("."))
 
 
 ##################################
@@ -19,18 +19,22 @@ dbListTables(con)
 
 age_projects <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
 
-
 custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
-                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         
                          axis.ticks = element_line(colour = "black", linewidth = 2),
                          axis.text = element_text(size = 7, family="Arial", colour = "black"),
                          axis.line = element_line(colour = "black"),
                          axis.title = element_text(size = 7, family="Arial", colour = "black"),
                          axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
-                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 1, vjust = 0),
+                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", 
+                                                    hjust = 0.5, vjust = 0.5),
                          strip.text = element_text(size = 7, family="Arial", colour = "black"),
+                         
+                         legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                         legend.title = element_blank(),
                          legend.position = "top",
                          legend.box = "vertical")
+
 
 ##################################
 ## STATS
@@ -437,6 +441,7 @@ get_effsize_MSR_with_age <- function() {
   
 }
 
+
 plot_effsize_MSR_with_age <- function() {
   
   
@@ -806,9 +811,13 @@ age_stratification_brain_GO <- function() {
   
   ## Introns increasing MSR with age
   df_MSRD_increasing <- df_MSRD %>%
-    filter((`20-39` < `40-59` & `40-59` < `60-79`))
+    filter((`20-39` < `40-59` & `40-59` < `60-79`) | 
+             (`20-39` == `40-59` & `40-59` < `60-79`) |
+             (`20-39` < `40-59` & `40-59` == `60-79`))
   df_MSRA_increasing <- df_MSRA %>%
-    filter((`20-39` < `40-59` & `40-59` < `60-79`))
+    filter((`20-39` < `40-59` & `40-59` < `60-79`) | 
+             (`20-39` == `40-59` & `40-59` < `60-79`) |
+             (`20-39` < `40-59` & `40-59` == `60-79`))
   
   c(df_MSRD_increasing %>% distinct(ref_junID) %>% pull(),
     df_MSRA_increasing %>% distinct(ref_junID) %>% pull()) %>% unique() %>% length()
@@ -852,13 +861,20 @@ age_stratification_brain_GO <- function() {
   mapIds(org.Hs.eg.db, genes_increasing, 'ENTREZID', 'SYMBOL')
  
   ekegg_MSR <- clusterProfiler::enrichKEGG(
-    gene          = mapIds(org.Hs.eg.db, genes_increasing, 'ENTREZID', 'SYMBOL'),
+    gene          = mapIds(x = org.Hs.eg.db, keys = genes_increasing, column = 'ENTREZID', keytype = 'SYMBOL'),
     organism      = "hsa",
     keyType       = "kegg",
-    universe      = mapIds(org.Hs.eg.db, bg_genes, 'ENTREZID', 'SYMBOL'), pAdjustMethod = "fdr")
+    universe      = mapIds(x = org.Hs.eg.db, keys = bg_genes, column = 'ENTREZID', keytype = 'SYMBOL'), 
+    pAdjustMethod = "fdr")
   
+  xlsx::write.xlsx2(x = genes_increasing, 
+                    file = paste0(getwd(), "/results/_paper/results/genes.xlsx"), 
+                    sheetName = "genes_increasing", row.names = F, append = T)
   
- 
+  xlsx::write.xlsx2(x = bg_genes, 
+                    file = paste0(getwd(), "/results/_paper/results/genes.xlsx"), 
+                    sheetName = "bg_genes", row.names = F, append = T)
+  
   #############################################
   ## PLOTS
   #############################################
@@ -944,83 +960,99 @@ age_stratification_brain_GO <- function() {
                                     "/results/_paper/figures/panel7b.png"), 
                   width = 180, height = 80, units = "mm", dpi = 300)
   
-  ############################################
-  ## BAR PLOT -------------------------------
-  ############################################
+  # ############################################
+  # ## BAR PLOT -------------------------------
+  # ############################################
+  # 
+  # plot1 <- barplot(ego_MSR, 
+  #                  x = "Count", 
+  #                  order=T, 
+  #                  showCategory = 40) +
+  #   scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+  #   xlab("Gene Count") +
+  #   ggforce::facet_row(facets = vars(ONTOLOGY),
+  #                      scales = "free_x", space = "free",
+  #                      strip.position = "top") +
+  #   coord_flip() +
+  #   theme_light() + 
+  #   theme(text = element_text(colour = "black",size = 12),
+  #         axis.line = element_line(colour = "black"),
+  #         
+  #         strip.text = element_text(colour = "black", size = "12"),
+  #         legend.position = "top",
+  #         axis.ticks = element_line(colour = "black", linewidth = 2),
+  #         axis.text.x = element_text(colour = "black",
+  #                                    angle = 90,
+  #                                    vjust = 0.3,
+  #                                    hjust = 1),
+  #         axis.text.y = element_text(colour = "black",
+  #                                    vjust = 0.3,
+  #                                    hjust = 1)) +
+  #   guides(fill = guide_legend(title = "q",
+  #                              label.position = "bottom") ) #+xlim(c(0,0.072))
+  # plot1
+  # 
+  # 
+  # plot2 <- barplot(ekegg_MSR %>%
+  #                    mutate(ONTOLOGY = "KEGG"), 
+  #                  x = "Count", 
+  #                  order=T, 
+  #                  color = "qvalue") +
+  #   scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
+  #   xlab("Gene Ratio") +
+  #   ggforce::facet_row(facets = vars(ONTOLOGY),
+  #                      scales = "free_x", space = "free",
+  #                      strip.position = "top") +
+  #   theme_light() + 
+  #   theme(text = element_text(colour = "black",size = 12),
+  #         axis.line = element_line(colour = "black"),
+  #         
+  #         strip.text = element_text(colour = "black", size = "12"),
+  #         legend.position = "top",
+  #         #panel.grid.major.x = element_blank(),
+  #         #panel.grid.major.y = element_blank(),
+  #         axis.ticks = element_line(colour = "black", size = 2),
+  #         axis.text.x = element_text(colour = "black",
+  #                                    angle = 90,
+  #                                    vjust = 0.3,
+  #                                    hjust = 1),
+  #         axis.text.y = element_text(colour = "black",
+  #                                    vjust = 0.3,
+  #                                    hjust = 1)) +
+  #   guides(fill = guide_legend(title = "q",
+  #                              label.position = "bottom") ) +
+  #   coord_flip() #+xlim(c(0,0.072))
+  # 
+  # 
+  # ggpubr::ggarrange(plot0,
+  #                   plot2+ ggpubr::rremove("ylab"), 
+  #                   common.legend = T,
+  #                   widths = c(3,1))
+  # 
+  # ggplot2::ggsave(filename = paste0(getwd(), 
+  #                                   "/results/_paper/figures/go_barplot_ALL_age_brain_acceptor.png"), 
+  #                 width = 260, height = 160, units = "mm", dpi = 300)
   
-  plot1 <- barplot(ego_MSR, 
-                   x = "Count", 
-                   order=T, 
-                   showCategory = 40) +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
-    xlab("Gene Count") +
-    ggforce::facet_row(facets = vars(ONTOLOGY),
-                       scales = "free_x", space = "free",
-                       strip.position = "top") +
-    coord_flip() +
-    theme_light() + 
-    theme(text = element_text(colour = "black",size = 12),
-          axis.line = element_line(colour = "black"),
-          
-          strip.text = element_text(colour = "black", size = "12"),
-          legend.position = "top",
-          axis.ticks = element_line(colour = "black", linewidth = 2),
-          axis.text.x = element_text(colour = "black",
-                                     angle = 90,
-                                     vjust = 0.3,
-                                     hjust = 1),
-          axis.text.y = element_text(colour = "black",
-                                     vjust = 0.3,
-                                     hjust = 1)) +
-    guides(fill = guide_legend(title = "q",
-                               label.position = "bottom") ) #+xlim(c(0,0.072))
-  plot1
+  
+  #############################################
+  ## SAVE TERMS AS SUPPLEMENTARY DATA 
+  #############################################
   
   
-  plot2 <- barplot(ekegg_MSR %>%
-                     mutate(ONTOLOGY = "KEGG"), 
-                   x = "Count", 
-                   order=T, 
-                   color = "qvalue") +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
-    xlab("Gene Ratio") +
-    ggforce::facet_row(facets = vars(ONTOLOGY),
-                       scales = "free_x", space = "free",
-                       strip.position = "top") +
-    theme_light() + 
-    theme(text = element_text(colour = "black",size = 12),
-          axis.line = element_line(colour = "black"),
-          
-          strip.text = element_text(colour = "black", size = "12"),
-          legend.position = "top",
-          #panel.grid.major.x = element_blank(),
-          #panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2),
-          axis.text.x = element_text(colour = "black",
-                                     angle = 90,
-                                     vjust = 0.3,
-                                     hjust = 1),
-          axis.text.y = element_text(colour = "black",
-                                     vjust = 0.3,
-                                     hjust = 1)) +
-    guides(fill = guide_legend(title = "q",
-                               label.position = "bottom") ) +
-    coord_flip() #+xlim(c(0,0.072))
+  write.csv(x = ego_MSR %>% as_tibble(),
+            file = paste0(getwd(), "/results/_paper/results/go_msr_brain.csv"),
+            row.names = F)
+  write.csv(x = ekegg_MSR %>% as_tibble(),
+            file = paste0(getwd(), "/results/_paper/results/kegg_msr_brain.csv"),
+            row.names = F)
   
-  
-  ggpubr::ggarrange(plot0,
-                    plot2+ ggpubr::rremove("ylab"), 
-                    common.legend = T,
-                    widths = c(3,1))
-  
-  ggplot2::ggsave(filename = paste0(getwd(), 
-                                    "/results/_paper/figures/go_barplot_ALL_age_brain_acceptor.png"), 
-                  width = 260, height = 160, units = "mm", dpi = 300)
   
   
   #############################################
   ## EVALUATE TERMS
   #############################################
+  
+  
   
   query <- paste0("SELECT DISTINCT ref_junID, ref_coordinates FROM 'intron' WHERE ref_junID = '88181'")
   TARDBP_introns <- dbGetQuery(con, query) %>% as_tibble() 
@@ -1161,161 +1193,6 @@ age_stratification_brain_GO <- function() {
 }
 
 
-
-
-
-## 9. Increasing age is associated with increasing levels of splicing errors
-
-## TODO: not only obtain common introns across age groups, but also obtain common introns across age groups with similar coverage.
-## Then analyse changes in splicing noise across age
-
-plot_GO_Enrichment <- function() {
-  
-  
-  project_id <- "BRAIN"
-  
-  ## Read data.frame containing only common introns across age groups in BRAIN
-  folder_results <- paste0(getwd(), "/database/v", gtf_version, "/age_subsampled/")
-  
-  ## MSR_D
-  file_name <- paste0(folder_results, "/results/df_MSRD_common_introns_", project_id,".rds")
-  df_MSRD <- readRDS(file = file_name)
-  df_MSRD_increasing <- df_MSRD %>%
-    filter((`20-39` < `40-59` &
-              `40-59` < `60-79`)) 
-  
-  ## MSR_A
-  file_name <- paste0(folder_results, "/results/df_MSRA_common_introns_", project_id,".rds")
-  df_MSRA <- readRDS(file = file_name)
-  df_MSRA_increasing <- df_MSRA %>%
-    filter((`20-39` < `40-59` &
-              `40-59` < `60-79`)) 
-  
-  
-  ## All genes background
-  bg_genes <- c(df_MSRD$gene_name, df_MSRA$gene_name) %>% unique()
-  
-  
-  #############################################
-  ## MSR_D
-  #############################################
-  
-  ego_MSRD <- clusterProfiler::enrichGO(
-    gene          = df_MSRD_increasing$gene_name %>% unique(),
-    universe      = bg_genes,
-    keyType       = "SYMBOL",
-    OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
-    ont           = "ALL",
-    pAdjustMethod = "bonferroni",
-    pvalueCutoff  = 0.05,
-    qvalueCutoff  = 0.05,
-    readable      = TRUE)
-  
-  
-  ## PLOT 1
-  MSR_D_GO_plot <- barplot(ego_MSRD, 
-                           showCategory = 20) +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 50)) +
-    xlab("Gene count") +
-    facet_grid(ONTOLOGY~., scale = "free") +
-    theme_minimal() + 
-    theme(text = element_text(colour = "black",size = 12),
-          axis.line = element_line(colour = "black"),
-          legend.position = "top",
-          panel.grid.major.x = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2),
-          axis.text.y = element_text(colour = "black",
-                                     vjust = 0.3,
-                                     hjust = 1)) +
-    guides(fill = guide_legend(title = "pval",
-                               label.position = "bottom") ) 
-  MSR_D_GO_plot
-  
-  folder_figures <- paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/paper/", 
-                           main_project, "/figures/")
-  dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_D_increasing")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  
-  ## PLOT 2
-  
-  edox <- clusterProfiler::setReadable(ego_MSRD, OrgDb = 'org.Hs.eg.db', keyType = 'SYMBOL')
-  edox2 <- enrichplot::pairwise_termsim(edox,  showCategory = 30)
-  p1 <- enrichplot::treeplot(edox2, fontsize = 2.5) +
-    theme(text = element_text(size = 12),
-          axis.text = element_text(size = "10"),
-          legend.position = "top") +
-    guides(colour = guide_legend(title = "pval",
-                                 label.position = "bottom") ) 
-  p1$layers[[7]]$aes_params$size <- 2.5
-  p1
-  
-  
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_D_increasing2")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  #############################################
-  ## MSR_A
-  #############################################
-  
-  ego_MSRA <- clusterProfiler::enrichGO(
-    gene          = df_MSRA_increasing$gene_name %>% unique(), 
-    universe      = bg_genes,
-    keyType       = "SYMBOL",
-    OrgDb         = "org.Hs.eg.db", ##Genome wide annotation for Human, primarily based on mapping using Entrez Gene identifiers.
-    ont           = "ALL",
-    pAdjustMethod = "bonferroni",
-    pvalueCutoff  = 0.05,
-    qvalueCutoff  = 0.05,
-    readable      = TRUE)
-  
-  
-  ## PLOT 1
-  MSR_A_GO_plot <- barplot(ego_MSRA, showCategory = 20)  +
-    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
-    xlab("Gene count") +
-    facet_grid(ONTOLOGY~., scale = "free") +
-    theme(text = element_text(colour = "black",size = 12), 
-          axis.line = element_line(colour = "black"), 
-          legend.position = "top",
-          panel.grid.major.x = element_blank(),
-          panel.grid.major.y = element_blank(),
-          axis.ticks = element_line(colour = "black", size = 2),
-          axis.text.y = element_text(colour = "black", 
-                                     vjust = 0.3,
-                                     hjust = 1),
-          axis.text.x = element_text(colour = "black")) +
-    guides(fill = guide_legend(title = "pval",
-                               label.position = "bottom") ) 
-  
-  MSR_A_GO_plot
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_A_increasing")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
-  
-  
-  
-  ## PLOT 2
-  edox <- clusterProfiler::setReadable(ego_MSRA, 'org.Hs.eg.db', 'SYMBOL')
-  edox2 <- enrichplot::pairwise_termsim(edox)
-  p1 <- enrichplot::treeplot(edox2, fontsize = 2.5) +
-    theme(legend.position = "top") +
-    guides(colour = guide_legend(title = "pval",
-                                 label.position = "bottom") ) 
-  p1$layers[[7]]$aes_params$size <- 2.5
-  p1
-  file_name <- paste0(folder_figures, "/GOEnrichment_MSR_A_increasing2")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
-  
-  
-}
 
 
 
