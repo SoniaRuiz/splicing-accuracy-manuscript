@@ -7,7 +7,7 @@ library(DBI)
 
 ## source("~/PROJECTS/splicing-accuracy-manuscript/database_age_stratification_generation.R")
 
-setwd("~/splicing-accuracy-manuscript/")
+setwd(normalizePath("."))
 dependencies_folder <- paste0(getwd(), "/dependencies/")
 
 source(paste0(getwd(), "/database_junction_pairing.R"))

@@ -1,9 +1,58 @@
+library(DBI)
 
 ##########################################
 ## LOAD DATA DEPENDENCIES
 ##########################################
-
-
+# 
+# if (!exists("CNC_CDTS_CONS_gr")) {
+#   print("Loading the 'CNC_CDTS_CONS_gr' file...")
+#   load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
+#   print("'CNC_CDTS_CONS_gr' file loaded!")
+# } else {
+#   print("'CNC_CDTS_CONS_gr' file already loaded!")
+# }
+# 
+# ## GET INFO FROM MANE
+# if ( !exists("hg_mane_transcripts") ) {
+#   
+#   print("Loading the 'hg_MANE' file...")
+#   hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
+#                                               "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
+#   hg_MANE_tidy <- hg_MANE %>%
+#     as_tibble() %>%
+#     dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
+#                   -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+#     mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
+#     drop_na()
+#   
+#   hg_mane_transcripts <- hg_MANE_tidy %>%
+#     dplyr::filter(type == "transcript") %>%
+#     distinct(transcript_id) %>%
+#     mutate(MANE = T)
+# } else {
+#   print("'hg_mane_transcripts' file already loaded!")
+# }
+# 
+# # GET INFO FROM THE HG38
+# if ( !exists("hg38_transcripts") ) {
+#   
+#   print("Loading the 'hg38' file...")
+#   
+#   if ( !exists("hg38") ) {
+#     hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
+#                                              "/Homo_sapiens.GRCh38.105.chr.gtf"))
+#   }
+#   
+#   hg38_transcripts <- hg38 %>%
+#     as_tibble() %>%
+#     dplyr::filter(type == "transcript") %>%
+#     dplyr::select(transcript_id, transcript_support_level) %>%
+#     mutate(transcript_support_level = str_sub(string = transcript_support_level,
+#                                               start = 1,
+#                                               end = 1))
+# } else {
+#   print("'hg38_transcripts' file already loaded!")
+# }
 
 
 ## Remove the tables -----------------------------------------------------------
@@ -74,8 +123,7 @@ create_metadata_table <- function(database_path,
       if ( metadata %>% nrow() >= min_samples ) {
         
         
-        #print(metadata$gtex.smtsd %>% unique())
-        #print(metadata %>% distinct(gtex.sampid) %>% nrow())
+        # To build the "age stratification" intron database
         if ( str_detect(string = main_project,pattern = "age") ) {
           
           for (age_cluster in (metadata$gtex.age %>% as.character())) {
@@ -169,57 +217,7 @@ create_master_tables <- function(database_path,
                                  main_project,
                                  gtf_version) {
   
-  
-  if (!exists("CNC_CDTS_CONS_gr")) {
-    print("Loading the 'CNC_CDTS_CONS_gr' file...")
-    load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
-    print("'CNC_CDTS_CONS_gr' file loaded!")
-  } else {
-    print("'CNC_CDTS_CONS_gr' file already loaded!")
-  }
-  
-  ## GET INFO FROM MANE
-  if ( !exists("hg_mane_transcripts") ) {
-    
-    print("Loading the 'hg_MANE' file...")
-    hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
-                                                "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
-    hg_MANE_tidy <- hg_MANE %>%
-      as_tibble() %>%
-      dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
-                    -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
-      mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
-      drop_na()
-    
-    hg_mane_transcripts <- hg_MANE_tidy %>%
-      dplyr::filter(type == "transcript") %>%
-      distinct(transcript_id) %>%
-      mutate(MANE = T)
-  } else {
-    print("'hg_mane_transcripts' file already loaded!")
-  }
-  
-  # GET INFO FROM THE HG38
-  if ( !exists("hg38_transcripts") ) {
-    
-    print("Loading the 'hg38' file...")
-    
-    if ( !exists("hg38") ) {
-      hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
-                                               "/Homo_sapiens.GRCh38.105.chr.gtf"))
-    }
-    
-    hg38_transcripts <- hg38 %>%
-      as_tibble() %>%
-      dplyr::filter(type == "transcript") %>%
-      dplyr::select(transcript_id, transcript_support_level) %>%
-      mutate(transcript_support_level = str_sub(string = transcript_support_level,
-                                                start = 1,
-                                                end = 1))
-  } else {
-    print("'hg38_transcripts' file already loaded!")
-  }
-  
+
   ##########################################
   ## LOAD AND TIDY THE PAIR-WISE DISTANCES
   ##########################################
@@ -438,8 +436,10 @@ create_master_tables <- function(database_path,
   
   wd <- getwd()
   ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_introns_introverse_tidy %>% dplyr::rename(junID = ref_junID),
-                                                 max_ent_tool_path = "/home/grocamora/tools/fordownload/",
+  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_introns_introverse_tidy %>% 
+                                                   dplyr::rename(junID = ref_junID) %>%
+                                                   distinct(junID, .keep_all = T),
+                                                 max_ent_tool_path = "/home/soniagr/fordownload/",
                                                  homo_sapiens_fasta_path = paste0(dependencies_folder, 
                                                                                   "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
   
@@ -590,7 +590,8 @@ create_master_tables <- function(database_path,
   
   ## MAJOR INTRON
   print(paste0(Sys.time(), " - Getting junctions spliced out by the major spliceosome."))
-  
+  u2_introns <- rtracklayer::import(con = paste0(getwd(), "/dependencies/GRCh38_U2.bed"), format = "bed") %>%
+    as_tibble()
   overlaps <- GenomicRanges::findOverlaps(query = GenomicRanges::GRanges(seqnames = u2_introns$seqnames %>% as.character(),
                                                                          ranges = IRanges(start = u2_introns$start,
                                                                                           end = u2_introns$end),
@@ -717,7 +718,7 @@ create_master_tables <- function(database_path,
   
   ## Add MaxEntScan score to the split reads
   all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID),
-                                                 max_ent_tool_path = "/home/grocamora/tools//fordownload/",
+                                                 max_ent_tool_path = "/home/soniagr/fordownload/",
                                                  homo_sapiens_fasta_path = paste0(dependencies_folder,
                                                                                   "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
   
@@ -1009,7 +1010,7 @@ create_cluster_tables <- function(database_path,
     print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
     
-    clusters <- readRDS(file = paste0(base_folder, "/base_data/", project_id, "_clusters_used.rds"))
+    clusters <- readRDS(file = paste0(base_folder, "/base_data/", project_id, "_clusters_used.rds")) %>% unique()
     
     for (cluster_id in clusters) { 
       
@@ -1031,6 +1032,7 @@ create_cluster_tables <- function(database_path,
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(base_folder, "/base_data/", 
                                                    project_id, "_", cluster_id, "_split_read_counts.rds")) 
+        
         if ( is.null(names(split_read_counts)) ) {
           split_read_counts <- split_read_counts %>%
             as_tibble(rownames = "junID")
@@ -1151,7 +1153,7 @@ create_cluster_tables <- function(database_path,
         df_all_misspliced <- df_intron_novel_merged %>% 
           inner_join(y = df_novel %>% 
                        dplyr::select(novel_junID, novel_coordinates, novel_type) %>% 
-                       as.data.table(),
+                       data.table::as.data.table(),
                      by = c("novel_junID" = "novel_coordinates")) %>%
           dplyr::rename(novel_coordinates = novel_junID) %>%
           dplyr::rename(novel_junID = novel_junID.y)
@@ -1167,7 +1169,7 @@ create_cluster_tables <- function(database_path,
           left_join(y = df_intron %>%
                       dplyr::filter(misspliced == T) %>%
                       dplyr::select(ref_junID, ref_coordinates, transcript_id) %>% 
-                      as.data.table(),
+                      data.table::as.data.table(),
                     by = c("ref_junID" = "ref_coordinates")) %>%
           dplyr::select(-ref_junID) %>%
           dplyr::rename(ref_junID = ref_junID.y)
@@ -1195,7 +1197,7 @@ create_cluster_tables <- function(database_path,
                           (df_all_misspliced %>%
                              pull(novel_junID))) %>% 
           dplyr::select(novel_coordinates) %>% 
-          as.data.table()
+          data.table::as.data.table()
         
         if ( !(identical(df_all_misspliced$novel_coordinates %>% sort(), 
                          master_novel$novel_coordinates %>% sort())) ) {
@@ -1222,11 +1224,11 @@ create_cluster_tables <- function(database_path,
           df <- df_novel %>%
             dplyr::select(novel_junID, ref_junID) %>%
             arrange(novel_junID) %>% 
-            as.data.table() %>%
+            data.table::as.data.table() %>%
             inner_join(df_all_misspliced %>%
                          dplyr::select(novel_junID, ref_junID) %>%
                          arrange(novel_junID) %>% 
-                         as.data.table(),
+                         data.table::as.data.table(),
                        by = "novel_junID")
           
           
@@ -1272,10 +1274,10 @@ create_cluster_tables <- function(database_path,
           #####################################
           
           if ( file.exists( paste0(base_folder, "/tpm/",
-                                   "/", project_id, "_", cluster_id, "_tpm.rds")) ) {
+                                   "/", project_id, "_tpm.rds")) ) {
             
             tpm <- readRDS(file = paste0(base_folder, "/tpm/",
-                                         "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
+                                         "/", project_id, "_","tpm.rds")) %>% 
               dplyr::select(gene_id = gene, all_of(samples))
             
             
@@ -1472,7 +1474,7 @@ create_cluster_tables <- function(database_path,
           df_never_merged <- df_never_merged %>%
             inner_join(df_intron %>% 
                          dplyr::select(ref_junID, ref_coordinates, transcript_id) %>% 
-                         as.data.table(),
+                         data.table::as.data.table(),
                        by = c("ref_junID" = "ref_coordinates")) %>%
             dplyr::filter(!is.na(ref_junID)) %>%
             dplyr::select(-ref_junID) %>% 
@@ -1592,15 +1594,38 @@ create_cluster_tables <- function(database_path,
                        paste0(cluster_id, "_", project_id, "_nevermisspliced"), 
                        "' table populated!"))
           
+          rm(df_cluster_distances)
+          rm(df_all_misspliced)
+          rm(db_introns_final)
+          rm(df_introns_gr)
+          rm(df_introns_merged)
+          rm(df_introns_never)
+          rm(df_intron_novel_merged)
+          rm(diff)
+          rm(df_novel_gr)
+          rm(df_novel_merged)
+          rm(split_read_counts)
+          rm(split_read_counts_intron)
+          rm(split_read_counts_intron_never)
+          rm(split_read_counts_novel)
+          rm(tpm)
+          rm(tpm_tidy)
+          rm(res)
+          rm(master_novel)
+          rm(introns_never)
+          rm(df)
+          gc()
+          
         } else {
           print("Error: novel junctions are distinct!")
           break;
         }
         
       }
-      gc()
+      
     }
     gc()
+
   }
   
   

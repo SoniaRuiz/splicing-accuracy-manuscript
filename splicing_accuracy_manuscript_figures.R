@@ -1,11 +1,11 @@
 library(tidyverse)
 library(GenomicRanges)
-library(DESeq2)
-library(SummarizedExperiment)
-library(biomaRt)
+#library(DESeq2)
+#library(SummarizedExperiment)
+#library(biomaRt)
 library(DBI)
-library(ggforce)
-library(doParallel)
+#library(ggforce)
+#library(doParallel)
 
 ####################################################
 ## CONNECT TO THE SPLICING DATABASE ################
@@ -14,7 +14,7 @@ library(doParallel)
 
 ## CONNECT TO THE DATABASE ------------------------------
 
-setwd("~/splicing-accuracy-manuscript/")
+setwd(normalizePath("."))
 gtf_version <- 105
 main_project <- "splicing"
 getwd()
@@ -1443,8 +1443,8 @@ get_distances <- function() {
   ###############################
   
   limit_bp <- 30
-  project_id <- "BRAIN"
-  cluster_id <- "Brain - Frontal Cortex (BA9)"
+  project_id <- "COLON"
+  cluster_id <- "Colon - Sigmoid"
   
   query <- paste0("SELECT tissue.novel_junID, tissue.ref_junID, novel.novel_type, novel.distance 
                   FROM '", cluster_id, "_", project_id, "_misspliced' AS tissue
@@ -1903,7 +1903,9 @@ get_modulo <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
-  file_path <- paste0(getwd(), "/results/_paper/results/df_modulo_basic_tissues_100bpfilter.rds")
+  dir_path <- paste0(getwd(), "/results/_paper/results/")
+  dir.create(path = dir_path, recursive = T)
+  file.path <- paste0(dir_path, "/df_modulo_basic_tissues_100bpfilter.rds")
   
   if ( !file.exists(file_path) )  {
     
@@ -1917,59 +1919,67 @@ get_modulo <- function() {
         distinct(cluster) %>%
         pull()
       
-      map_df(all_clusters, function(cluster_id) {
+      if ( any(str_detect(string = dbListTables(con),
+                          pattern = all_clusters[1])) ) {
+      
+        map_df(all_clusters, function(cluster_id) {
+          
+          # cluster_id <- all_clusters[1]
+          
+          ## Print the tissue
+          print(paste0(Sys.time(), " - ", cluster_id))
+          
+          #####################################
+          ## Get the novel junctions from the current tissue
+          #####################################
+          
+          query <- paste0("SELECT novel_junID 
+                          FROM '", cluster_id, "_", project_id, "_misspliced'")
+          introns <- dbGetQuery(con, query) %>% as_tibble()
+          
+          ## Get the distance location
+          query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
+                          paste(introns$novel_junID, collapse = ","),")")
+          introns <- introns %>%
+            left_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                      by = "novel_junID") %>% 
+            as_tibble() 
+          
+          ## Add the transcript and MANE info
+          query <- paste0("SELECT intron.ref_junID, intron.protein_coding, transcript.MANE AS MANE
+                          FROM 'intron' 
+                          INNER JOIN transcript
+                          ON intron.transcript_id = transcript.id
+                          WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),") 
+                          AND transcript.MANE = 1")
+          introns <- introns %>%
+            inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                      by = "ref_junID") %>% 
+            as_tibble() 
+          
+          df_novel_tidy <- introns %>%
+            distinct(novel_junID, .keep_all = T) %>%
+            filter(abs(distance) <= 100, MANE == 1) %>% 
+            mutate(novel_type = str_replace(string = novel_type,
+                                            pattern = "_",
+                                            replacement = " ")) %>%
+            mutate(type_p = ifelse(distance < 0, paste0(novel_type," intron"), paste0(novel_type," exon"))) %>% 
+            mutate(modulo = abs(distance) %% 3)
+          
+          df_novel_tidy <- df_novel_tidy %>% 
+            group_by(modulo) %>%
+            summarise(n = n()) %>%
+            mutate(freq = n / sum(n)) %>%
+            mutate(tissue = cluster_id)
+          
+          return(df_novel_tidy)
+        })
         
-        # cluster_id <- all_clusters[1]
-        
-        ## Print the tissue
-        print(paste0(Sys.time(), " - ", cluster_id))
-        
-        #####################################
-        ## Get the novel junctions from the current tissue
-        #####################################
-        
-        query <- paste0("SELECT novel_junID 
-                        FROM '", cluster_id, "_", project_id, "_misspliced'")
-        introns <- dbGetQuery(con, query) %>% as_tibble()
-        
-        ## Get the distance location
-        query <- paste0("SELECT * FROM 'novel' WHERE novel_junID IN (",
-                        paste(introns$novel_junID, collapse = ","),")")
-        introns <- introns %>%
-          left_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                    by = "novel_junID") %>% 
-          as_tibble() 
-        
-        ## Add the transcript and MANE info
-        query <- paste0("SELECT intron.ref_junID, intron.protein_coding, intron.MANE, transcript.MANE AS tMANE
-                        FROM 'intron' 
-                        INNER JOIN transcript
-                        ON intron.transcript_id = transcript.id
-                        WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),") 
-                        AND transcript.MANE = 1")
-        introns <- introns %>%
-          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                    by = "ref_junID") %>% 
-          as_tibble() 
-        
-        df_novel_tidy <- introns %>%
-          distinct(novel_junID, .keep_all = T) %>%
-          filter(abs(distance) <= 100, MANE == 1) %>% 
-          mutate(novel_type = str_replace(string = novel_type,
-                                          pattern = "_",
-                                          replacement = " ")) %>%
-          mutate(type_p = ifelse(distance < 0, paste0(novel_type," intron"), paste0(novel_type," exon"))) %>% 
-          mutate(modulo = abs(distance) %% 3)
-        
-        df_novel_tidy <- df_novel_tidy %>% 
-          group_by(modulo) %>%
-          summarise(n = n()) %>%
-          mutate(freq = n / sum(n)) %>%
-          mutate(tissue = cluster_id)
-        
-        return(df_novel_tidy)
-      })
+      } else {
+        return(NULL)
+      }
     })
+    
     
     saveRDS(object = df_modulo_tissues, file = file_path)
     
@@ -1985,10 +1995,8 @@ get_modulo <- function() {
   
   
   ################
-  ## DENSITY PLOT
+  ## RIDGES PLOT
   ################
-  
-  library(ggridges)
   
   df_modulo_tissues <- df_modulo_tissues %>%
     mutate(freq = freq * 100)
@@ -2327,7 +2335,7 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Donor") +
     xlab("Mis-splicing ratio value group") +
     ylab("Number of annotated introns") +
-    ylim(c(0,23000))+
+    ylim(c(0,30000))+
     theme_light() +
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
@@ -2798,10 +2806,10 @@ get_lm_single_tissue <- function() {
   #########################
   
   idb <- introns %>%
-    left_join(y = tpm,
-              by = c("gene_id.y"="gene_id")) %>% 
+    #left_join(y = tpm,
+    #          by = c("gene_id.y"="gene_id")) %>% 
     dplyr::select(-gene_id) %>%
-    dplyr::rename(gene_tpm = tpm_median) %>%
+    #dplyr::rename(gene_tpm = tpm_median) %>%
     dplyr::select(ref_junID,
                   intron_length = ref_length,
                   intron_5ss_score = ref_ss5score,
@@ -2888,7 +2896,8 @@ get_lm_single_tissue <- function() {
  
   
   ##############################################################################
-  
+  # jtools::plot_summs(fit_donor, 
+  #                    fit_acceptor)
   plotLM <- jtools::plot_summs(fit_donor, 
                                fit_acceptor,
                                #scale = TRUE, 
@@ -3045,17 +3054,21 @@ get_common_introns_across_tissues <- function () {
     
     print(all_clusters)
     
-    for(cluster_id in all_clusters) { 
+    if ( any(str_detect(string = dbListTables(con),
+                        pattern = all_clusters[1])) ) {
       
-      query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
-      introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
-      
-      
-      all_introns[[cluster_id]] <- introns$ref_junID
-      
-      print(paste0(Sys.time(), " - intron IDs collected from '", cluster_id, "'"))
+      for(cluster_id in all_clusters) { 
+        
+        query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+        introns <- dbGetQuery(con, query) %>% as_tibble()
+        query <- paste0("SELECT DISTINCT ref_junID FROM '", cluster_id, "_", project_id, "_misspliced'")
+        introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+        
+        
+        all_introns[[cluster_id]] <- introns$ref_junID
+        
+        print(paste0(Sys.time(), " - intron IDs collected from '", cluster_id, "'"))
+      }
     }
     
   }
@@ -3101,163 +3114,171 @@ get_estimate_variance_across_tissues <- function() {
       distinct(cluster) %>%
       pull()
     
-    map_df(all_clusters, function(cluster_id) {
- 
-      # cluster_id <- all_clusters[1]
-      print(cluster_id)
+    if ( any(str_detect(string = dbListTables(con),
+                        pattern = all_clusters[1])) ) {
       
-      
-      ###################################
-      ## GET Median TPM value across the tissues
-      
-      base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
-                                            "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
-    
-      tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
-                                   "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
-        dplyr::select(gene_id = gene, all_of(samples_used))
-      
-      tpm <- tpm  %>%
-        dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-        dplyr::select(gene_id, gene_tpm = tpm_median) 
-      
-      
-      ##################################
-      ## Get splicing data for the current tissue corresponding to the set of common introns
-      
-      query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
-      introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project_id, "_misspliced'")
-      introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
-      
-      ## Only common introns across tissues
-      introns <- introns %>%
-        filter(ref_junID %in% common_introns$ref_junID) %>% 
-        distinct(ref_junID, .keep_all = T)
-      
-      ## Add MASTER INTRON INFO
-      query <- paste0("SELECT ref_junID, ref_length AS intron_length, ref_ss5score AS intron_5ss_score, 
-                      ref_ss3score AS intron_3ss_score, 
-                      ref_cons5score AS mean_phastCons20way_5ss, 
-                      ref_cons3score AS mean_phastCons20way_3ss, 
-                      ref_CDTS5score AS CDTS_5ss, 
-                      ref_CDTS3score AS CDTS_3ss, 
-                      protein_coding, transcript_id 
-                      FROM 'intron' WHERE ref_junID IN (",
-                      paste(introns$ref_junID, collapse = ","),")")
-      introns <- introns %>%
-        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                   by = "ref_junID") %>% 
-        as_tibble() 
-      
-      
-      ## JOIN WITH TRANSCRIPT DATA
-      query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
-      introns <- introns %>%
-        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                  by = c("transcript_id" = "id")) %>% 
-        as_tibble() 
-      
-      
-      ## JOIN WITH GENE DATA
-      query <- paste0("SELECT *
-                  FROM 'gene' WHERE id IN (",
-                      base::paste(introns$gene_id, collapse = ","),")")
-      introns <- introns %>%
-        inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-                   by = c("gene_id" = "id")) %>% 
-        as_tibble()  %>%
-        dplyr::rename(gene_length = gene_width)
-      
-      
-      ## JOIN WITH TPM DATA
-      introns <- introns %>%
-        left_join(y = tpm,
-                  by = c("gene_id.y" = "gene_id"))
-      
-      introns <- introns %>%
-        dplyr::rename(gene_num_transcripts = n_transcripts )
-      
-      
-      introns <- introns %>%
-        dplyr::select(-mean_phastCons20way_5ss,-mean_phastCons20way_3ss) %>%
-        left_join(y = db_introns_all %>%
-                    as_tibble() %>%
-                    distinct(ref_junID, .keep_all = T) %>%
-                    dplyr::select(ref_junID,
-                                  mean_phastCons20way_5ss = phastCons20way_3ss_mean,
-                                  mean_phastCons20way_3ss = phastCons20way_5ss_mean),
-                  by = "ref_junID")
-      
-      ####################################
-      ## LINEAR MODELS
-      
-      ## 1. Model the MSR at the Donor
-      
-      donor_model <- lm(MSR_D ~
-                    intron_length +
-                    intron_5ss_score +
-                    intron_3ss_score +
-                    gene_tpm +
-                    gene_length +
-                    gene_num_transcripts +
-                    protein_coding +
-                    CDTS_5ss +
-                    CDTS_3ss +
-                    mean_phastCons20way_5ss +
-                    mean_phastCons20way_3ss,
-                  data = introns)
-      donor_model %>% summary()
-
-      #MSR_Donor_list[[tissue]] <- donor_model
-
-      MSR_Donor <- data.frame(feature = donor_model$coefficients %>% names(),
-                              estimate = donor_model$coefficients %>% unname()) %>%
-        inner_join(y = ((donor_model %>% summary())$coefficients) %>% 
-                     as_tibble(rownames = "feature") %>%
-                     dplyr::select(feature,`Pr(>|t|)`),
-                   by = "feature") %>%
-        mutate(tissue = cluster_id,
-               type = "MSR_Donor") %>%
-        dplyr::rename(pval = `Pr(>|t|)`)
-
-      
-      
-      ## Acceptor
-      
-      ## 2. Model the MSR at the Acceptor splice site
-      
-      acceptor_model <- lm(MSR_A ~
-                    intron_length +
-                    intron_5ss_score +
-                    intron_3ss_score +
-                    gene_tpm +
-                    gene_length +
-                    gene_num_transcripts +
-                    protein_coding +
-                    CDTS_5ss +
-                    CDTS_3ss +
-                    mean_phastCons20way_5ss +
-                    mean_phastCons20way_3ss,
-                  data = introns)
-      acceptor_model %>% summary()
-
-      MSR_Acceptor <- data.frame(feature = acceptor_model$coefficients %>% names(),
-                              estimate = acceptor_model$coefficients %>% unname()) %>%
-        inner_join(y = ((acceptor_model %>% summary())$coefficients) %>% 
-                     as_tibble(rownames = "feature") %>%
-                     dplyr::select(feature,`Pr(>|t|)`),
-                   by = "feature") %>%
-        mutate(tissue = cluster_id,
-               type = "MSR_Acceptor") %>%
-        dplyr::rename(pval = `Pr(>|t|)`)
-
-
-      return( rbind(MSR_Donor, MSR_Acceptor) )
-      
+      map_df(all_clusters, function(cluster_id) {
+   
+        # cluster_id <- all_clusters[1]
+        print(cluster_id)
+        
+        
+        ###################################
+        ## GET Median TPM value across the tissues
+        
+        # base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
+        # samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
+        #                                       "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+        # 
+        # tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
+        #                              "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
+        #   dplyr::select(gene_id = gene, all_of(samples_used))
+        # 
+        # tpm <- tpm  %>%
+        #   dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
+        #   dplyr::select(gene_id, gene_tpm = tpm_median) 
+        
+        
+        ##################################
+        ## Get splicing data for the current tissue corresponding to the set of common introns
+        
+        query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+        introns <- dbGetQuery(con, query) %>% as_tibble()
+        query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm FROM '", cluster_id, "_", project_id, "_misspliced'")
+        introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
+        
+        ## Only common introns across tissues
+        introns <- introns %>%
+          filter(ref_junID %in% common_introns$ref_junID) %>% 
+          distinct(ref_junID, .keep_all = T)
+        
+        ## Add MASTER INTRON INFO
+        query <- paste0("SELECT ref_junID, ref_length AS intron_length, ref_ss5score AS intron_5ss_score, 
+                        ref_ss3score AS intron_3ss_score, 
+                        ref_cons5score AS mean_phastCons20way_5ss, 
+                        ref_cons3score AS mean_phastCons20way_3ss, 
+                        ref_CDTS5score AS CDTS_5ss, 
+                        ref_CDTS3score AS CDTS_3ss, 
+                        protein_coding, 
+                        transcript_id 
+                        FROM 'intron' WHERE ref_junID IN (",
+                        paste(introns$ref_junID, collapse = ","),")")
+        introns <- introns %>%
+          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                     by = "ref_junID") %>% 
+          as_tibble() 
+        
+        
+        ## JOIN WITH TRANSCRIPT DATA
+        query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
+        introns <- introns %>%
+          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                    by = c("transcript_id" = "id")) %>% 
+          as_tibble() 
+        
+        
+        ## JOIN WITH GENE DATA
+        query <- paste0("SELECT *
+                    FROM 'gene' WHERE id IN (",
+                        base::paste(introns$gene_id, collapse = ","),")")
+        introns <- introns %>%
+          inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+                     by = c("gene_id" = "id")) %>% 
+          as_tibble()  %>%
+          dplyr::rename(gene_length = gene_width)
+        
+        
+        ## JOIN WITH TPM DATA
+        #introns <- introns %>%
+        #  left_join(y = tpm,
+        #            by = c("gene_id.y" = "gene_id"))
+        
+        introns <- introns %>%
+          dplyr::rename(gene_num_transcripts = n_transcripts )
+        
+        
+        # introns <- introns %>%
+        #   dplyr::select(-mean_phastCons20way_5ss,-mean_phastCons20way_3ss) %>%
+        #   left_join(y = db_introns_all %>%
+        #               as_tibble() %>%
+        #               distinct(ref_junID, .keep_all = T) %>%
+        #               dplyr::select(ref_junID,
+        #                             mean_phastCons20way_5ss = phastCons20way_3ss_mean,
+        #                             mean_phastCons20way_3ss = phastCons20way_5ss_mean),
+        #             by = "ref_junID")
+        
+        ####################################
+        ## LINEAR MODELS
+        
+        ## 1. Model the MSR at the Donor
+        
+        donor_model <- lm(MSR_D ~
+                      intron_length +
+                      intron_5ss_score +
+                      intron_3ss_score +
+                      gene_tpm +
+                      gene_length +
+                      gene_num_transcripts +
+                      protein_coding +
+                      CDTS_5ss +
+                      CDTS_3ss +
+                      mean_phastCons20way_5ss +
+                      mean_phastCons20way_3ss,
+                    data = introns)
+        donor_model %>% summary()
+  
+        #MSR_Donor_list[[tissue]] <- donor_model
+  
+        MSR_Donor <- data.frame(feature = donor_model$coefficients %>% names(),
+                                estimate = donor_model$coefficients %>% unname()) %>%
+          inner_join(y = ((donor_model %>% summary())$coefficients) %>% 
+                       as_tibble(rownames = "feature") %>%
+                       dplyr::select(feature,`Pr(>|t|)`),
+                     by = "feature") %>%
+          mutate(tissue = cluster_id,
+                 type = "MSR_Donor") %>%
+          dplyr::rename(pval = `Pr(>|t|)`)
+  
+        
+        
+        ## Acceptor
+        
+        ## 2. Model the MSR at the Acceptor splice site
+        
+        acceptor_model <- lm(MSR_A ~
+                      intron_length +
+                      intron_5ss_score +
+                      intron_3ss_score +
+                      gene_tpm +
+                      gene_length +
+                      gene_num_transcripts +
+                      protein_coding +
+                      CDTS_5ss +
+                      CDTS_3ss +
+                      mean_phastCons20way_5ss +
+                      mean_phastCons20way_3ss,
+                    data = introns)
+        acceptor_model %>% summary()
+  
+        MSR_Acceptor <- data.frame(feature = acceptor_model$coefficients %>% names(),
+                                estimate = acceptor_model$coefficients %>% unname()) %>%
+          inner_join(y = ((acceptor_model %>% summary())$coefficients) %>% 
+                       as_tibble(rownames = "feature") %>%
+                       dplyr::select(feature,`Pr(>|t|)`),
+                     by = "feature") %>%
+          mutate(tissue = cluster_id,
+                 type = "MSR_Acceptor") %>%
+          dplyr::rename(pval = `Pr(>|t|)`)
+  
+  
+        return( rbind(MSR_Donor, MSR_Acceptor) )
+        
+      })
+    } else {
+      return(NULL)
+    }
     })
-  })
+  
   
   
   #############################
@@ -3287,7 +3308,7 @@ plot_estimate_variance_across_tissues <- function() {
   ## We only keep significant covariates
   
   df_estimate <- df_estimate %>%
-    filter(q <= 0.05) %>%
+    #filter(q <= 0.05) %>%
     dplyr::select(-c(q, pval))
   
   
@@ -4072,6 +4093,7 @@ plot_effect_size_data <- function() {
   
   ## LOAD RBPS ---------------
   
+  ## For metadata file creation, please check: https://github.com/guillermo1996/ENCODE_Metadata_Extraction
   metadata_filtered <- readr::read_delim("/home/grocamora/RytenLab-Research/Additional_files/ENCODE_files/metadata_filtered.tsv", show_col_types = F)
   
   target_RBPs <- metadata_filtered %>%
@@ -4093,6 +4115,8 @@ plot_effect_size_data <- function() {
   
   overwrite = F
   num_cores = 10 
+  
+  ## For details about how to generate these dependencies, please check https://github.com/guillermo1996/ENCODE_Splicing_Analysis
   global_common_introns_path = paste0(getwd(), "/code/variables/global_common_introns_filtered.rds")
   global_common_novel_path = paste0(getwd(), "/code/variables/global_common_novel_filtered.rds")
   

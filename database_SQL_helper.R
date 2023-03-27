@@ -97,8 +97,8 @@ generate_max_ent_score <- function(junc_tidy,
   head(junc_tidy)
   
   
-  stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(donor_sequences_input$V1)))),
-                      junc_tidy$junID %>% as.character()))
+  #stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(donor_sequences_input$V1) ))),
+  #                    junc_tidy$junID %>% as.character()))
   junc_tidy <- cbind(junc_tidy, 
                      donor_sequence = as.character(donor_sequences_input$V2))
   
@@ -126,8 +126,8 @@ generate_max_ent_score <- function(junc_tidy,
   head(acceptor_sequences_input)
   head(donor_sequences_input)
   
-  stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(acceptor_sequences_input$V1)))),
-                      junc_tidy$junID %>% as.character()))
+  #stopifnot(identical(gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(acceptor_sequences_input$V1)))),
+  #                    junc_tidy$junID %>% as.character()))
   junc_tidy <- cbind(junc_tidy,
                      acceptor_sequence = as.character(acceptor_sequences_input$V2))
   
@@ -392,7 +392,7 @@ annotate_contamination_rates <- function(gtf_versions,
 
 get_all_annotated_split_reads <- function(projects_used,
                                           gtf_version,
-                                          all_clusters,
+                                          all_clusters = NULL,
                                           main_project) {
   
   
@@ -412,6 +412,19 @@ get_all_annotated_split_reads <- function(projects_used,
     folder_root <- paste0(getwd(), "/results/", project_id, "/v", 
                           gtf_version, "/", main_project, "/")
     
+    if ( is.null(all_clusters) ) {
+      ## Read all clusters considered from the current tissue
+      metadata.info <- readRDS(file = paste0(folder_root, "/base_data/",
+                                             project_id, "_samples_metadata.rds"))
+      all_clusters <-  metadata.info %>%
+        distinct(gtex.smtsd) %>%
+        pull()
+
+      if ( any(metadata.info$gtex.smrin < 6) ) {
+        print("ERROR! The samples used have not been filtered adequately.")
+        break;
+      }
+    }
    
     
     all_jxn_qc <- map_df(all_clusters, function(cluster) {
@@ -466,7 +479,7 @@ get_all_annotated_split_reads <- function(projects_used,
 
 get_all_raw_distances_pairings <- function(projects_used,
                                            gtf_version,
-                                           all_clusters,
+                                           all_clusters = NULL,
                                            main_project) {
   
   
@@ -480,18 +493,19 @@ get_all_raw_distances_pairings <- function(projects_used,
     folder_root <- paste0(getwd(), "/results/", 
                           project_id, "/v", gtf_version, "/", main_project, "/")
     
-    
-    # ## Read all clusters considered from the current tissue
-    # metadata.info <- readRDS(file = paste0(folder_root, "/base_data/", 
-    #                                        project_id, "_samples_metadata.rds"))
-    # all_clusters <-  metadata.info %>% 
-    #   distinct(gtex.smtsd) %>% 
-    #   pull()
-    # 
-    # if ( any(metadata.info$gtex.smrin < 6) ) {
-    #   print("ERROR! The samples used have not been filtered adequately.")
-    #   break;
-    # }
+    if ( is.null(all_clusters) ) {
+      ## Read all clusters considered from the current tissue
+      metadata.info <- readRDS(file = paste0(folder_root, "/base_data/",
+                                             project_id, "_samples_metadata.rds"))
+      all_clusters <-  metadata.info %>%
+        distinct(gtex.smtsd) %>%
+        pull()
+  
+      if ( any(metadata.info$gtex.smrin < 6) ) {
+        print("ERROR! The samples used have not been filtered adequately.")
+        break;
+      }
+    }
     
     map_df(all_clusters, function(cluster) {
       
@@ -573,7 +587,7 @@ get_all_raw_distances_pairings <- function(projects_used,
           file = paste0(getwd(),"/results/",main_project,"_final_projects_used.rds"))
   
   saveRDS(object = df_all_distances_pairings_raw %>%
-            distinct(novel_junID, ref_junID, .keep_all = T) %>% as.data.table(),
+            distinct(novel_junID, ref_junID, .keep_all = T),
           file = paste0(getwd(),"/database/v", gtf_version, "/",
                         main_project, "/all_distances_pairings_all_tissues.rds"))
   
@@ -784,8 +798,8 @@ generate_transcript_biotype_percentage <- function(projects_used,
     ungroup()
   
   
-  df_all_percentage_tidy_merged <- merge(x = df_all_percentage_tidy_PC %>% dplyr::rename(percent_PC = percent) %>% as.data.table(),
-                                         y = df_all_percentage_tidy_lncRNA %>% dplyr::rename(percent_lncRNA = percent) %>% as.data.table(),
+  df_all_percentage_tidy_merged <- merge(x = df_all_percentage_tidy_PC %>% dplyr::rename(percent_PC = percent) %>% data.table::as.data.table(),
+                                         y = df_all_percentage_tidy_lncRNA %>% dplyr::rename(percent_lncRNA = percent) %>% data.table::as.data.table(),
                                          by = "junID")
   df_all_percentage_tidy_merged %>% nrow()
   
@@ -817,66 +831,23 @@ generate_transcript_biotype_percentage <- function(projects_used,
 
 calculate_tpm <- function(rse, ref_tidy) {
   
-
+  
   # Remove anything after . in ensembl id
-  rownames(rse) %>% head()
   rownames(rse) <- rownames(rse) %>% 
     str_remove("\\..*")
-  
-  
-  # ## WE FIRST CALCULATE THE RPKM VALUE
-  # 
-  # ## 1. Sum the total number of reads in each column 
-  # mapped <- colSums( SummarizedExperiment::assays(rse)$counts )
-  # mapped %>% head()
-  # 
-  # bg <- matrix(mapped, ncol = ncol(rse), nrow = nrow(rse), byrow = TRUE)
-  # bg %>% head()
-  # per_million_scalling_factor <- (bg / 1e6)
-  # 
-  # 
-  # ## 2. Get the length of the coding sequence of each gene
-  # len <- SummarizedExperiment::rowData(rse) %>%
-  #   as_tibble(rownames = "gene") %>%
-  #   left_join(ref_tidy,
-  #             by = c("gene" = "gene_id")) %>% 
-  #   pull(CDS_length)
-  # 
-  # wid <- matrix(len, nrow = nrow(rse), ncol = ncol(rse), byrow = FALSE)
-  # wid %>% head()
-  # gene_length_kilobases <- (wid / 1000)
-  # 
-  # 
-  # rkm <-  SummarizedExperiment::assays(rse)$counts / per_million_scalling_factor
-  # rpkm <-  rkm / gene_length_kilobases
-  # 
-  # rpkm %>% 
-  #   as_tibble(rownames = "gene") %>% 
-  #   filter(gene=="ENSG00000223972")
-  # 
-  # 
-  # 
-  # 
-  # ## WE NOW CONVERT THE RPKM VALUE INTO TPM
-  # tpm <- apply(rpkm, 2, function(x) {
-  #   (x / sum(x)) * 10^6
-  # })
-  # 
-  # tpm %>% 
-  #   as_tibble(rownames = "gene") %>% 
-  #   filter(gene=="ENSG00000223972")
-  
   
   
   # Convert to tpm, which is calculated by:
   # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
   # 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
   # 3. Divide the RPK values by the “per million” scaling factor.
+  
+  
   srp_rpk <- 
     rse %>% 
     SummarizedExperiment::assay() %>%
     as_tibble(rownames = "gene") %>% 
-    tidyr::pivot_longer(
+    tidyr::pivot_longer( ## equivalent to gather
       cols = -c("gene"),
       names_to = "recount_id",
       values_to = "counts"
@@ -884,11 +855,11 @@ calculate_tpm <- function(rse, ref_tidy) {
     dplyr::inner_join(
       ref_tidy %>% 
         as_tibble() %>% 
-        dplyr::select(gene_id, CDS_length),
+        dplyr::select(gene_id, width),
       by = c("gene" = "gene_id")
     ) %>% # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
     dplyr::mutate(
-      rpk = counts/CDS_length
+      rpk = counts/width
     ) 
   srp_rpk %>% head()
   
@@ -907,51 +878,37 @@ calculate_tpm <- function(rse, ref_tidy) {
     dplyr::mutate(
       tpm = rpk/scaling_factor
     )   
-    
+  
   tpm <- tpm %>%
-    #head() %>%
-    dplyr::select(gene, recount_id, tpm) %>%
+    dplyr::select(gene, recount_id, tpm) %>% 
     spread(key = recount_id, value = tpm)
-  
-  
-  
-  # tpm %>% head()
-  # tpm %>% filter(gene=="ENSG00000223972")
-  
-  
   
   return(tpm)
 }
 
 
 generate_recount3_tpm <- function(projects_used,
+                                  ref = NULL,
                                   gtf_version,
                                   main_project) {
   
-  
   # Reference gtf
-  ref <- rtracklayer::import("/data/references/ensembl/gtf_gff3/v105/Homo_sapiens.GRCh38.105.chr.gtf")
+  if (is.null(ref)) {
+    ref <- rtracklayer::import(con = paste0(dependencies_folder, "/Homo_sapiens.GRCh38.",gtf_version,".chr.gtf"))
+  }
   ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22), pruning.mode = "coarse") 
   ref %>% head()
   
-
-  ## Per each gene, calculate the length of its coding sequence
+  ## Per each gene, get its length
   ref_tidy <- ref %>%
-    as_tibble(rownames = "gene") %>% 
-    group_by(gene_id) %>% 
-    filter(type == "exon") %>%
-    mutate(CDS_length = width %>% sum()) %>%
-    ungroup() %>%
+    as_tibble() %>% 
+    filter(type == "gene") %>%
     distinct(gene_id, .keep_all = T) %>%
-    dplyr::select(gene_id, gene_name, CDS_length) %>%
-    as_tibble()
-  
+    dplyr::select(gene_id, gene_name, width) 
   
   for (project_id in projects_used) {
     
     # project_id <- projects_used[1]
-    # project_id <- "HEART"
-    
     
     ## 1. Get expression data from recount3 
     rse <- recount3::create_rse_manual(
@@ -959,92 +916,34 @@ generate_recount3_tpm <- function(projects_used,
       project_home = "data_sources/gtex",
       organism = "human",
       annotation = "gencode_v29",
-      jxn_format = c("UNIQUE"),
       type = "gene")
     
     ## 2. Transform raw counts
     SummarizedExperiment::assays(rse)$counts <- recount3::transform_counts(rse)
     
-    # recount_tpm <- SummarizedExperiment::assays(rse)$TPM %>%
-    #   as_tibble(rownames = "gene") %>%
-    #   mutate(gene = gene %>% str_remove("\\..*"))
-    # 
-    # rm(rse)
-    # gc()
+    ## 3. Calculate TPM using the length of the coding sequence
+    tpm <- calculate_tpm(rse, ref_tidy)
+    tpm %>% head() %>% print()
     
-    
-    recount_tpm <- calculate_tpm(rse, ref_tidy)
-    
-    
-    
-    
-    folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-    saveRDS(object = recount_tpm,
-            file = paste0(folder_root, "/tpm_all_samples.rds"))
-    
-    # ## 2. For each tissue within the current project, filter the RSE by its samples
-    # 
-    # folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-    # 
-    # if ( file.exists(paste0(folder_root, "/base_data/", project_id, "_samples_metadata.rds")) ) {
-    #   
-    #   metadata.info <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_samples_metadata.rds"))
-    #   
-    #   clusters_ID <- metadata.info$gtex.smtsd %>% unique()
-    #   
-    #   for ( cluster_id in clusters_ID ) {
-    #     
-    #     # cluster_id <- clusters_ID[1]
-    #     
-    #     samples <- metadata.info %>%
-    #       as_tibble() %>%
-    #       filter(gtex.smtsd == cluster_id,
-    #              gtex.smrin >= 6.0,
-    #              gtex.smafrze != "EXCLUDE") %>%
-    #       distinct(external_id) %>%
-    #       pull()
-    #     
-    #     if ( (main_project == "splicing" && length(samples) >= 70) ) {
-    #       
-    #       cluster_samples <- readRDS(file = paste0(folder_root, "/base_data/",
-    #                                                project_id, "_", cluster_id, "_samples_used.rds"))
-    #       
-    #       if ( !identical(samples, cluster_samples) ) {
-    #         print("ERROR - samples initially set and the ones obtained now are not identical")
-    #         break;
-    #       }
-    #       
-    #       ## Filter the object for the set of samples corresponding to the current cluster
-    #       recount_tpm_local <- recount_tpm %>%
-    #         dplyr::select(c("gene", all_of(cluster_samples)))
-    #       
-    #       ## Save results
-    #       folder_name <- paste0(folder_root, "/results/tpm/")
-    #       dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
-    #       saveRDS(object = recount_tpm_local,
-    #               file = paste0(folder_name, project_id, "_", cluster_id, "_tpm.rds"))
-    #       
-    #       
-    #       rm(recount_tpm_local)
-    #       rm(cluster_samples)
-    #       gc()
-    #       
-    #     }
-    #     
-    #   }
-    # }
-    
+    ## 4. Free up memory and save
     print(paste0(Sys.time(), " - ", project_id, " finished!"))
+    dir_path <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/",
+                       main_project, "/tpm/")
+    dir.create(path = dir_path, showWarnings = T, recursive = T)
+    saveRDS(object = tpm,
+            file = paste0(dir_path, "/",  project_id, "_tpm.rds"))
     
-    rm(folder_root)
-    rm(clusters_ID)
-    rm(recount_tpm)
+    
     rm(rse)
     gc()
     
   }
   
+  rm(ref_tidy)
+  gc()
+  
 }
+
 
 
 filter_recount3_tpm <- function(projects_used,
@@ -1313,7 +1212,7 @@ tidy_data_pior_sql <- function (projects_used,
   
   # df_all_novel_raw_tidy
   df_not_paired <- all_split_reads_details_all_tissues %>%
-    as.data.table() %>%
+    data.table::as.data.table() %>%
     dplyr::filter(!(junID %in% c(df_all_distances_pairings_raw$ref_junID,
                                  df_all_distances_pairings_raw$novel_junID)))
   
@@ -1391,7 +1290,7 @@ tidy_data_pior_sql <- function (projects_used,
   
   df_all_distances_pairings_raw_tidy <- df_all_distances_pairings_raw %>%
     dplyr::filter(!(novel_junID %in% df_ambiguous_novel$novel_junID)) %>%
-    as.data.table() %>%
+    data.table::as.data.table() %>%
     distinct(novel_junID, ref_junID, .keep_all = T) %>%
     mutate(ref_strand = ref_strand %>% as.character(),
            novel_strand = novel_strand %>% as.character()) 

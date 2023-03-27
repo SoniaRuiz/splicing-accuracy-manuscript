@@ -5,8 +5,7 @@ library(SummarizedExperiment)
 library(biomaRt)
 library(DBI)
 
-## source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline4-3_RBP_expression.R")
-setwd("~/splicing-accuracy-manuscript/")
+setwd(normalizePath("."))
 
 
 gtf_version <- 105
