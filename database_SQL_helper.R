@@ -883,62 +883,34 @@ calculate_tpm <- function(rse, ref_tidy) {
     dplyr::select(gene, recount_id, tpm) %>% 
     spread(key = recount_id, value = tpm)
   
-<<<<<<< HEAD
-=======
-  
-  
-  # tpm_recount <- tpm
-  # tpm %>% filter(gene=="ENSG00000223972")
-  
-  
-  
->>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
+
   return(tpm)
 }
 
 
 generate_recount3_tpm <- function(projects_used,
-<<<<<<< HEAD
                                   ref = NULL,
-=======
-                                  ref,
->>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
                                   gtf_version,
                                   main_project) {
   
   # Reference gtf
-<<<<<<< HEAD
   if (is.null(ref)) {
     ref <- rtracklayer::import(con = paste0(dependencies_folder, "/Homo_sapiens.GRCh38.",gtf_version,".chr.gtf"))
   }
   ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22), pruning.mode = "coarse") 
-  ref %>% head()
-  
-  ## Per each gene, get its length
-=======
-  ref <- ref %>% GenomeInfoDb::keepSeqlevels(c(1:22), pruning.mode = "coarse") 
-  ref %>% head()
+
   
   
   ## Per each gene, calculate the length of its coding sequence
->>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
   ref_tidy <- ref %>%
     as_tibble() %>% 
     filter(type == "gene") %>%
     distinct(gene_id, .keep_all = T) %>%
-    dplyr::select(gene_id, gene_name, width) 
-<<<<<<< HEAD
-=======
-  
->>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
+
   
   for (project_id in projects_used) {
     
     # project_id <- projects_used[1]
-<<<<<<< HEAD
-=======
-    
->>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
     
     ## 1. Get expression data from recount3 
     rse <- recount3::create_rse_manual(
@@ -954,7 +926,6 @@ generate_recount3_tpm <- function(projects_used,
     ## 3. Calculate TPM using the length of the coding sequence
     tpm <- calculate_tpm(rse, ref_tidy)
     tpm %>% head() %>% print()
-<<<<<<< HEAD
     
     ## 4. Free up memory and save
     print(paste0(Sys.time(), " - ", project_id, " finished!"))
@@ -963,20 +934,16 @@ generate_recount3_tpm <- function(projects_used,
     dir.create(path = dir_path, showWarnings = T, recursive = T)
     saveRDS(object = tpm,
             file = paste0(dir_path, "/",  project_id, "_tpm.rds"))
-    
-    
-=======
+
    
     ## 4. Free up memory and return
     print(paste0(Sys.time(), " - ", project_id, " finished!"))
     rm(folder_root)
     rm(clusters_ID)
->>>>>>> e81ccd7f75b105fc71112a5b8a60849447d5819d
+    
     rm(rse)
     
     return(tpm)
-    
-    gc()
     
   }
   

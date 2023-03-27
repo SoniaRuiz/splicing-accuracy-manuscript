@@ -19,7 +19,7 @@ gtf_version <- 105
 main_project <- "age_subsampled"
 database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
 
-all_projects <- readRDS(file = paste0(getwd(), "/results/all_final_projects_used.rds"))
+all_projects <- readRDS(file = paste0(getwd(), "/results/splicing_final_projects_used.rds"))
 age_projects <- all_projects
 
 
@@ -426,6 +426,7 @@ if ( !file.exists(paste0(getwd(), "/database/v", gtf_version, "/", main_project,
 
   for (project_id in age_projects) {
 
+    # project_id <- age_projects[1]
     print(paste0(Sys.time(), " --> ", project_id))
 
     project_init_local <- project_init %>% filter(project == project_id)

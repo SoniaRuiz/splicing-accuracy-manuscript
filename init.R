@@ -22,7 +22,8 @@ source(paste0(getwd(), "/database_SQL_generation.R"))
 #####################################
 
 init_recount3_gtex_data <- function (projects_used,
-                                     gtf_version) {
+                                     gtf_version,
+                                     jxn_format = "ALL") {
   
   
   ##########################################################
@@ -67,7 +68,7 @@ init_recount3_gtex_data <- function (projects_used,
         type = "jxn",
         organism = "human",
         annotation = "gencode_v29",
-        jxn_format = c("UNIQUE"),
+        jxn_format = jxn_format,
         recount3_url = getOption("recount3_url", "http://duffel.rail.bio/recount3")
       )
       
@@ -359,7 +360,8 @@ init_recount3_gtex_data <- function (projects_used,
 
 tidy_recount3_data_per_tissue <- function(projects_used, 
                                           main_project,
-                                          gtf_version) {
+                                          gtf_version,
+                                          jxn_format = "ALL") {
   
   folder_database <- paste0(getwd(), "/database/v", gtf_version, "/")
   all_projects_used <- NULL
@@ -405,7 +407,7 @@ tidy_recount3_data_per_tissue <- function(projects_used,
       project_home = "data_sources/gtex",
       organism = "human",
       annotation = "gencode_v29",
-      jxn_format = c("UNIQUE"),
+      jxn_format = jxn_format,
       type = "jxn",
       recount3_url = recount3_url
     )
