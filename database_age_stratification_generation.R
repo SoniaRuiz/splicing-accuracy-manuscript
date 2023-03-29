@@ -1,11 +1,10 @@
 library(tidyverse)
 library(data.table)
 library(GenomicRanges)
-library(ggforce)
 library(DBI)
 
 
-## source("~/PROJECTS/splicing-accuracy-manuscript/database_age_stratification_generation.R")
+# source("~/PROJECTS/splicing-accuracy-manuscript/database_age_stratification_generation.R")
 
 setwd(normalizePath("."))
 dependencies_folder <- paste0(getwd(), "/dependencies/")
@@ -474,17 +473,20 @@ if ( !file.exists(paste0(getwd(), "/database/v", gtf_version, "/", main_project,
   filter_recount3_tpm(projects_used = age_projects,
                       gtf_version = gtf_version,
                       main_project = main_project)
-  
+
   tidy_data_pior_sql(projects_used = age_projects,
                      gtf_version = gtf_version,
                      all_clusters = project_init$age_group %>% unique(),
                      main_project = main_project)
 
+  all_final_projects_used <- readRDS(file = paste0(getwd(),"/results/", main_project, "_final_projects_used.rds"))
+  
+  
   sql_database_generation(database_path = database_path,
-                          projects_used = age_projects,
+                          projects_used = all_final_projects_used,
                           main_project = main_project,
                           gtf_version = gtf_version,
-                          remove_all = F)
+                          remove_all = NULL)
 
 }
 

@@ -609,12 +609,9 @@ get_intron_never_misspliced <- function (projects_used,
     
     
     if ( file.exists(paste0(base_folder, "/base_data/", 
-                            project_id, "_samples_metadata.rds")) ) {
-      metadata.info <- readRDS(file = paste0(base_folder, "/base_data/", 
-                                             project_id, "_samples_metadata.rds"))
-      all_clusters <-  metadata.info %>% 
-        distinct(gtex.smtsd) %>% 
-        pull()
+                            project_id, "_clusters_used.rds")) ) {
+      all_clusters <- readRDS(file = paste0(base_folder, "/base_data/", 
+                                             project_id, "_clusters_used.rds"))
       
     }
     
@@ -953,7 +950,7 @@ generate_recount3_tpm <- function(projects_used,
 }
 
 
-
+## for the age stratification database
 filter_recount3_tpm <- function(projects_used,
                                 gtf_version,
                                 all_clusters = NULL,
@@ -969,7 +966,7 @@ filter_recount3_tpm <- function(projects_used,
     
     
     folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/")
-    recount_tpm <- readRDS(file = paste0(folder_root, "/tpm_all_samples.rds"))
+    recount_tpm <- readRDS(file = paste0(folder_root, "/splicing/tpm/", project_id, "_tpm.rds"))
     
     
     ## 2. For each tissue within the current project, filter the RSE by its samples
@@ -1148,7 +1145,7 @@ tidy_data_pior_sql <- function (projects_used,
   
   ## Remove potential * in the junID of the reference introns
   ind <- which(str_detect(string = all_split_reads_details_w_symbol_reduced_keep_gr$junID, pattern = "\\*"))
-  if (ind %>% length() > 0) {
+  if ( ind %>% length() > 0 ) {
     all_split_reads_details_w_symbol_reduced_keep_gr[ind, "junID"] <- str_replace(string = all_split_reads_details_w_symbol_reduced_keep_gr[ind, "junID"]$junID, 
                                                                                   pattern = "\\*", 
                                                                                   replacement = all_split_reads_details_w_symbol_reduced_keep_gr[ind, "strand"]$strand %>% as.character() )
@@ -1404,6 +1401,11 @@ sql_database_generation <- function(database_path,
   
   print(paste0(Sys.time(), " - creating cluster tables ..."))
   
+  create_cluster_tables(database_path = database_path,
+                        gtf_version = gtf_version,
+                        all_projects = projects_used,
+                        main_project = main_project)
+  
   rm(CNC_CDTS_CONS_gr)
   rm(hg_mane_transcripts)
   rm(hg_MANE_tidy)
@@ -1411,10 +1413,5 @@ sql_database_generation <- function(database_path,
   rm(hg38_transcripts)
   rm(hg38)
   gc()
-  
-  create_cluster_tables(database_path = database_path,
-                        gtf_version = gtf_version,
-                        all_projects = projects_used,
-                        main_project = main_project)
   
 }

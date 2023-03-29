@@ -3,7 +3,6 @@ library(DBI)
 
 # source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper_age.R")
 
-
 setwd(normalizePath("."))
 
 
@@ -118,19 +117,6 @@ age_stratification_get_stats <- function() {
 
 age_stratification_plot_metadata <- function() {
   
-  custom_theme <- theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.text.x = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          strip.text = element_text(colour = "black", size = "9"), 
-          legend.text = element_text(colour = "black", size = "9"),
-          plot.caption = element_text(colour = "black", size = "9"),
-          plot.title = element_text(colour = "black", size = "9"),
-          legend.title = element_text(colour = "black", size = "9"),
-          legend.position = "top",
-          ## This is to plot the two legends in two rows
-          legend.box="vertical")  
-  
   tables <- dbListTables(con)
   query <- paste0("SELECT * from 'master'")
   db_metadata <- dbGetQuery(con, query) %>% 
@@ -150,7 +136,7 @@ age_stratification_plot_metadata <- function() {
     scale_fill_hue() +
     labs(y = ("Body site"), x = "Num. samples" ) +
     guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_num_samples
   
@@ -167,7 +153,7 @@ age_stratification_plot_metadata <- function() {
     labs(y = ("Body site"), x = "Num. samples" ) +
     scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
     guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_gender
   
@@ -179,7 +165,7 @@ age_stratification_plot_metadata <- function() {
     labs(x = "RIN" ) +
     scale_fill_hue() +
     guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_rin
   
@@ -191,7 +177,7 @@ age_stratification_plot_metadata <- function() {
     scale_fill_hue() +
     labs(x = "Mapped Read Count" ) +
     guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_read_depth
   
@@ -382,8 +368,8 @@ get_effsize_MSR_with_age <- function() {
 
     map_df(age_projects, function(proj_id) {
       
-      # proj_id <- age_projects[2]
-      # proj_id <- "KIDNEY"
+      # proj_id <- age_projects[1]
+      
       print( paste0( proj_id ) )
       
       ###############################
@@ -397,7 +383,6 @@ get_effsize_MSR_with_age <- function() {
       } else {
         df_introns <- df_MSRA
       }
-      
       
       df_introns <- df_introns %>%
         filter(project_id == proj_id) 
@@ -500,7 +485,6 @@ plot_effsize_MSR_with_age <- function() {
     scale_size(range = c(4, 1))+
     theme(legend.position="top", 
           legend.box="horizontal", 
-          
           plot.margin = margin(0,0,0,0),
           legend.box.margin=margin(b = -11)) +
     guides(color = guide_legend(title = ""))+

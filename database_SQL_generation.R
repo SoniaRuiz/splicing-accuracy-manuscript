@@ -3,56 +3,56 @@ library(DBI)
 ##########################################
 ## LOAD DATA DEPENDENCIES
 ##########################################
-# 
-# if (!exists("CNC_CDTS_CONS_gr")) {
-#   print("Loading the 'CNC_CDTS_CONS_gr' file...")
-#   load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
-#   print("'CNC_CDTS_CONS_gr' file loaded!")
-# } else {
-#   print("'CNC_CDTS_CONS_gr' file already loaded!")
-# }
-# 
-# ## GET INFO FROM MANE
-# if ( !exists("hg_mane_transcripts") ) {
-#   
-#   print("Loading the 'hg_MANE' file...")
-#   hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
-#                                               "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
-#   hg_MANE_tidy <- hg_MANE %>%
-#     as_tibble() %>%
-#     dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
-#                   -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
-#     mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
-#     drop_na()
-#   
-#   hg_mane_transcripts <- hg_MANE_tidy %>%
-#     dplyr::filter(type == "transcript") %>%
-#     distinct(transcript_id) %>%
-#     mutate(MANE = T)
-# } else {
-#   print("'hg_mane_transcripts' file already loaded!")
-# }
-# 
-# # GET INFO FROM THE HG38
-# if ( !exists("hg38_transcripts") ) {
-#   
-#   print("Loading the 'hg38' file...")
-#   
-#   if ( !exists("hg38") ) {
-#     hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
-#                                              "/Homo_sapiens.GRCh38.105.chr.gtf"))
-#   }
-#   
-#   hg38_transcripts <- hg38 %>%
-#     as_tibble() %>%
-#     dplyr::filter(type == "transcript") %>%
-#     dplyr::select(transcript_id, transcript_support_level) %>%
-#     mutate(transcript_support_level = str_sub(string = transcript_support_level,
-#                                               start = 1,
-#                                               end = 1))
-# } else {
-#   print("'hg38_transcripts' file already loaded!")
-# }
+
+if (!exists("CNC_CDTS_CONS_gr")) {
+  print("Loading the 'CNC_CDTS_CONS_gr' file...")
+  load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
+  print("'CNC_CDTS_CONS_gr' file loaded!")
+} else {
+  print("'CNC_CDTS_CONS_gr' file already loaded!")
+}
+
+## GET INFO FROM MANE
+if ( !exists("hg_mane_transcripts") ) {
+
+  print("Loading the 'hg_MANE' file...")
+  hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
+                                              "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
+  hg_MANE_tidy <- hg_MANE %>%
+    as_tibble() %>%
+    dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
+                  -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+    mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
+    drop_na()
+
+  hg_mane_transcripts <- hg_MANE_tidy %>%
+    dplyr::filter(type == "transcript") %>%
+    distinct(transcript_id) %>%
+    mutate(MANE = T)
+} else {
+  print("'hg_mane_transcripts' file already loaded!")
+}
+
+# GET INFO FROM THE HG38
+if ( !exists("hg38_transcripts") ) {
+
+  print("Loading the 'hg38' file...")
+
+  if ( !exists("hg38") ) {
+    hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
+                                             "/Homo_sapiens.GRCh38.105.chr.gtf"))
+  }
+
+  hg38_transcripts <- hg38 %>%
+    as_tibble() %>%
+    dplyr::filter(type == "transcript") %>%
+    dplyr::select(transcript_id, transcript_support_level) %>%
+    mutate(transcript_support_level = str_sub(string = transcript_support_level,
+                                              start = 1,
+                                              end = 1))
+} else {
+  print("'hg38_transcripts' file already loaded!")
+}
 
 
 ## Remove the tables -----------------------------------------------------------
@@ -94,7 +94,7 @@ create_metadata_table <- function(database_path,
   
   df_metadata <- map_df(all_projects, function(project_id) { 
     
-    print(paste0(Sys.time(), " - getting info from ", project_id))
+    
     # project_id <- all_projects[1]
     # project_id <- all_projects[2]
     # project_id <- all_projects[6]
@@ -122,6 +122,7 @@ create_metadata_table <- function(database_path,
       
       if ( metadata %>% nrow() >= min_samples ) {
         
+        print(paste0(Sys.time(), " - getting info from ", project_id))
         
         # To build the "age stratification" intron database
         if ( str_detect(string = main_project,pattern = "age") ) {
@@ -129,7 +130,7 @@ create_metadata_table <- function(database_path,
           for (age_cluster in (metadata$gtex.age %>% as.character())) {
             
             # age_cluster =  (metadata$gtex.age %>% as.character())[1]
-            print(age_cluster)
+            #print(age_cluster)
             switch(age_cluster, 
                    '20-29' = {
                      indx <- which(metadata$gtex.age == age_cluster)
@@ -558,8 +559,10 @@ create_master_tables <- function(database_path,
   ## Load intron type files
   u12_introns <- readRDS(file = paste0(dependencies_folder,
                                        "/minor_introns_tidy.rds"))
-  u2_introns <- readRDS(file = paste0(dependencies_folder, 
-                                      "/major_introns_tidy.rds"))
+  u2_introns <- rtracklayer::import(con = paste0(getwd(), "/dependencies/GRCh38_U2.bed"), format = "bed") %>%
+    as_tibble()
+  # u2_introns <- readRDS(file = paste0(dependencies_folder, 
+  #                                     "/major_introns_tidy.rds"))
   
   
   ## Add two new columns to incorporate info about intron type
@@ -590,8 +593,7 @@ create_master_tables <- function(database_path,
   
   ## MAJOR INTRON
   print(paste0(Sys.time(), " - Getting junctions spliced out by the major spliceosome."))
-  u2_introns <- rtracklayer::import(con = paste0(getwd(), "/dependencies/GRCh38_U2.bed"), format = "bed") %>%
-    as_tibble()
+  
   overlaps <- GenomicRanges::findOverlaps(query = GenomicRanges::GRanges(seqnames = u2_introns$seqnames %>% as.character(),
                                                                          ranges = IRanges(start = u2_introns$start,
                                                                                           end = u2_introns$end),
@@ -964,7 +966,7 @@ create_cluster_tables <- function(database_path,
                                                        main_project, "/all_split_reads_details_all_tissues.rds"))
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
-  DBI::dbListTables(conn = con)
+  sql_tables <- DBI::dbListTables(conn = con)
   DBI::dbExecute(conn = con, statement = "PRAGMA foreign_keys=1")
   
   print( paste0(Sys.time(), " --> SQL connection stablished!") )
@@ -1022,7 +1024,8 @@ create_cluster_tables <- function(database_path,
       ###############################
       
       if ( file.exists(paste0(base_folder, "/results/", 
-                              cluster_id, "/", cluster_id, "_raw_distances_tidy.rds")) ) {
+                              cluster_id, "/", cluster_id, "_raw_distances_tidy.rds")) && 
+           !any(sql_tables %in% paste0(cluster_id, "_", project_id, "_misspliced")) ) {
         
         
         ## BASE DATA -----------------------------------------------------------
