@@ -1,4 +1,5 @@
 [![DOI](https://zenodo.org/badge/470977869.svg)](https://zenodo.org/badge/latestdoi/470977869)
+![Bitbucket open issues](https://img.shields.io/bitbucket/issues/SoniaRuiz/splicing-accuracy-manuscript)
 
 
 ## Splicing accuracy varies across human introns, tissues and age
