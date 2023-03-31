@@ -5,14 +5,14 @@
 
 #### **Splicing accuracy varies across human introns, tissues and age**.
 
-*Sonia Garcia-Ruiz, David Zhang, Emil K Gustavsson, Guillermo Rocamora-Perez, Melissa Grant-Peters, Aine Fairbrother-Browne, Regina H Reynolds, Jonathan W Brenton, Ana L Gil-Martinez, Zhongbo Chen, Donald C Rio, Juan A Botia, Sebastian Guelfi, Leonardo Collado-Torres, Mina Ryten*
+*Sonia Garcia-Ruiz, [David Zhang](https://github.com/dzhang32), [Emil K Gustavsson](https://github.com/egustavsson), Guillermo Rocamora-Perez, [Melissa Grant-Peters](https://github.com/mgrantpeters), Aine Fairbrother-Browne, Regina H Reynolds, Jonathan W Brenton, Ana L Gil-Martinez, Zhongbo Chen, Donald C Rio, Juan A Botia, Sebastian Guelfi, [Leonardo Collado-Torres](https://lcolladotor.github.io/), Mina Ryten*
 
 bioRxiv 2023.03.29.534370;
 doi: [https://doi.org/10.1101/2023.03.29.534370](https://doi.org/10.1101/2023.03.29.534370)
 
 
 # Repository
-This 'splicing-accuracy-manuscript' repository contains the code used to generate all the analyses and figures produced for the manuscript:
+This 'splicing-accuracy-manuscript' repository contains the code used to generate all the analyses and figures produced for the manuscript [**Splicing accuracy varies across human introns, tissues and age**](https://doi.org/10.1101/2023.03.29.534370).
 
 ## Repository Structure
 
