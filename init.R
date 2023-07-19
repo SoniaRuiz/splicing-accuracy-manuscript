@@ -5,11 +5,13 @@ library(GenomicRanges)
 library(DBI)
 library(dplyr)
 
+# source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/init.R")
+
 setwd(normalizePath("."))
 
 dependencies_folder <- paste0(getwd(), "/dependencies/")
 
-source(paste0(getwd(), "/database_junction_pairing.R"))
+#source(paste0(getwd(), "/database_junction_pairing.R"))
 source(paste0(getwd(), "/database_SQL_helper.R"))
 source(paste0(getwd(), "/database_SQL_generation.R"))
 
@@ -19,8 +21,8 @@ source(paste0(getwd(), "/database_SQL_generation.R"))
 ## FUNCTIONS - PREPARE RECOUNT3 DATA
 #####################################
 
-init_recount3_gtex_data <- function (projects_used,
-                                     gtf_version) {
+download_recount3_data <- function (recount3_project_IDs,
+                                    gtf_version) {
   
   
   ##########################################################
@@ -34,14 +36,15 @@ init_recount3_gtex_data <- function (projects_used,
     
   } else {
     
-    all_split_reads_raw <- map_df(projects_used, function(project_id) {
+    all_split_reads_raw <- map_df(recount3_project_IDs, function(project_id) {
       
-      # project_id <- projects_used[31]
+      # project_id <- recount3_project_IDs[31]
       print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
       
       folder_root <- paste0(getwd(), "/results/", project_id, "/")
       dir.create(file.path(folder_root), recursive = TRUE, showWarnings = T)
       
+      ## Build the RSE object from recount3
       rse <- recount3::create_rse_manual(
         project = project_id,
         project_home = "data_sources/gtex",
@@ -79,13 +82,30 @@ init_recount3_gtex_data <- function (projects_used,
   }
   
   
+  ############################################
+  ## QC STEP 1. 
+  ## Discard all junctions shorter than 25bp
+  ############################################
+  
+  
   all_split_reads_raw_tidy %>% 
     distinct(junID) %>%
     nrow()
   
-  #######################################################################
-  ## Remove split reads located in unplaced sequences in the chromosomes
-  #######################################################################
+  all_split_reads_raw_tidy <- all_split_reads_raw_tidy %>%
+    filter(width >= 25)
+  
+  all_split_reads_raw_tidy %>% 
+    distinct(junID) %>%
+    nrow()
+  
+  
+  ############################################
+  ## QC STEP 2. 
+  ## Remove split reads located in
+  ## unplaced sequences in the chromosomes
+  ############################################
+  
   
   print(paste0(Sys.time(), " - removing unplaced sequences genome..."))
   
@@ -109,12 +129,15 @@ init_recount3_gtex_data <- function (projects_used,
     distinct(junID, .keep_all = T) %>%
     nrow() %>%
     print()
-  all_split_reads_raw_tidy %>% nrow() -
-    all_split_reads_raw_tidy_gr %>% length()
   
-  #######################################################
-  ## Remove split reads overlapping the ENCODE backlist
-  #######################################################
+  
+  
+  ############################################
+  ## QC STEP 3. 
+  ## Remove split reads overlapping 
+  ## the ENCODE backlist
+  ############################################
+  
   
   print(paste0(Sys.time(), " - removing blacklist sequences..."))
   
@@ -131,9 +154,12 @@ init_recount3_gtex_data <- function (projects_used,
     print()
   
   
-  #######################################################
-  ## Anotate using 'dasper'
-  #######################################################
+  
+  ############################################
+  ## QC STEP 4. 
+  ## Anotate split reads using 'dasper'
+  ############################################
+  
   
   print(paste0(Sys.time(), " - annotating dasper..."))
   
@@ -163,11 +189,12 @@ init_recount3_gtex_data <- function (projects_used,
           file = paste0(folder_path, "/all_split_reads_gtex_recount3_", gtf_version, ".rds"))
   
   
+  ############################################
+  ## QC STEP 5. 
+  ## Discard all junctions that are not 
+  ## annotated, novel donor or novel acceptor
+  ############################################
   
-  
-  ################################################################################
-  ## Discard all junctions that are not annotated, novel donor or novel acceptor
-  ################################################################################
   
   print(paste0(Sys.time(), " - removing split reads not classified as 'annotated', 'novel_donor' or 'novel_acceptor'..."))
   
@@ -193,29 +220,12 @@ init_recount3_gtex_data <- function (projects_used,
   
   all_split_reads_details_w_symbol_reduced_keep %>% nrow() %>% print()
   
+ 
   ############################################
-  ## Discard all junctions shorter than 25bp
+  ## QC Step 6. 
+  ## Discard all introns assigned to
+  ## multiple genes (i.e. ambiguous introns)
   ############################################
-  
-  print(paste0(Sys.time(), " - removing split reads shorter than 25bp..."))
-  
-  all_split_reads_details_w_symbol_reduced_keep_gr <- all_split_reads_details_w_symbol_reduced_keep %>%
-    GRanges() %>%
-    as_tibble()
-  
-  all_split_reads_details_w_symbol_reduced_keep_gr  %>% 
-    dplyr::filter(width < 25) %>%
-    nrow() %>% 
-    print()
-  
-  all_split_reads_details_w_symbol_reduced_keep_gr <- all_split_reads_details_w_symbol_reduced_keep_gr  %>% 
-    dplyr::filter(width >= 25)
-  
-  all_split_reads_details_w_symbol_reduced_keep_gr %>% nrow() %>% print()
-  
-  ############################################################################
-  ## Discard all introns assigned to multiple genes (i.e. ambiguous introns)
-  ############################################################################
   
   print(paste0(Sys.time(), " - discarding ambiguous introns..."))
   
@@ -262,9 +272,9 @@ init_recount3_gtex_data <- function (projects_used,
 }
 
 
-tidy_recount3_data_per_tissue <- function(projects_used, 
-                                          main_project,
-                                          gtf_version) {
+tidy_recount3_data <- function(recount3_project_IDs, 
+                               main_project,
+                               gtf_version) {
   
   folder_database <- paste0(getwd(), "/database/v", gtf_version, "/")
   
@@ -276,11 +286,11 @@ tidy_recount3_data_per_tissue <- function(projects_used,
   all_projects_used <- NULL
   
   # ## Generate the raw file
-  for (project_id in projects_used) {
+  for (project_id in recount3_project_IDs) {
     
-    # project_id <- projects_used[1]
-    # project_id <- projects_used[6]
-    # project_id <- projects_used[31]
+    # project_id <- recount3_project_IDs[1]
+    # project_id <- recount3_project_IDs[6]
+    # project_id <- recount3_project_IDs[31]
     
     folder_results <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", 
                              main_project, "/base_data/unique/")
@@ -293,7 +303,6 @@ tidy_recount3_data_per_tissue <- function(projects_used,
       project_home = "data_sources/gtex",
       organism = "human",
       annotation = "gencode_v29",
-      jxn_format = "UNIQUE",
       type = "jxn"
     )
     gc()
@@ -355,7 +364,9 @@ tidy_recount3_data_per_tissue <- function(projects_used,
         counts <- (rse[, rse$external_id %in% cluster_samples] %>% SummarizedExperiment::assays())[[1]]
         counts <- counts[(rownames(counts) %in%
                             all_split_reads_details_w_symbol_reduced_keep_gr$junID),]
-        counts <- counts[rowSums(counts) > 0, ]
+        
+        ## At least two supportive reads per junction
+        counts <- counts[rowSums(counts) >= 2, ]
         counts <- counts %>% as.matrix()
         counts <- counts %>% as_tibble(rownames = "junID")
         
@@ -419,15 +430,15 @@ tidy_recount3_data_per_tissue <- function(projects_used,
 }
 
 
-junction_pairing <- function(projects_used, 
+junction_pairing <- function(recount3_project_IDs, 
                              gtf_version,
                              main_project) {
   
   
   
-  for (project_id in projects_used) {
+  for (project_id in recount3_project_IDs) {
     
-    # project_id <- projects_used[1]
+    # project_id <- recount3_project_IDs[1]
     
     folder_root <- paste0(getwd(), "/results/", project_id, "/v", gtf_version, "/", 
                           main_project, "/")
@@ -436,80 +447,99 @@ junction_pairing <- function(projects_used,
     print(paste0(Sys.time(), " - getting data from '", project_id, "' tissue..."))
     
     ## Load clusters
-    metadata.info <- readRDS(file = paste0(folder_path, "/", project_id, "_samples_metadata.rds"))
-    clusters_ID <- metadata.info$gtex.smtsd %>% unique()
     
-    
-    for (cluster_id in clusters_ID) {
+    if ( file.exists(paste0(folder_path, "/", project_id, "_samples_metadata.rds")) ) {
       
-      # cluster_id <- clusters_ID[1]
-      # cluster <- clusters_ID[2]
-      
-      print(paste0(Sys.time(), " - loading '", cluster_id, "' source data ..."))
-      
-      ############################################
-      ## LOAD DATA FOR THE CURRENT PROJECT
-      ############################################
-      
-      ## Load samples
-      samples_used <- readRDS(file = paste0(folder_path, "/", 
-                                            project_id, "_", cluster_id, "_samples_used.rds"))
-      
-      ## IntroVerse project considers all samples regardless of their RIN numbers. It also includes all
-      ## tissues, regardless of their number of samples. However, this is configurable:
-      if ( main_project == "splicing" ) {
-        minimum_samples <- 70
-      }
+      metadata.info <- readRDS(file = paste0(folder_path, "/", project_id, "_samples_metadata.rds"))
+      clusters_ID <- metadata.info$gtex.smtsd %>% unique()
       
       
-      if ( samples_used %>% length() >= minimum_samples ) {
+      for (cluster_id in clusters_ID) {
         
+        # cluster_id <- clusters_ID[1]
+        # cluster <- clusters_ID[2]
         
-        folder_name <- paste0(folder_root, "/results/", cluster_id, "/")
-        dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
+        print(paste0(Sys.time(), " - loading '", cluster_id, "' source data ..."))
         
-        ## Load split read data
-        all_split_reads_details <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, 
-                                                         "_all_split_reads.rds")) %>% as_tibble()
+        ############################################
+        ## LOAD DATA FOR THE CURRENT PROJECT
+        ############################################
         
-        ## Load split read counts
-        split_read_counts <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, "_",
-                                                   "split_read_counts.rds")) %>% as_tibble()
+        ## Load samples
+        samples_used <- readRDS(file = paste0(folder_path, "/", 
+                                              project_id, "_", cluster_id, "_samples_used.rds"))
         
-        if ( !identical(all_split_reads_details$junID, split_read_counts$junID) ) {
-          print("ERROR! The number of junctions considered is not correct.")
-          break;
+        ## IntroVerse project considers all samples regardless of their RIN numbers. It also includes all
+        ## tissues, regardless of their number of samples. However, this is configurable:
+        if ( main_project == "splicing" ) {
+          minimum_samples <- 70
         }
         
-        ############################################
-        ## DISTANCES SUITE OF FUNCTIONS
-        ############################################
         
-        get_distances(cluster = cluster_id,
-                      samples = samples_used,
-                      split_read_counts = split_read_counts,
-                      all_split_reads_details = all_split_reads_details,
-                      folder_name)
-        gc()
-        
-        
-        extract_distances(cluster = cluster_id,
-                          samples = samples_used,
-                          folder_name = folder_name)
-        gc()
-        
-        
-        get_never_misspliced(cluster = cluster_id,
-                             samples = samples_used,
-                             split_read_counts = split_read_counts,
-                             all_split_reads_details = all_split_reads_details,
-                             folder_name = folder_name)
-        
-        rm(all_split_reads_details)
-        rm(split_read_counts)
-        gc()
-        
+        if ( samples_used %>% length() >= minimum_samples ) {
+          
+          
+          folder_name <- paste0(folder_root, "/results/", cluster_id, "/")
+          dir.create(file.path(folder_name), recursive = TRUE, showWarnings = T)
+          
+          ## Load split read data
+          all_split_reads_details <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, 
+                                                           "_all_split_reads.rds")) %>% as_tibble()
+          
+          ## Load split read counts
+          split_read_counts <- readRDS(file = paste0(folder_path, "/", project_id, "_", cluster_id, "_",
+                                                     "split_read_counts.rds")) %>% as_tibble()
+          
+          ## Only split reads with at least 2 supportive reads
+          split_read_counts_tidy <- split_read_counts %>%
+            mutate(total=rowSums(select_if(., is.numeric))) %>% 
+            filter(total >= 2) %>%
+            dplyr::select(-total)
+          
+  
+          all_split_reads_details_tidy <- all_split_reads_details %>%
+            filter(junID %in% split_read_counts_tidy$junID)
+            
+          
+          if ( !identical(all_split_reads_details_tidy$junID, split_read_counts_tidy$junID) ) {
+            print("ERROR! The number of junctions considered is not correct.")
+            break;
+          }
+          
+          ############################################
+          ## DISTANCES SUITE OF FUNCTIONS
+          ############################################
+          
+          get_distances(cluster = cluster_id,
+                        samples = samples_used,
+                        split_read_counts = split_read_counts_tidy,
+                        all_split_reads_details = all_split_reads_details_tidy,
+                        folder_name)
+          gc()
+          
+          
+          extract_distances(cluster = cluster_id,
+                            samples = samples_used,
+                            folder_name = folder_name)
+          gc()
+          
+          
+          get_never_misspliced(cluster = cluster_id,
+                               samples = samples_used,
+                               split_read_counts = split_read_counts_tidy,
+                               all_split_reads_details = all_split_reads_details_tidy,
+                               folder_name = folder_name)
+          
+          rm(all_split_reads_details_tidy)
+          rm(split_read_counts_tidy)
+          rm(all_split_reads_details)
+          rm(split_read_counts)
+          gc()
+          
+        }
       }
+    } else {
+      message(Sys.time(), " there is no local metadata downloaded for '", project_id, "' project from recount3. ")
     }
   }
 }
@@ -528,15 +558,16 @@ gtf_versions <- c(105)
 main_project <- "splicing"
 
 ## Can be checked here: https://jhubiostatistics.shinyapps.io/recount3-study-explorer/
-all_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",    
-                   "BRAIN",           "BREAST",          "CERVIX_UTERI",    "COLON",           "ESOPHAGUS",       "FALLOPIAN_TUBE", 
-                   "HEART",           "KIDNEY",          "LIVER",           "LUNG",            "MUSCLE",          "NERVE",          
-                   "OVARY",           "PANCREAS",        "PITUITARY",       "PROSTATE",        "SALIVARY_GLAND",  "SKIN",           
-                   "SMALL_INTESTINE", "SPLEEN",          "STOMACH",         "TESTIS",          "THYROID",         "UTERUS",         
+all_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
+                   "BRAIN",           "BREAST",          "CERVIX_UTERI",    "COLON",           "ESOPHAGUS",       "FALLOPIAN_TUBE",
+                   "HEART",           "KIDNEY",          "LIVER",           "LUNG",            "MUSCLE",          "NERVE",
+                   "OVARY",           "PANCREAS",        "PITUITARY",       "PROSTATE",        "SALIVARY_GLAND",  "SKIN",
+                   "SMALL_INTESTINE", "SPLEEN",          "STOMACH",         "TESTIS",          "THYROID",         "UTERUS",
                    "VAGINA"  )
 
 
-splicing_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",    
+splicing_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",           "BLOOD_VESSEL",    
+                        "BONE_MARROW",    
                         "BRAIN",           "COLON",           "ESOPHAGUS",       "HEART",           "KIDNEY",          
                         "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",        
                         "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",          
@@ -546,59 +577,61 @@ splicing_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",          
 
 for (gtf_version in gtf_versions) {
   
+  # gtf_version <- gtf_versions[1]
+  
+  # download_recount3_data(recount3_project_IDs = all_projects,
+  #                         gtf_version = gtf_version)
+  # 
+  # 
+  # tidy_recount3_data(recount3_project_IDs = splicing_projects,
+  #                               main_project,
+  #                               gtf_version = gtf_version)
   
   
-  init_recount3_gtex_data(projects_used = all_projects,
-                          gtf_version = gtf_version)
+  # junction_pairing(recount3_project_IDs = splicing_projects,
+  #                  main_project,
+  #                  gtf_version = gtf_version)
   
   
-  tidy_recount3_data_per_tissue(projects_used = splicing_projects,
-                                main_project,
-                                gtf_version = gtf_version)
-  
-  
-  junction_pairing(projects_used = splicing_projects,
-                   main_project,
-                   gtf_version = gtf_version)
-  
-  
-  get_all_annotated_split_reads(projects_used = splicing_projects,
-                                gtf_version = gtf_version,
-                                main_project = main_project)
+  # get_all_annotated_split_reads(recount3_project_IDs = splicing_projects,
+  #                               gtf_version = gtf_version,
+  #                               main_project = main_project)
 
 
-  get_all_raw_distances_pairings(projects_used = splicing_projects,
-                                 gtf_version = gtf_version,
-                                 main_project = main_project)
+  # get_all_raw_distances_pairings(recount3_project_IDs = splicing_projects,
+  #                                gtf_version = gtf_version,
+  #                                main_project = main_project)
+  # 
+  # 
+  # tidy_data_pior_sql(recount3_project_IDs = splicing_projects,
+  #                    gtf_version = gtf_version,
+  #                    main_project = main_project)
+  #  
+  #  
+  #  generate_transcript_biotype_percentage(recount3_project_IDs = splicing_projects,
+  #                                         homo_sapiens_v105_path = paste0(dependencies_folder,
+  #                                                                         "/Homo_sapiens.GRCh38.105.chr.gtf"),
+  #                                         main_project,
+  #                                         gtf_version = gtf_version)
+   
+   
+   all_final_projects_used <- readRDS(file = paste0(getwd(),"/results/all_final_projects_used.rds"))
+   
+   # homo_sapiens_v105 <- rtracklayer::import(con = paste0(dependencies_folder,"/Homo_sapiens.GRCh38.105.chr.gtf"))
+   # generate_recount3_tpm(recount3_project_IDs = all_final_projects_used,
+   #                       gtf_version = gtf_version,
+   #                       ref = homo_sapiens_v105,
+   #                       main_project = main_project)
   
-  
-  tidy_data_pior_sql(projects_used = splicing_projects,
-                     gtf_version = gtf_version,
-                     main_project = main_project)
-  
-  
-  generate_transcript_biotype_percentage(projects_used = splicing_projects,
-                                         homo_sapiens_v105_path = paste0(dependencies_folder,
-                                                                         "/Homo_sapiens.GRCh38.105.chr.gtf"),
-                                         main_project,
-                                         gtf_version = gtf_version)
-  
-  
-  all_final_projects_used <- readRDS(file = paste0(getwd(),"/results/all_final_projects_used.rds"))
-
-  generate_recount3_tpm(projects_used = all_final_projects_used,
-                        gtf_version = gtf_version,
-                        main_project = main_project)
-  
-  database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
-  dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
-  database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
-
-  sql_database_generation(database_path = database_path,
-                          projects_used = all_final_projects_used,
-                          main_project = main_project,
-                          gtf_version = gtf_version,
-                          remove_all = F)
+   database_folder <- paste0(getwd(), "/database/v", gtf_version, "/", main_project)
+   dir.create(file.path(database_folder), recursive = TRUE, showWarnings = T)
+   database_path <- paste0(database_folder,  "/", main_project, ".sqlite")
+   print("Starting SQL generation...")
+   sql_database_generation(database_path = database_path,
+                           recount3_project_IDs = all_final_projects_used,
+                           main_project = main_project,
+                           gtf_version = gtf_version,
+                           remove_all = F)
   
   
   # rm(list = ls(envir = .GlobalEnv), envir = .GlobalEnv)

@@ -347,18 +347,27 @@ test_that("Test that the MANE information is properly assigned", {
   ## Connect to the database
   
   df_intron_tidy <- df_intron %>% 
+    left_join(y = df_transcript %>% dplyr::select(id, MANE),
+              by = c("transcript_id" = "id")) %>%
     left_join(y = df_mane_introns %>% 
                 dplyr::select(id, MANE.x) %>% distinct(id, .keep_all = T),
               by = c("transcript_id" = "id")) %>%
     as_tibble()
   
+
+  
+  
+  df_intron_tidy[c("MANE.x")][is.na(df_intron_tidy[c("MANE.x")])] <- 0
+  
   df_intron_tidy %>%
-     dplyr::count(MANE)
+    dplyr::count(MANE)
   df_intron_tidy %>%
     dplyr::count(MANE.x)
   
-  
-  df_intron_tidy[c("MANE")][is.na(df_intron_tidy[c("MANE")])] <- 0
+  expect_equal(df_intron_tidy %>%
+                dplyr::count(MANE) %>% pull(n),
+                df_intron_tidy %>%
+                  dplyr::count(MANE.x) %>% pull(n))
   
   # df_intron_tidy %>%
   #   dplyr::count(MANE)
@@ -426,8 +435,10 @@ test_that("Test that the misspliced information is properly calculated", {
   misspliced_junID <- c()
   nevermisspliced_junID <- c()
   for(cluster in clusters){
-    misspliced_junID <- c(misspliced_junID, tbl(con, paste0(cluster, "_misspliced")) %>% pull(ref_junID) %>% unique) %>% unique
-    nevermisspliced_junID <- c(nevermisspliced_junID, tbl(con, paste0(cluster, "_nevermisspliced")) %>% pull(ref_junID) %>% unique) %>% unique
+    misspliced_junID <- c(misspliced_junID, tbl(con, paste0(cluster, "_misspliced")) %>% 
+                            pull(ref_junID) %>% unique) %>% unique
+    nevermisspliced_junID <- c(nevermisspliced_junID, tbl(con, paste0(cluster, "_nevermisspliced")) %>% 
+                                 pull(ref_junID) %>% unique) %>% unique
   }
   nevermisspliced_junID <- setdiff(nevermisspliced_junID, misspliced_junID)
   

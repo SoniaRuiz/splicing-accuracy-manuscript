@@ -103,6 +103,7 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
   df_lm_output <- map_df(RBPs, function(RBP) {
     
     # RBP <- RBPs[1]
+    # RBP <- "ENSG00000002079"
     
     print(RBP)
     
@@ -114,6 +115,8 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
     if ( rowSums(tpm[, c(2:ncol(tpm))], na.rm = T) != 0 ) {
 
       
+      ## Transform TPM to log10 so resilduals after modelling in the linear model are normally distributed
+      ## https://stats.stackexchange.com/questions/40907/in-regression-analysis-what-does-taking-the-log-of-a-variable-do
       df_rbp <- rbind(tpm %>%  dplyr::rename(covariates = "gene"),
                   sample_metadata) %>%
         gather(sample, value, -covariates)  %>%
@@ -130,8 +133,9 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
                       gtex.smnabtchd = gtex.smnabtchd %>% as.double(),
                       gtex.smnabtcht = gtex.smnabtcht %>% as.double(),
                       gtex.smrin = gtex.smrin %>% as.double(),
-                      tpm = tpm %>% as.double()) %>%
-        as_tibble()
+                      tpm = (tpm %>% as.double()) %>% log10) %>%
+        as_tibble() %>%
+        filter_all(all_vars(!is.infinite(.)))
       
 
         # print(df)
@@ -159,6 +163,9 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
         mutate(RBP_ID = RBP) %>%
         dplyr::select(covariate, Estimate, pval = `Pr(>|t|)`, RBP_ID)
       
+      
+      plot(density(lm_output$residuals)) 
+      
       return(df_lm_output)
       
     } else {
@@ -171,23 +178,22 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
     
     
   ## Filter by age covariate and order by estimate size
-  df_lm_output_age <- df_lm_output %>%
+  df_lm_output_tidy <- df_lm_output %>%
     mutate(q = p.adjust(p = pval, method = "fdr"))  %>%
-    filter(str_detect(string = covariate, pattern = "gtex.age")) %>%
     arrange(Estimate)
   
 
   ## Add gene SYMBOL info
-  df_lm_age_tidy <- left_join(x = df_lm_output_age, 
+  df_lm_output_tidy <- left_join(x = df_lm_output_tidy, 
                               y = all_RBPs %>% drop_na(), 
                               by = c("RBP_ID" = "id")) %>%
     group_by(RBP_ID) 
   
+ 
   
   ## Save results
-  write_csv(x = df_lm_age_tidy,
-            file = paste0(getwd(), "/results/RBP_EXPRESSION/",main_project,"/RBP/", project_id,"/", 
-                          project_id, "_",main_project,"_tpm_lm_all_ensembl105.csv"))
+  write_csv(x = df_lm_output_tidy,
+            file = paste0(getwd(), "/results/_paper/results/",project_id, "_",main_project,"_tpm_lm_all_ensembl105.csv"))
   
   
   ###############################################
@@ -195,8 +201,10 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
   ###############################################
   
   ## RBPs with expression levels decreasing with age (i.e. with negative effect over their TPM associated to the 'age' covariate)
-  RBP_decrease <- df_lm_age_tidy %>%
-    filter(Estimate < 0) %>%
+  RBP_decrease <- df_lm_output_tidy %>%
+    filter(str_detect(string = covariate, pattern = "gtex.age")) %>%
+    #filter(Estimate < 0) %>%
+    filter(q <= 0.05) %>%
     arrange(name)
   
   RBP_decrease %>% print(n=50)
@@ -206,9 +214,11 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
   ## Count them as a percentage
   ((RBP_decrease %>% filter(q <= 0.05) %>%  nrow) * 100) / (all_RBPs %>% nrow)
   
+  RBP_decrease$q %>% sort()
   
   ## RBPs with expression levels increasing with age (i.e. with positive effect over their TPM associated to the 'age' covariate)
-  RBP_increase <- df_lm_age_tidy %>%
+  RBP_increase <- df_lm_output_tidy %>%
+    filter(str_detect(string = covariate, pattern = "gtex.age")) %>%
     filter(Estimate > 0) %>%
     arrange(name)
   
@@ -222,7 +232,7 @@ RBP_uncorrected_TPM_lm <- function(project_id = "BRAIN",
   
   ####
   
-  ((df_lm_age_tidy %>% filter(q > 0.05) %>% nrow) * 100) / (all_RBPs %>% nrow)
+  ((df_lm_output_tidy %>% filter(q > 0.05) %>% nrow) * 100) / (all_RBPs %>% nrow)
   
   intersect(RBP_decrease$name,
             RBP_increase$name)
@@ -253,7 +263,8 @@ metadata$gtex.smrin %>% unique %>% min
 
 
 ## Get TPM for brain tissue
-recount_tpm <- generate_recount3_tpm(projects_used = project_id,
+
+recount_tpm <- generate_recount3_tpm(recount3_project_IDs = project_id,
                                      ref = ensembl105,
                                      gtf_version,
                                      main_project)

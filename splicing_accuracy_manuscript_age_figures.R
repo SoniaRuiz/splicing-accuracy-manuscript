@@ -515,7 +515,8 @@ plot_effsize_MSR_with_age <- function() {
   ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a.png"), 
                   width = 180, height = 55, units = "mm", dpi = 300)
   
-  
+  ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a_larger.png"), 
+                  width = 180, height = 90, units = "mm", dpi = 300)
   ###################################
   ## STATS - DONOR
   ###################################

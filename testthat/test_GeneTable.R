@@ -1,3 +1,4 @@
+main_path <- normalizePath(path = "./")
 source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
 skip_if(!test_GeneTable, "Gene table tests not executed. Variable test_GeneTable set to FALSE in global options.")
 source(paste0(main_path, "/testthat/helper_Files/helper_GeneTable.R"))

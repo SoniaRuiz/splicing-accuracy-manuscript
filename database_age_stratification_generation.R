@@ -5,18 +5,18 @@ library(ggforce)
 library(DBI)
 
 
-## source("~/PROJECTS/splicing-accuracy-manuscript/database_age_stratification_generation.R")
+# source("~/PROJECTS/splicing-accuracy-manuscript/database_age_stratification_generation.R")
 
-setwd("~/splicing-accuracy-manuscript/")
+setwd(normalizePath("."))
 dependencies_folder <- paste0(getwd(), "/dependencies/")
 
 source(paste0(getwd(), "/database_junction_pairing.R"))
 source(paste0(getwd(), "/database_SQL_helper.R"))
-source(paste0(getwd(), "/database_SQL_generation.R"))
+# source(paste0(getwd(), "/database_SQL_generation.R"))
 
 
 gtf_version <- 105
-main_project <- "age_subsampled"
+main_project <- "age_subsampled_reads"
 database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
 
 all_projects <- readRDS(file = paste0(getwd(), "/results/all_final_projects_used.rds"))
@@ -247,6 +247,16 @@ age_stratification_annotate <- function (age_groups,
 
         split_read_counts_local <- split_read_counts_local %>%
           dplyr::select(c("junID", any_of(samples)))
+        
+        ## Only split reads with at least 2 supportive reads
+        split_read_counts_local <- split_read_counts_local %>%
+          mutate(total=rowSums(select_if(., is.numeric))) %>% 
+          filter(total >= 2) %>%
+          dplyr::select(-total)
+        
+        
+        all_split_reads_local <- all_split_reads_local %>%
+          filter(junID %in% split_read_counts_local$junID)
 
         if ( i == 1 ) {
           split_read_counts_age <- split_read_counts_local
@@ -460,30 +470,30 @@ if ( !file.exists(paste0(getwd(), "/database/v", gtf_version, "/", main_project,
   }
 
 
-  get_all_annotated_split_reads(projects_used = age_projects,
-                                gtf_version = gtf_version,
-                                all_clusters = project_init$age_group %>% unique(),
-                                main_project = main_project)
-
-  get_all_raw_distances_pairings(projects_used = age_projects,
-                                 gtf_version = gtf_version,
-                                 all_clusters = project_init$age_group %>% unique(),
-                                 main_project = main_project)
-
-  filter_recount3_tpm(projects_used = age_projects,
-                      gtf_version = gtf_version,
-                      main_project = main_project)
-  
-  tidy_data_pior_sql(projects_used = age_projects,
-                     gtf_version = gtf_version,
-                     all_clusters = project_init$age_group %>% unique(),
-                     main_project = main_project)
-
-  sql_database_generation(database_path = database_path,
-                          projects_used = age_projects,
-                          main_project = main_project,
-                          gtf_version = gtf_version,
-                          remove_all = F)
+  # get_all_annotated_split_reads(projects_used = age_projects,
+  #                               gtf_version = gtf_version,
+  #                               all_clusters = project_init$age_group %>% unique(),
+  #                               main_project = main_project)
+  # 
+  # get_all_raw_distances_pairings(projects_used = age_projects,
+  #                                gtf_version = gtf_version,
+  #                                all_clusters = project_init$age_group %>% unique(),
+  #                                main_project = main_project)
+  # 
+  # filter_recount3_tpm(projects_used = age_projects,
+  #                     gtf_version = gtf_version,
+  #                     main_project = main_project)
+  # 
+  # tidy_data_pior_sql(projects_used = age_projects,
+  #                    gtf_version = gtf_version,
+  #                    all_clusters = project_init$age_group %>% unique(),
+  #                    main_project = main_project)
+  # 
+  # sql_database_generation(database_path = database_path,
+  #                         projects_used = age_projects,
+  #                         main_project = main_project,
+  #                         gtf_version = gtf_version,
+  #                         remove_all = F)
 
 }
 

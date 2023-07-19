@@ -62,6 +62,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
   ## Loop for every valid cluster
   for(i in seq(length(test_clusters))){
     cluster <- test_clusters[i]
+    
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
     
@@ -71,7 +72,8 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     samples <- names(split_read_counts %>% select(-junID))
     
     ## Load the Annotated SR details
-    annotated_SR_details_path <- generateAnnotatedSRdetailsPath(cluster, projects_path, gtf_version, main_project)
+    annotated_SR_details_path <- generateAnnotatedSRdetailsPath(cluster, projects_path, 
+                                                                gtf_version, main_project)
     annotated_SR_details <<- getAnnotatedSR(annotated_SR_details_path)
     
     ## Fix the * strand in the previous files
@@ -105,6 +107,10 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
              individuals = rowSums(across(where(is.numeric) & !sum) > 0)) %>%
       select(junID, sum, individuals)
     
+    ## All novel junctions have at least 2 reads
+    expect_false(any(split_counts_novel$sum == 1))
+    expect_false(any(df_merged_misspliced$novel_sum_counts == 1))
+    
     expect_equal(df_merged_misspliced$novel_sum_counts, split_counts_novel$sum)
     expect_equal(df_merged_misspliced$novel_n_individuals, split_counts_novel$individuals)
     
@@ -114,6 +120,11 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
              individuals = rowSums(across(where(is.numeric) & !sum) > 0)) %>%
       select(junID, sum, individuals)
     
+    
+    ## All mis-spliced annotated introns have at least 2 reads
+    expect_false(any(split_counts_ref$sum == 1))
+    expect_false(any(df_merged_misspliced$ref_sum_counts == 1))
+    
     expect_equal(df_merged_misspliced %>% distinct(ref_junID, .keep_all = T) %>% pull(ref_sum_counts), split_counts_ref$sum)
     expect_equal(df_merged_misspliced %>% distinct(ref_junID, .keep_all = T) %>% pull(ref_n_individuals), split_counts_ref$individuals)
     
@@ -122,6 +133,10 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
       mutate(sum = rowSums(across(where(is.numeric))),
              individuals = rowSums(across(where(is.numeric) & !sum) > 0)) %>%
       select(junID, sum, individuals)
+    
+    ## All never mis-spliced annotated introns have at least 2 reads
+    expect_false(any(split_counts_ref_never$sum == 1))
+    expect_false(any(df_merged_never$ref_sum_counts == 1))
     
     expect_equal(df_merged_never$ref_sum_counts, split_counts_ref_never$sum)
     expect_equal(df_merged_never$ref_n_individuals, split_counts_ref_never$individuals)
@@ -175,7 +190,10 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
       ## Extract the counts for the particular sample
       split_read_counts_sample <- split_read_counts %>%
         dplyr::select(junID, !!sym(sample)) %>%
-        dplyr::filter(!!sym(sample) != 0)
+        dplyr::filter(!!sym(sample) != 0) %>%
+        mutate(total=rowSums(select_if(., is.numeric))) %>% 
+        filter(total >= 2) %>%
+        dplyr::select(-total)
       
       ## Merge the annotated introns with the reads in the current sample
       annotated_SR_details_sample <- annotated_SR_details %>%
@@ -225,6 +243,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
       }
     })
     
+    cluster_distances %>% head
     miss_spliced_junctions <- cluster_distances %>%
       pull(ref_junID) %>%
       unique()

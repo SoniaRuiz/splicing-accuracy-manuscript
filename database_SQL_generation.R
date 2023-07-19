@@ -3,7 +3,55 @@
 ## LOAD DATA DEPENDENCIES
 ##########################################
 
+if (!exists("CNC_CDTS_CONS_gr")) {
+  print("Loading the 'CNC_CDTS_CONS_gr' file...")
+  load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
+  print("'CNC_CDTS_CONS_gr' file loaded!")
+} else {
+  print("'CNC_CDTS_CONS_gr' file already loaded!")
+}
 
+## GET INFO FROM MANE
+if ( !exists("hg_mane_transcripts") ) {
+  
+  print("Loading the 'hg_MANE' file...")
+  hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
+                                              "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
+  hg_MANE_tidy <- hg_MANE %>%
+    as_tibble() %>%
+    dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
+                  -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+    mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
+    drop_na()
+  
+  hg_mane_transcripts <- hg_MANE_tidy %>%
+    dplyr::filter(type == "transcript") %>%
+    distinct(transcript_id) %>%
+    mutate(MANE = T)
+} else {
+  print("'hg_mane_transcripts' file already loaded!")
+}
+
+# GET INFO FROM THE HG38
+if ( !exists("hg38_transcripts") ) {
+  
+  print("Loading the 'hg38' file...")
+  
+  if ( !exists("hg38") ) {
+    hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
+                                             "/Homo_sapiens.GRCh38.105.chr.gtf"))
+  }
+  
+  hg38_transcripts <- hg38 %>%
+    as_tibble() %>%
+    dplyr::filter(type == "transcript") %>%
+    dplyr::select(transcript_id, transcript_support_level) %>%
+    mutate(transcript_support_level = str_sub(string = transcript_support_level,
+                                              start = 1,
+                                              end = 1))
+} else {
+  print("'hg38_transcripts' file already loaded!")
+}
 
 
 ## Remove the tables -----------------------------------------------------------
@@ -170,55 +218,7 @@ create_master_tables <- function(database_path,
                                  gtf_version) {
   
   
-  if (!exists("CNC_CDTS_CONS_gr")) {
-    print("Loading the 'CNC_CDTS_CONS_gr' file...")
-    load( file = paste0(dependencies_folder, "/CNC_CDTS_CONS_gr.rda") )
-    print("'CNC_CDTS_CONS_gr' file loaded!")
-  } else {
-    print("'CNC_CDTS_CONS_gr' file already loaded!")
-  }
   
-  ## GET INFO FROM MANE
-  if ( !exists("hg_mane_transcripts") ) {
-    
-    print("Loading the 'hg_MANE' file...")
-    hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
-                                                "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
-    hg_MANE_tidy <- hg_MANE %>%
-      as_tibble() %>%
-      dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
-                    -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
-      mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
-      drop_na()
-    
-    hg_mane_transcripts <- hg_MANE_tidy %>%
-      dplyr::filter(type == "transcript") %>%
-      distinct(transcript_id) %>%
-      mutate(MANE = T)
-  } else {
-    print("'hg_mane_transcripts' file already loaded!")
-  }
-  
-  # GET INFO FROM THE HG38
-  if ( !exists("hg38_transcripts") ) {
-    
-    print("Loading the 'hg38' file...")
-    
-    if ( !exists("hg38") ) {
-      hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
-                                               "/Homo_sapiens.GRCh38.105.chr.gtf"))
-    }
-    
-    hg38_transcripts <- hg38 %>%
-      as_tibble() %>%
-      dplyr::filter(type == "transcript") %>%
-      dplyr::select(transcript_id, transcript_support_level) %>%
-      mutate(transcript_support_level = str_sub(string = transcript_support_level,
-                                                start = 1,
-                                                end = 1))
-  } else {
-    print("'hg38_transcripts' file already loaded!")
-  }
   
   ##########################################
   ## LOAD AND TIDY THE PAIR-WISE DISTANCES

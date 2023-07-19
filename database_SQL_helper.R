@@ -193,15 +193,16 @@ add_cdts_cons_scores <- function(cluster = NULL,
            CDTS_3ss_mean = 0.0,
            phastCons20way_5ss_mean = 0.0,
            phastCons20way_3ss_mean = 0.0) %>%
-    GRanges()
+    GRanges() %>% 
+    diffloop::rmchr()
   
   
   print(paste0(Sys.time(), " - getting 5' scores assigned to introns from IntroVerse ..."))
   
   ## https://www.nature.com/articles/nature09000
   ## Scores from the 5'ss ---------------------------------------------------------
-  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(),
-                                          subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames(),
+  overlaps <- GenomicRanges::findOverlaps(query = CNC_CDTS_CONS_gr %>% diffloop::rmchr(), 
+                                          subject = GenomicRanges::GRanges(seqnames = db_introns %>% seqnames() ,
                                                                            ranges = IRanges(start = db_introns %>% start() - 5,
                                                                                             end = db_introns %>% start() + 35),
                                                                            strand = db_introns %>% strand()),
@@ -382,6 +383,138 @@ annotate_contamination_rates <- function(gtf_versions,
   
 }
 
+intron_length_transcriptome_built <- function() {
+  
+  
+  custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
+                           
+                           axis.ticks = element_line(colour = "black", linewidth = 2),
+                           axis.text = element_text(size = 7, family="Arial", colour = "black"),
+                           axis.line = element_line(colour = "black"),
+                           axis.title = element_text(size = 7, family="Arial", colour = "black"),
+                           axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
+                           axis.text.x = element_text(size = 7, family="Arial", colour = "black", 
+                                                      hjust = 0.5, vjust = 0.5),
+                           strip.text = element_text(size = 7, family="Arial", colour = "black"),
+                           
+                           legend.text = element_text(size = "7", family="Arial", colour = "black"),
+                           legend.title = element_blank(),
+                           legend.position = "top",
+                           legend.box = "vertical")
+  
+  ## Load the reference transcritome Ensembl v105
+  homo_sapiens_v105 <- rtracklayer::import(con = "/data/references/ensembl/gtf_gff3/v105/Homo_sapiens.GRCh38.105.chr.gtf") 
+  
+  ## Discard regions overlapping the ENCODE backlist
+  homo_sapiens_v105_tidy <- remove_encode_blacklist_regions(GRdata = homo_sapiens_v105,
+                                                            blacklist_path = paste0(getwd(), "/dependencies/hg38-blacklist.v2.bed"))
+  
+  ## Only exons from transcripts with highly supported model structure (TSL <= 3)
+  ensembl_105_exons <- homo_sapiens_v105_tidy %>% 
+    as_tibble() %>%
+    filter(type == "exon") %>%
+    filter(transcript_support_level <= 3) 
+  
+  ## Get introns using ggtranscript
+  ensembl_105_introns <- ggtranscript::to_intron(exons = ensembl_105_exons,
+                                                 group_var = "transcript_id")
+  ensembl_105_introns_tidy <- ensembl_105_introns %>%
+    mutate(start = start + 1,
+           end = end - 1) %>%
+    mutate(intron_width = (end - start) +1)
+
+  ensembl_105_introns_tidy[1,] %>% as.data.frame()
+  
+  ensembl_105_introns_tidy$intron_width %>% summary()
+  
+  ## remove frameshift introns
+  ensembl_105_introns_tidy <- ensembl_105_introns_tidy %>%
+    filter(intron_width > 5)
+  
+  
+  ensembl_105_introns_tidy$intron_width %>% summary()
+  
+  ggplot(data = ensembl_105_introns_tidy %>%
+           filter(intron_width < 1000)) +
+    geom_histogram(mapping = aes(x = intron_width), bins = 970) +
+    ggforce::facet_zoom(xlim = c(0,100)) +
+    xlab("Intron length (bp)") +
+    ylab("Number of introns") +
+    custom_ggtheme
+  
+  
+  
+  file_name <- paste0(getwd(), "/results/_paper/figures/intron_length")
+  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+}
+
+
+clinvar_data_collection <- function() {
+  
+  
+  clinvar <- data.table::fread(paste0(getwd(), "/dependencies/clinvar.vcf"), stringsAsFactors = F)
+  
+  clinvar %>% 
+    as_tibble
+  
+  clinvar_pathogenic <- clinvar %>% 
+    as_tibble %>% 
+    filter(str_detect(string = INFO, pattern = "CLNSIG=Likely_pathogenic") | 
+             str_detect(string = INFO, pattern = "CLNSIG=Pathogenic"))
+       
+  clinvar_pathogenic_splicing <- clinvar_pathogenic %>% 
+    filter(str_detect(string = INFO, pattern = "splice_donor_variant") | 
+             str_detect(string = INFO, pattern = "splice_acceptor_variant"))
+  
+  clinvar_pathogenic_splicing[100,]%>% as.data.frame()    
+  
+  
+  clinvar_pathogenic_splicing_GR <- clinvar_pathogenic_splicing %>%
+    dplyr::select(seqnames = `#CHROM`,
+                  start = POS,
+                  end = POS) %>% 
+    GenomicRanges::GRanges()
+  
+  
+  ## Discard regions overlapping the ENCODE backlist
+  clinvar_pathogenic_splicing_tidy <- remove_encode_blacklist_regions(GRdata = clinvar_pathogenic_splicing_GR,
+                                                                      blacklist_path = paste0(getwd(), "/dependencies/hg38-blacklist.v2.bed"))
+  
+  
+  
+  ## MANE annotation
+  homo_sapiens_MANE <- rtracklayer::import(con = "/data/references/MANE/MANE.GRCh38.v1.0.ensembl_genomic.gtf") 
+  
+  ## Get introns from MANE using ggtranscript
+  homo_sapiens_MANE_introns <- ggtranscript::to_intron(exons = homo_sapiens_MANE %>%
+                                                         as_tibble() %>%
+                                                         filter(type == "exon"),
+                                                       group_var = "transcript_id")
+  homo_sapiens_MANE_introns_tidy <- homo_sapiens_MANE_introns %>%
+    mutate(start = start + 1,
+           end = end - 1) %>%
+    mutate(intron_width = (end - start) +1) %>%
+    dplyr::select(seqnames, strand, start, end, intron_width)%>% 
+    GenomicRanges::GRanges() %>%
+    diffloop::rmchr()
+  
+  
+  ## Find overlaps between MANE introns and clinvar variants
+  overlaps <- GenomicRanges::findOverlaps(query = clinvar_pathogenic_splicing_GR,
+                                          subject = homo_sapiens_MANE_introns_tidy,
+                                          ignore.strand = FALSE,
+                                          type = "within")
+  
+  
+  clinvarMANE <- clinvar_pathogenic_splicing_GR[queryHits(overlaps),]
+  intronsMANE <- homo_sapiens_MANE_introns_tidy[subjectHits(overlaps),]
+  
+  
+  saveRDS(object = clinvarMANE,
+          file = "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/dependencies/clinvar_intronic_tidy.rds")
+  
+}
 
 #################################################################
 ## SQL HELPER
@@ -390,9 +523,9 @@ annotate_contamination_rates <- function(gtf_versions,
 
 
 
-get_all_annotated_split_reads <- function(projects_used,
+get_all_annotated_split_reads <- function(recount3_project_IDs,
                                           gtf_version,
-                                          all_clusters,
+                                          all_clusters = NULL,
                                           main_project) {
   
   
@@ -404,44 +537,53 @@ get_all_annotated_split_reads <- function(projects_used,
   
   ## The sample filter in IntroVerse corresponded to 
   
-  all_split_reads_details_all_tissues <- map_df(projects_used, function(project_id) {
+  all_split_reads_details_all_tissues <- map_df(recount3_project_IDs, function(project_id) {
     
-    # project_id <- projects_used[1]
+    # project_id <- recount3_project_IDs[1]
     # project_id <- "BONE_MARROW"
     
     folder_root <- paste0(getwd(), "/results/", project_id, "/v", 
                           gtf_version, "/", main_project, "/")
     
-   
+    if ( is.null(all_clusters) && file.exists(paste0(folder_root, "/base_data/", project_id, "_clusters_used.rds"))) {
+      
+      all_clusters <- readRDS(paste0(folder_root, "/base_data/", project_id, "_clusters_used.rds"))
+    }
     
-    all_jxn_qc <- map_df(all_clusters, function(cluster) {
+    if ( is.null(all_clusters) ) {
       
-      # cluster <- all_clusters[1]
-      print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
+      all_jxn_qc <- map_df(all_clusters, function(cluster) {
+        
+        # cluster <- all_clusters[1]
+        print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
+        
+        if ( file.exists(paste0(folder_root, "/base_data/", 
+                                project_id, "_", cluster, "_all_split_reads.rds")) ) {
+          
+          all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_",
+                                                               cluster, "_all_split_reads.rds"))
+          
+          all_split_reads_details_tidy <- all_split_reads_details_105 %>% 
+            distinct(junID, .keep_all = T) %>% 
+            as_tibble() %>%
+            return()
+          
+        } else {
+          return(NULL)
+        }
+        
+      })
       
-      if ( file.exists(paste0(folder_root, "/base_data/", 
-                              project_id, "_", cluster, "_all_split_reads.rds")) ) {
+      
+      if (all_jxn_qc %>% nrow() > 0 ) {
         
-        all_split_reads_details_105 <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_",
-                                                             cluster, "_all_split_reads.rds"))
-        
-        all_split_reads_details_tidy <- all_split_reads_details_105 %>% 
+        all_jxn_qc %>%
           distinct(junID, .keep_all = T) %>% 
-          as_tibble() %>%
           return()
         
       } else {
         return(NULL)
       }
-      
-    })
-    
-    if (all_jxn_qc %>% nrow() > 0 ) {
-      
-      all_jxn_qc %>%
-        distinct(junID, .keep_all = T) %>% 
-        return()
-      
     } else {
       return(NULL)
     }
@@ -464,16 +606,16 @@ get_all_annotated_split_reads <- function(projects_used,
 }
 
 
-get_all_raw_distances_pairings <- function(projects_used,
+get_all_raw_distances_pairings <- function(recount3_project_IDs,
                                            gtf_version,
-                                           all_clusters,
+                                           all_clusters = NULL,
                                            main_project) {
   
   
   ## LOOP THROUGH PROJECTS
-  df_all_distances_pairings_raw <- map_df(projects_used, function(project_id) {
+  df_all_distances_pairings_raw <- map_df(recount3_project_IDs, function(project_id) {
     
-    # project_id <- projects_used[1]
+    # project_id <- recount3_project_IDs[1]
     # project_id <- "KIDNEY"
     
     print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
@@ -492,77 +634,89 @@ get_all_raw_distances_pairings <- function(projects_used,
     #   print("ERROR! The samples used have not been filtered adequately.")
     #   break;
     # }
+    if ( is.null(all_clusters) & file.exists(paste0(folder_root, "/base_data/", project_id, "_clusters_used.rds")) ) {
+      
+      all_clusters <- readRDS(paste0(folder_root, "/base_data/", project_id, "_clusters_used.rds"))
+      
+    }
     
-    map_df(all_clusters, function(cluster) {
+    if ( !is.null(all_clusters) ) {
       
-      # cluster <- all_clusters[1]
-      
-      print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
-      
-      ## Load samples
-      if ( file.exists(paste0(folder_root, "/base_data/", project_id, "_", cluster, "_samples_used.rds")) ) {
+      map_df(all_clusters, function(cluster) {
         
-        samples <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_", cluster,  "_samples_used.rds"))
+        # cluster <- all_clusters[1]
         
-        if ( samples %>% length() > 0 ) {
+        print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
+        
+        ## Load samples
+        if ( file.exists(paste0(folder_root, "/base_data/", project_id, "_", cluster, "_samples_used.rds")) ) {
           
-          folder_name <- paste0(folder_root, "/results/", cluster, "/")
+          samples <- readRDS(file = paste0(folder_root, "/base_data/", project_id, "_", cluster,  "_samples_used.rds"))
           
-          if ( !file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) ) {
+          if ( samples %>% length() > 0 ) {
             
-            ## Obtain the distances across all samples
-            df_all <- map_df(samples, function(sample) { 
+            folder_name <- paste0(folder_root, "/results/", cluster, "/")
+            
+            #if ( !file.exists(paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds")) ) {
               
-              # sample <- samples[1]
-              
-              file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
-              
-              
-              if (file.exists(file_name)) {
-                print(paste0(cluster, " - ", sample))
-                df <- readRDS(file = file_name)
+              ## Obtain the distances across all samples
+              df_all <- map_df(samples, function(sample) { 
                 
-                return(df)
-              } else {
-                return(NULL)
+                # sample <- samples[1]
+                
+                file_name <- paste0(folder_name, "/", cluster, "_", sample, "_distances.rds")
+                
+                
+                if ( file.exists(file_name) ) {
+                  print(paste0(cluster, " - ", sample))
+                  df <- readRDS(file = file_name)
+                  
+                  return(df)
+                } else {
+                  return(NULL)
+                }
+                
+              })
+              
+              if ( nrow(df_all) > 0 ) {
+                saveRDS(object = df_all %>%
+                          distinct(novel_junID, ref_junID, .keep_all = T) %>%
+                          mutate(tissue = cluster),
+                        file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
               }
               
-            })
+            #} else {
+            #  print(paste0("File '", cluster, "_raw_distances_tidy.rds' already exists!"))
+            #  df_all <- readRDS( file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds") )
+            #}
+            
             
             if ( nrow(df_all) > 0 ) {
-              saveRDS(object = df_all %>%
-                        distinct(novel_junID, ref_junID, .keep_all = T) %>%
-                        mutate(tissue = cluster),
-                      file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
-            }
+              
+              df_all %>%
+                distinct(novel_junID, ref_junID, .keep_all = T) %>%
+                mutate(project = project_id) %>%
+                return()
+              
+            } else {
+              return(NULL)
+            }          
+            # df_all2 <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
             
           } else {
-            print(paste0("File '", cluster, "_raw_distances_tidy.rds' already exists!"))
-            df_all <- readRDS( file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds") )
-          }
-          
-          
-          if ( nrow(df_all) > 0 ) {
             
-            df_all %>%
-              distinct(novel_junID, ref_junID, .keep_all = T) %>%
-              mutate(project = project_id) %>%
-              return()
-            
-          } else {
             return(NULL)
-          }          
-          # df_all2 <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+          }
           
         } else {
           print(paste0("ERROR: no samples available for the tissue: ", project_id))
           return(NULL)
         }
-        
-      } else {
+      })} else {
+        print(paste0(project_id, ": no data available!"))
         return(NULL)
-      }
-    })  
+    }
+    
   })  
   
   
@@ -579,14 +733,14 @@ get_all_raw_distances_pairings <- function(projects_used,
   
 }
 
-get_intron_never_misspliced <- function (projects_used,
+get_intron_never_misspliced <- function (recount3_project_IDs,
                                          all_clusters,
                                          main_project) {
   
   
-  df_never <- map_df(projects_used, function(project_id) {
+  df_never <- map_df(recount3_project_IDs, function(project_id) {
     
-    # project_id <- projects_used[1]
+    # project_id <- recount3_project_IDs[1]
     
     print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     base_folder <- paste0(getwd(), "/results/", 
@@ -655,7 +809,7 @@ get_mean_coverage <- function(split_read_counts,
 }
 
 
-generate_transcript_biotype_percentage <- function(projects_used,
+generate_transcript_biotype_percentage <- function(recount3_project_IDs,
                                                    homo_sapiens_v105_path,
                                                    main_project,
                                                    gtf_version) {
@@ -824,9 +978,9 @@ calculate_tpm <- function(rse, ref_tidy) {
   
   
   # Convert to tpm, which is calculated by:
-  # 1. Divide the read counts by the length of each gene in kilobases (i.e. RPK)
+  # 1. Divide the read counts by the length of each gene in kilobases. This step produces an RPK number per gene.
   # 2. Count up all the RPK values in a sample and divide this number by 1,000,000.
-  # 3. Divide the RPK values by the “per million” scaling factor.
+  # 3. Divide each RPK value by the "per million" scaling factor.
   
   
   srp_rpk <- 
@@ -880,7 +1034,7 @@ calculate_tpm <- function(rse, ref_tidy) {
 }
 
 
-generate_recount3_tpm <- function(projects_used,
+generate_recount3_tpm <- function(recount3_project_IDs,
                                   ref,
                                   gtf_version,
                                   main_project) {
@@ -899,9 +1053,9 @@ generate_recount3_tpm <- function(projects_used,
     dplyr::select(gene_id, gene_name, width) 
   
   
-  for (project_id in projects_used) {
+  for (project_id in recount3_project_IDs) {
     
-    # project_id <- projects_used[1]
+    # project_id <- recount3_project_IDs[1]
     
     
     ## 1. Get expression data from recount3 
@@ -934,16 +1088,16 @@ generate_recount3_tpm <- function(projects_used,
 }
 
 
-filter_recount3_tpm <- function(projects_used,
+filter_recount3_tpm <- function(recount3_project_IDs,
                                 gtf_version,
                                 all_clusters = NULL,
                                 main_project) {
   
   
-  for (project_id in projects_used) {
+  for (project_id in recount3_project_IDs) {
     
     
-    # project_id <- projects_used[1]
+    # project_id <- recount3_project_IDs[1]
     
     print(paste0(Sys.time(), " - calculating TPM values for '", project_id, "'"))
     
@@ -1005,7 +1159,7 @@ filter_recount3_tpm <- function(projects_used,
 }
   
 update_table_tpm <- function(database_path,
-                             projects_used,
+                             recount3_project_IDs,
                              gtf_version,
                              main_project) {
   
@@ -1077,11 +1231,14 @@ update_table_tpm <- function(database_path,
 }
 
 
+
+
+
 ##################################################################
 ## DATABASE GENERATION
 ##################################################################
 
-tidy_data_pior_sql <- function (projects_used, 
+tidy_data_pior_sql <- function (recount3_project_IDs, 
                                 gtf_version,
                                 all_clusters = NULL,
                                 main_project) {
@@ -1176,7 +1333,7 @@ tidy_data_pior_sql <- function (projects_used,
   ## Get never mis-spliced
   #########################################
   
-  df_never_misspliced <- get_intron_never_misspliced(projects_used = projects_used,
+  df_never_misspliced <- get_intron_never_misspliced(recount3_project_IDs = recount3_project_IDs,
                                                      all_clusters = all_clusters,
                                                      main_project = main_project)
   
@@ -1353,7 +1510,7 @@ tidy_data_pior_sql <- function (projects_used,
 
 
 sql_database_generation <- function(database_path,
-                                    projects_used, 
+                                    recount3_project_IDs, 
                                     main_project,
                                     gtf_version,
                                     remove_all = NULL) {
@@ -1372,7 +1529,7 @@ sql_database_generation <- function(database_path,
     create_metadata_table(database_path,
                           main_project = main_project,
                           gtf_version = gtf_version,
-                          all_projects = projects_used)
+                          all_projects = recount3_project_IDs)
   }
   
   
@@ -1394,7 +1551,7 @@ sql_database_generation <- function(database_path,
   
   create_cluster_tables(database_path = database_path,
                         gtf_version = gtf_version,
-                        all_projects = projects_used,
+                        all_projects = recount3_project_IDs,
                         main_project = main_project)
   
 }
