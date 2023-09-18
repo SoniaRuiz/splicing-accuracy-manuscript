@@ -26,7 +26,9 @@ if(identical(test_clusters, "all")) test_clusters = getClusters(con)
 #' @return Dataframe with the split read counts for the cluster.
 #' @export
 getClusterSplitReads <- function(split_read_counts_path){
+  
   if(!exists("split_read_counts")){
+    
     split_read_counts <- readRDS(split_read_counts_path)
     if(is.null(names(split_read_counts))){
       split_read_counts <- split_read_counts %>% tibble::as_tibble(rownames = "junID")
@@ -118,6 +120,7 @@ getDistancesDataFrame <- function(query,
                                   type,
                                   sample,
                                   junc_type) {
+  
   ## Find the overlaps between the query and the subject GRanges
   overlaps <- GenomicRanges::findOverlaps(
     query = query,
@@ -167,6 +170,7 @@ getDistancesDataFrame <- function(query,
 #' @return Reference junction category.
 #' @export
 missplicingClass <- function(novel_donor_ratio, novel_acceptor_ratio) {
+  
   ref_junction_category = ""
   if (novel_donor_ratio > 0 & novel_acceptor_ratio > 0) {
     ref_junction_category = "both"

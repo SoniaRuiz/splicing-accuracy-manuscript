@@ -1,13 +1,17 @@
 main_path <- normalizePath(path = "./")
-source(paste0(main_path, "/testthat/helper_Files/helper_Global.R"))
-skip_if(!test_ClusterTables, "Cluster tables tests not executed. Variable test_ClusterTables set to FALSE in global options.")
-source(paste0(main_path, "/testthat/helper_Files/helper_ClusterTables.R"))
+source(paste0(main_path, "/database_unittest/helper_Files/helper_Global.R"))
+#skip_if(!test_ClusterTables, "Cluster tables tests not executed. Variable test_ClusterTables set to FALSE in global options.")
+source(paste0(main_path, "/database_unittest/helper_Files/helper_ClusterTables.R"))
 
 context("\tTest junction IDs and their reference with intron and novel tables")
 test_that("Test junction IDs and their reference with intron and novel tables", {
+  
   ## Loop for every valid cluster
   for(i in seq(length(test_clusters))){
+    
     cluster <- test_clusters[i]
+    
+    ## Load child tables for current cluster
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
     
@@ -29,18 +33,21 @@ test_that("Test junction IDs and their reference with intron and novel tables", 
     
     ## All novel_junID and ref_junID pairs are also found in the novel table
     df_combined <- df_misspliced %>% 
-      select(novel_junID, ref_junID) %>%
-      left_join(df_novel %>% select(novel_junID, ref_junID),
+      dplyr::select(novel_junID, ref_junID) %>%
+      left_join(df_novel %>% dplyr::select(novel_junID, ref_junID),
                 by = "novel_junID")
     
     expect_equal(df_combined$ref_junID.x, df_combined$ref_junID.y, info = paste0("Error in cluster ", cluster))
   }
+  
 })
 
 context("\tTest reference between cluster and transcript table")
 test_that("Test reference between cluster and transcript table", {
+  
   ## Loop for every valid cluster
   for(i in seq(length(test_clusters))){
+    
     cluster <- test_clusters[i]
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
@@ -58,18 +65,22 @@ test_that("Test reference between cluster and transcript table", {
 
 context("\tTest that all reads, introns and never mis-spliced information are properly extracted from files")
 test_that("Test that all reads, introns and never mis-spliced information are properly extracted from files", {
-  skip_if(!test_cluster_data, "No data verification for cluster tables. Variable test_cluster_data set to FALSE in global options.")
+  
+  #skip_if(!test_cluster_data, "No data verification for cluster tables. Variable test_cluster_data set to FALSE in global options.")
+  
   ## Loop for every valid cluster
   for(i in seq(length(test_clusters))){
+    
     cluster <- test_clusters[i]
     
+    ## Load info from the child tables corresponding to the current cluster
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
     
     ## Load the Split Read counts and samples for the cluster
     split_read_counts_path <- generateClusterSplitReadsPath(cluster, projects_path, gtf_version, main_project)
     split_read_counts <<- getClusterSplitReads(split_read_counts_path)
-    samples <- names(split_read_counts %>% select(-junID))
+    samples <- names(split_read_counts %>% dplyr::select(-junID))
     
     ## Load the Annotated SR details
     annotated_SR_details_path <- generateAnnotatedSRdetailsPath(cluster, projects_path, 
@@ -79,17 +90,18 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     ## Fix the * strand in the previous files
     fixUnknownStrand(split_read_counts, annotated_SR_details)
     
-    #################### Test that all reads are properly extracted
+    ## Test that all reads are properly extracted
+    
     context(paste0("\t\tCluster ", cluster, ". Test that all reads are properly extracted"))
     ## Get the coordinates of every novel junction and reference intron
     df_merged_misspliced <- df_misspliced %>%
-      left_join(df_novel %>% select(novel_junID, novel_coordinates),
+      left_join(df_novel %>% dplyr::select(novel_junID, novel_coordinates),
                 by = "novel_junID") %>%
-      left_join(df_intron %>% select(ref_junID, ref_coordinates),
+      left_join(df_intron %>% dplyr::select(ref_junID, ref_coordinates),
                 by = "ref_junID")
     
     df_merged_never <- df_never %>%
-      left_join(df_intron %>% select(ref_junID, ref_coordinates),
+      left_join(df_intron %>% dplyr::select(ref_junID, ref_coordinates),
                 by = "ref_junID")
     
     ## All novel and ref coordinates are found in the split reads
@@ -105,7 +117,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     split_counts_novel <- split_read_counts[novel_idx, ] %>%
       mutate(sum = rowSums(across(where(is.numeric))),
              individuals = rowSums(across(where(is.numeric) & !sum) > 0)) %>%
-      select(junID, sum, individuals)
+      dplyr::select(junID, sum, individuals)
     
     ## All novel junctions have at least 2 reads
     expect_false(any(split_counts_novel$sum == 1))
@@ -118,7 +130,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     split_counts_ref <- split_read_counts[ref_idx_misspliced %>% unique, ] %>%
       mutate(sum = rowSums(across(where(is.numeric))),
              individuals = rowSums(across(where(is.numeric) & !sum) > 0)) %>%
-      select(junID, sum, individuals)
+      dplyr::select(junID, sum, individuals)
     
     
     ## All mis-spliced annotated introns have at least 2 reads
@@ -132,7 +144,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     split_counts_ref_never <- split_read_counts[ref_idx_never, ] %>%
       mutate(sum = rowSums(across(where(is.numeric))),
              individuals = rowSums(across(where(is.numeric) & !sum) > 0)) %>%
-      select(junID, sum, individuals)
+      dplyr::select(junID, sum, individuals)
     
     ## All never mis-spliced annotated introns have at least 2 reads
     expect_false(any(split_counts_ref_never$sum == 1))
@@ -141,7 +153,8 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     expect_equal(df_merged_never$ref_sum_counts, split_counts_ref_never$sum)
     expect_equal(df_merged_never$ref_n_individuals, split_counts_ref_never$individuals)
     
-    #################### Test that all junctions are properly obtained from annotated_SR_details
+    ## Test that all junctions are properly obtained from annotated_SR_details
+    
     context(paste0("\t\tCluster ", cluster, ". Test that all junctions are properly obtained from annotated_SR_details"))
     
     novel_coordinates <- df_novel %>% 
@@ -177,7 +190,7 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     ## Change annotated SR to accelerate the process
     annotated_SR_details <- annotated_SR_details %>%
       as_tibble() %>%
-      select(junID, seqnames, start, end, width, strand, type)
+      dplyr::select(junID, seqnames, start, end, width, strand, type)
     
     ## Calculate all distances for the cluster
     tmp_dir = tempdir()
@@ -260,41 +273,49 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
     ## Obtaining the coordinates of every never misspliced intron in the cluster
     df_never_coordinates <- df_never %>% 
       left_join(df_intron %>% 
-                  select(ref_junID, ref_coordinates), 
+                  dplyr::select(ref_junID, ref_coordinates), 
                 by = "ref_junID")
     
     ## All never misspliced introns from the cluster are not found as misspliced
     ## when calculating the distances again.
     expect_true(all(df_never_coordinates$ref_coordinates %in% never_miss_spliced_junctions))
     
-    # #################### Test that TPM values are properly calculated
-    # context(paste0("\t\tCluster ", cluster, ". Test that TPM values are properly calculated"))
-    # 
-    # ## Get the TPM dataframe and calculate the median of each row
-    # tpm_path <-  generateTPMpath(cluster, projects_path, gtf_version, main_project)
-    # tpm <- getClusterTPM(tpm_path) %>%
-    #   select(gene_id = gene, all_of(samples)) %>%
-    #   mutate(tpm_median = matrixStats::rowMedians(as.matrix(.[-1]))) %>%
-    #   select(gene_id, tpm_median) %>% 
-    #   group_by(gene_id) %>% 
-    #   summarize_all(max)
-    # 
-    # ## Merge the calculated tpm values with the database information
-    # df_genes_tpm <- df_gene %>% 
-    #   select(id, gene_id) %>%
-    #   left_join(tpm, by = "gene_id")
-    #   
-    # df_tpm_misspliced <- df_misspliced %>%
-    #   select(id = gene_id, gene_tpm) %>%
-    #   left_join(df_genes_tpm, by = "id")
-    # 
-    # df_tpm_never <- df_never %>%
-    #   select(id = gene_id, gene_tpm) %>%
-    #   left_join(df_genes_tpm, by = "id")
-    # 
-    # ## All gene_tpm values should match the obtained from the tpm results
-    # expect_equal(df_tpm_misspliced$gene_tpm, df_tpm_misspliced$tpm_median)
-    # expect_equal(df_tpm_never$gene_tpm, df_tpm_never$tpm_median)
+    #################### Test that TPM values are properly calculated
+    context(paste0("\t\tCluster ", cluster, ". Test that TPM values are properly calculated"))
+
+    ## Get the TPM dataframe and calculate the median of each row
+    tpm_path <-  generateTPMpath(cluster, projects_path, gtf_version, main_project)
+    tpm <- getClusterTPM(tpm_path) %>%
+      dplyr::select(gene_id = gene, all_of(samples)) %>%
+      mutate(tpm_median = matrixStats::rowMedians(as.matrix(.[-1]))) %>%
+      dplyr::select(gene_id, tpm_median) %>%
+      group_by(gene_id) %>%
+      summarize_all(max)
+
+    ## Merge the calculated tpm values with the database information
+    df_genes_tpm <- df_gene %>%
+      dplyr::select(id, gene_id) %>%
+      left_join(tpm, by = "gene_id")
+
+    df_tpm_misspliced <- df_misspliced %>%
+      left_join(df_transcript %>% dplyr::select(id, gene_id), 
+                by = c("transcript_id" = "id")) %>%
+      left_join(df_gene %>% dplyr::select(id, gene_ensembl = gene_id), 
+                by = c("gene_id" = "id")) %>%
+      left_join(df_genes_tpm, 
+                by = c("gene_ensembl" = "gene_id"))
+
+    df_tpm_never <- df_never %>%
+      left_join(df_transcript %>% dplyr::select(id, gene_id), 
+                by = c("transcript_id" = "id")) %>%
+      left_join(df_gene %>% dplyr::select(id, gene_ensembl = gene_id), 
+                by = c("gene_id" = "id")) %>%
+      left_join(df_genes_tpm, 
+                by = c("gene_ensembl" = "gene_id"))
+
+    ## All gene_tpm values should match the obtained from the tpm results
+    expect_equal(df_tpm_misspliced$gene_tpm, df_tpm_misspliced$tpm_median)
+    expect_equal(df_tpm_never$gene_tpm, df_tpm_never$tpm_median)
     
     ## Delete the cluster variables after execution
     rm(split_read_counts, annotated_SR_details, envir = .GlobalEnv)
@@ -304,15 +325,17 @@ test_that("Test that all reads, introns and never mis-spliced information are pr
 
 context("\tTest that Mis-Splicing Ratio is properly calculated")
 test_that("Test that Mis-Splicing Ratio is properly calculated", {
+  
   ## Loop for every valid cluster
   for(i in seq(length(test_clusters))){
+    
     cluster <- test_clusters[i]
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
     
     ## Get all reference introns and novel junctions
     df_MSR <- df_misspliced %>% 
-      left_join(df_novel %>% select(novel_junID, novel_type),
+      left_join(df_novel %>% dplyr::select(novel_junID, novel_type),
                 by = "novel_junID") %>% 
       group_by(ref_junID, novel_type) %>%
       mutate(MSR = sum(novel_sum_counts)/(sum(novel_sum_counts) + ref_sum_counts)) %>%
@@ -320,7 +343,7 @@ test_that("Test that Mis-Splicing Ratio is properly calculated", {
       group_by(ref_junID) %>%
       mutate(MSR_Donor = max(novel_donor, na.rm = T),
              MSR_Acceptor = max(novel_acceptor, na.rm = T)) %>%
-      select(-novel_donor, -novel_acceptor) %>%
+      dplyr::select(-novel_donor, -novel_acceptor) %>%
       ungroup()
     
     ## All MSR ratios are properly calculated
@@ -348,22 +371,36 @@ test_that("Test that Mis-Splicing Ratio is properly calculated", {
   }
 })
 
+
 context("\tTest that reference intron type is consistent with MSR")
 test_that("Test that reference intron type is consistent with MSR", {
+  
   ## Loop for every valid cluster
+  
   for(i in seq(length(test_clusters))){
+    
     cluster <- test_clusters[i]
+    
+    message(cluster)
+    
     df_misspliced <- tbl(con, paste0(cluster, "_misspliced")) %>% collect()
     df_never <- tbl(con, paste0(cluster, "_nevermisspliced")) %>% collect()
     
     df_ref_type <- df_misspliced %>% 
-      rowwise %>%
-      mutate(test_ref_type = missplicingClass(MSR_D, MSR_A))
+      dplyr::group_by(ref_junID) %>%
+      mutate(total_msr_d = sum(MSR_D)) %>%
+      mutate(total_msr_a = sum(MSR_D)) %>%
+      mutate(test_ref_type = missplicingClass(total_msr_d, total_msr_a)) %>%
+      ungroup()
     
     ## All ref_types are as expected
     expect_equal(df_ref_type$ref_type, df_ref_type$test_ref_type)
+    
+    expect_false(any(df_misspliced$ref_type == "never"))
+    
     expect_true(all(df_never$ref_type == "never"))
   }
+  
 })
 
 # context("\tTest that no NAs are found in where they are not allowed")

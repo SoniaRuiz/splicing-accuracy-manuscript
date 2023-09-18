@@ -3,16 +3,24 @@ library(testthat)
 library(GenomicRanges)
 library(tidyverse, warn.conflicts = FALSE)
 
-#################### Main testing parameters
+## Main testing parameters
+
 gtf_version <- 105
-main_project <- "splicing"
+main_project <- "splicing_2reads"
+
 ## Change this path accordingly. It should point to the 'splicing-accuracy-manuscript' root folder
 main_path <- normalizePath(path = "./")
-database_path <- paste0(main_path, "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
-projects_path <- paste0(main_path, "/results/")
+
+
+
+
+database_path <- file.path(main_path, "database", main_project, gtf_version, paste0(main_project, ".sqlite"))
+database_folder <- file.path(main_path, "database", main_project, gtf_version)
+results_path <- file.path(main_path, "results", main_project, gtf_version)
 
 #################### Control what is being tested
 ### Specific tests
+
 test_DatabaseTables <- TRUE
 test_DataTypes <- TRUE
 test_IntronTable <- TRUE
@@ -22,6 +30,7 @@ test_TranscriptTable <- TRUE
 test_ClusterTables <- TRUE
 
 ### Specific sub-tests
+
 test_clinvar <- TRUE
 test_conservation_CDTS <- TRUE
 test_MANE <- TRUE
@@ -45,8 +54,8 @@ hg_mane_transcripts_path <- path.expand(paste0(main_path, "/dependencies/MANE.GR
 # df_all_introns_introverse_tidy_path <- path.expand(paste0(main_path, "/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
 # all_annotated_SR_details_length_105_raw_biotype_path <-paste0(main_path, "/results/all_split_reads_all_tissues_PC_biotype.rds")
 
-df_all_introns_introverse_tidy_path <- path.expand(paste0(main_path, "/database/v", gtf_version, "/", main_project, "/df_all_introns_database_tidy.rds"))
-all_annotated_SR_details_length_105_raw_biotype_path <-paste0(main_path, "/results/all_split_reads_all_tissues_PC_biotype.rds")
+df_all_introns_introverse_tidy_path <- path.expand(paste0(database_folder, "/all_jxn_correct_pairings.rds"))
+all_annotated_SR_details_length_105_raw_biotype_path <-paste0(results_path, "/all_split_reads_qc_level2_PC_biotype.rds")
 
 ## MaxEntScan requirements
 bedtools_path <- path.expand(path = "/tools/bedtools2/")
@@ -72,20 +81,20 @@ valid_novel_seqnames <- c(paste0("chr", seq(1, 22)), "chrX", "chrY")
 #'
 #' @param table_name Name of the table from which to read the cluster and
 #'   project.
-#' @param projects_path Path to the projects' folder.
+#' @param results_path Path to the projects' folder.
 #' @param gtf_version Version of the reference transcriptome.
 #' @param main_project Name of the main project to study. Only tested
 #'   "introverse" and "splicing"
 #'
 #' @return Path to split read counts.
 #' @export
-generateClusterSplitReadsPath <- function(table_name, projects_path, gtf_version, main_project){
+generateClusterSplitReadsPath <- function(table_name, results_path, gtf_version, main_project){
   full_name <- stringr::str_split_fixed(table_name, "_", n = 2)
   project <- full_name[2]
   cluster <- full_name[1]
   
-  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", 
-                                     main_project, "/base_data/", project, "_", cluster, "_split_read_counts.rds")
+  cluster_split_reads_path <- paste0(results_path, "/", 
+                                     project, "/base_data/", project, "_", cluster, "_split_read_counts.rds")
   return(cluster_split_reads_path)
 }
 
@@ -93,20 +102,20 @@ generateClusterSplitReadsPath <- function(table_name, projects_path, gtf_version
 #'
 #' @param table_name Name of the table from which to read the cluster and
 #'   project.
-#' @param projects_path Path to the projects' folder.
+#' @param results_path Path to the projects' folder.
 #' @param gtf_version Version of the reference transcriptome.
 #' @param main_project Name of the main project to study. Only tested
 #'   "introverse" and "splicing"
 #'
 #' @return Path to annotated intron details files.
 #' @export
-generateAnnotatedSRdetailsPath <- function(table_name, projects_path, gtf_version, main_project){
+generateAnnotatedSRdetailsPath <- function(table_name, results_path, gtf_version, main_project){
   full_name <- stringr::str_split_fixed(table_name, "_", n = 2)
   project <- full_name[2]
   cluster <- full_name[1]
   
-  cluster_split_reads_path <- paste0(projects_path, project, "/v", gtf_version, "/", 
-                                     main_project, "/base_data/", project, "_", cluster, "_all_split_reads.rds")
+  cluster_split_reads_path <- paste0(results_path, "/", 
+                                     project, "/base_data/", project, "_", cluster, "_all_split_reads.rds")
   return(cluster_split_reads_path)
 }
 
@@ -114,20 +123,19 @@ generateAnnotatedSRdetailsPath <- function(table_name, projects_path, gtf_versio
 #'
 #' @param table_name Name of the table from which to read the cluster and
 #'   project.
-#' @param projects_path Path to the projects' folder.
+#' @param results_path Path to the projects' folder.
 #' @param gtf_version Version of the reference transcriptome.
 #' @param main_project Name of the main project to study. Only tested
 #'   "introverse" and "splicing"
 #'
 #' @return Path to gene TPM files.
 #' @export
-generateTPMpath <- function(table_name, projects_path, gtf_version, main_project){
+generateTPMpath <- function(table_name, results_path, gtf_version, main_project){
   full_name <- stringr::str_split_fixed(table_name, "_", n = 2)
   project <- full_name[2]
   cluster <- full_name[1]
   
-  tpm_path <- paste0(projects_path, project, "/v", gtf_version, "/", 
-                     main_project, "/results/tpm/", project, "_", cluster, "_tpm.rds")
+  tpm_path <- paste0(results_path, "/", project, "/tpm/", project, "_", cluster, "_tpm.rds")
   return(tpm_path)
 }
 
@@ -229,112 +237,5 @@ getGRdata <- function(junID,
   return(GRdata)
 }
 
-#' Executes the MaxEntScan
-#'
-#' @param GRdata GRanges class object with the relevant junctions.
-#' @param bedtools_path path to the
-#'   \href{https://bedtools.readthedocs.io/en/latest/}{bedtools} executable. Can
-#'   be left empty if bedtools is in default PATH.
-#' @param fasta_path path to the fasta .fa file for the reference genome.
-#' @param fordownload_path path to the MaxEntScan pearl scripts. Can be
-#'   downloaded from
-#'   \href{http://hollywood.mit.edu/burgelab/maxent/download/}{here}.
-#'
-#' @return junction dataframe with the ss5 and ss3 scores.
-#' @export
-generateMaxEntScore <- function(GRdata,
-                                bedtools_path,
-                                fasta_path,
-                                fordownload_path) {
-  current_wd <- getwd()
-  
-  ## Add extra positions to calculate the MaxEntScore
-  GRdata <- GRdata %>% dplyr::mutate(
-    seqnames = seqnames %>% as.character(),
-    donorSeqStart = ifelse(strand == "-", end - 6, start - 4),
-    donorSeqStop = ifelse(strand == "-", end + 3, start + 5),
-    acceptorSeqStart = ifelse(strand == "-", start - 4, end - 20),
-    acceptorSeqStop = ifelse(strand == "-", start + 19, end + 3)
-  )
-  
-  ## Generate the dataframes for both donor and acceptors.
-  donor_df <- GRdata %>%
-    dplyr::select(seqnames,
-                  starts = donorSeqStart,
-                  end = donorSeqStop,
-                  names = junID,
-                  strands = strand
-    ) %>%
-    dplyr::mutate(scores = ".", .before = strands)
-  
-  acceptor_df <- GRdata %>%
-    dplyr::select(seqnames,
-                  starts = acceptorSeqStart,
-                  end = acceptorSeqStop,
-                  names = junID,
-                  strands = strand
-    ) %>%
-    dplyr::mutate(scores = ".", .before = strands)
-  
-  ## Generate temporary files to store the sequences
-  tmp_file <- tempfile()
-  tmp_file_seq <- tempfile()
-  
-  ############ MaxEntScore ############
-  ##
-  ## 1. For both donor and acceptor dataframes, extract the sequences of the
-  ## junctions and add them to the main dataframe.
-  ## 2. Calculate the ss5 and ss3 scores (donor and acceptor sequences).
-  ## 3. Add the scores to the main dataframe.
-  
-  ## Donor sequence
-  data.table::fwrite(donor_df, file = tmp_file, quote = F, sep = "\t", row.names = F, col.names = F, scipen = 50)
-  rm(donor_df)
-  system(paste0("bedtools getfasta -name -s -fi ", fasta_path, 
-                " -bed ", tmp_file, 
-                " -tab -fo ", tmp_file_seq))
-  
-  donor_sequences_input <- read.delim(tmp_file_seq, header = F)
-  stopifnot(identical(
-    gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(donor_sequences_input$V1)))),
-    GRdata$junID %>% as.character()
-  ))
-  
-  ## Acceptor sequence
-  data.table::fwrite(acceptor_df, file = tmp_file, quote = F, sep = "\t", row.names = F, col.names = F, scipen = 50)
-  rm(acceptor_df)
-  system(paste0("bedtools getfasta -name -s -fi ", fasta_path, 
-                " -bed ", tmp_file, 
-                " -tab -fo ", tmp_file_seq))
-  
-  acceptor_sequences_input <- read.delim(tmp_file_seq, header = F)
-  stopifnot(identical(
-    gsub("\\(\\+\\)", "", gsub("\\(\\*\\)", "", gsub("\\(-\\)", "", as.character(acceptor_sequences_input$V1)))),
-    GRdata$junID %>% as.character()
-  ))
-  
-  ## Add to dataframe
-  GRdata <- GRdata %>%
-    dplyr::mutate(donor_sequence = as.character(donor_sequences_input$V2)) %>%
-    dplyr::mutate(acceptor_sequence = as.character(acceptor_sequences_input$V2))
-  
-  ## Generate MaxEntScore
-  tmp_file <- tempfile()
-  setwd(fordownload_path)
-  
-  data.table::fwrite(list(GRdata$donor_sequence), file = tmp_file, quote = F, row.names = F, col.names = F, scipen = 50)
-  ss5score_vector <- read.delim(pipe(paste0("perl ", fordownload_path, "score5.pl ", tmp_file)), header = F)
-  GRdata <- GRdata %>% dplyr::mutate(ss5score = ss5score_vector$V2) 
-  rm(ss5score_vector)
-  
-  data.table::fwrite(list(GRdata$acceptor_sequence), file = tmp_file, quote = F, row.names = F, col.names = F, scipen = 50)
-  ss3score_vector <- read.delim(pipe(paste0("perl ", fordownload_path, "score3.pl ", tmp_file)), header = F)
-  GRdata <- GRdata %>% dplyr::mutate(ss3score = ss3score_vector$V2)
-  rm(ss3score_vector)
-  
-  setwd(current_wd)
-  rm(tmp_file, tmp_file_seq, donor_sequences_input, acceptor_sequences_input)
-  invisible(gc())
-  return(GRdata)
-}
+
 

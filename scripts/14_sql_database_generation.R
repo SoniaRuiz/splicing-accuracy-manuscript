@@ -1,0 +1,70 @@
+#' Title
+#' SQL database helper function to create the different tables sequentially
+#' In case of removing different tables, useful to control which tables are removed 
+#' (i.e. only child tables or also master tables) 
+#' @param database.path Path to the .sql database file
+#' @param recount3.project.IDs List of recount3 projects to analyse
+#' @param project.name Name given to the project 
+#' @param gtf.version Version of the reference transcriptome to use. In this case it has been used '105' corresponding
+#' to Ensembl v105
+#' @param remove.all Boolean to reset the database (i.e. whether all tables of the database should be removed)
+#'
+#' @return
+#' @export
+#'
+#' @examples
+sql_database_generation <- function(database.path,
+                                    recount3.project.IDs, 
+                                    project.name,
+                                    gtf.version,
+                                    remove.all = NULL,
+                                    database.folder,
+                                    results.folder,
+                                    supportive.reads) {
+  
+  
+  print(paste0(Sys.time(), " --> ", database.path, "..."))
+  
+  con <- dbConnect(RSQLite::SQLite(), database.path)
+  tables <- DBI::dbListTables(conn = con)
+  
+  print("Database tables:")
+  tables %>% print()
+  
+  if ( !is.null(remove.all) ) {
+    sql_remove_tables(database.path = database.path, all = remove.all)
+  }
+  
+  
+  if ( !any(tables == 'metadata') ) {
+    sql_create_master_table_metadata(database.path = database.path,
+                                     project.name = project.name,
+                                     gtf.version = gtf.version,
+                                     recount3.project.IDs = recount3.project.IDs,
+                                     results.folder = results.folder)
+  }
+  
+  
+  if ( !any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
+    sql_create_master_tables(database.path = database.path,
+                             project.name = project.name,
+                             gtf.version = gtf.version,
+                             database.folder,
+                             results.folder)
+  }
+  
+  
+  tables <- DBI::dbListTables(conn = con)
+  tables %>% print()
+  
+  print(paste0(Sys.time(), " - creating cluster tables ..."))
+  
+  sql_create_child_tables(database.path = database.path,
+                          gtf.version = gtf.version,
+                          recount3.project.IDs = recount3.project.IDs,
+                          project.name = project.name,
+                          database.folder,
+                          results.folder,
+                          supportive.reads = supportive.reads)
+  
+}

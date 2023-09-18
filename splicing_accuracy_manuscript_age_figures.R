@@ -1,7 +1,16 @@
 library(tidyverse)
+library(SummarizedExperiment)
+library(data.table)
+library(GenomicRanges)
 library(DBI)
+library(dplyr)
+library(here)
+library(doParallel)
+library(Biostrings)
+library(tidyverse)
+library(protr)
 
-# source("/home/sruiz/PROJECTS/splicing-project-recount3/pipeline6_splicing_paper_age.R")
+# source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/splicing_accuracy_manuscript_age_figures.R")
 
 
 setwd(normalizePath("."))
@@ -12,12 +21,25 @@ setwd(normalizePath("."))
 ##################################
 
 gtf_version <- 105
-main_project <- "age_subsampled"
-database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project, "/", main_project, ".sqlite")
+project_name <- "splicing_2reads"
+database_name <- paste0(project_name, "_age")
+
+
+database_folder <- paste0(getwd(), "/database/", database_name, "/", gtf_version, "/")
+
+figures_folder <- file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/_paper_review/figures/"))
+results_folder <- file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/_paper_review/results/"))
+
+
+database_path <- paste0(database_folder,  "/", database_name, ".sqlite")
+
 con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
-age_projects <- readRDS(file = paste0(getwd(), "/results/",main_project,"_final_projects_used.rds"))
+
+
+age_projects <- readRDS(file = file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/all_final_projects_used.rds")))
+
 
 custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
                          
@@ -64,7 +86,7 @@ age_stratification_get_stats <- function() {
     distinct(cluster, .keep_all = T) %>%
     dplyr::select(SRA_project,cluster) %>%
     #print(n = 60) %>%
-    write.csv(file = paste0(getwd(), "/results/_paper/results/", main_project, "_body_sites_tissues.csv"), row.names = FALSE)
+    write.csv(file = paste0(results_folder, "/", database_name, "_body_sites_tissues.csv"), row.names = FALSE)
   
   db_metadata %>%
     group_by(SRA_project) %>%
@@ -118,19 +140,7 @@ age_stratification_get_stats <- function() {
 
 age_stratification_plot_metadata <- function() {
   
-  custom_theme <- theme(axis.line = element_line(colour = "black"), 
-          axis.text = element_text(colour = "black", size = "9"),
-          axis.text.x = element_text(colour = "black", size = "9"),
-          axis.title = element_text(colour = "black", size = "9"),
-          strip.text = element_text(colour = "black", size = "9"), 
-          legend.text = element_text(colour = "black", size = "9"),
-          plot.caption = element_text(colour = "black", size = "9"),
-          plot.title = element_text(colour = "black", size = "9"),
-          legend.title = element_text(colour = "black", size = "9"),
-          legend.position = "top",
-          ## This is to plot the two legends in two rows
-          legend.box="vertical")  
-  
+
   tables <- dbListTables(con)
   query <- paste0("SELECT * from 'master'")
   db_metadata <- dbGetQuery(con, query) %>% 
@@ -150,7 +160,7 @@ age_stratification_plot_metadata <- function() {
     scale_fill_hue() +
     labs(y = ("Body site"), x = "Num. samples" ) +
     guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_num_samples
   
@@ -167,7 +177,7 @@ age_stratification_plot_metadata <- function() {
     labs(y = ("Body site"), x = "Num. samples" ) +
     scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
     guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_gender
   
@@ -179,19 +189,19 @@ age_stratification_plot_metadata <- function() {
     labs(x = "RIN" ) +
     scale_fill_hue() +
     guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_rin
   
   
   ## Mapped read depth
   plot_read_depth <- ggplot(db_metadata ) +
-    geom_density(aes(x = mapped_read_count, fill = cluster), alpha = 0.5) + 
+    geom_density(aes(x = all_mapped_reads, fill = cluster), alpha = 0.5) + 
     theme_light() +
     scale_fill_hue() +
     labs(x = "Mapped Read Count" ) +
     guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_theme
+    custom_ggtheme
   
   plot_read_depth
   
@@ -200,9 +210,8 @@ age_stratification_plot_metadata <- function() {
                     labels = c("a","b","c","d"))
   
   
-  figures_path <- paste0(getwd(), "/results/_paper/figures/")
-  file_name <- paste0(figures_path, "/age_metadata")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
+
+  file_name <- paste0(figures_folder, "/age_metadata")
   ggplot2::ggsave(paste0(file_name, ".png"), width = 210, height = 190, units = "mm", dpi = 300)
   
   
@@ -229,8 +238,8 @@ get_common_introns_across_age_groups <- function() {
     filter(nsamples >= 70)
   
   
-  folder_results <- paste0(getwd(), "/results/_paper/results/")
-  dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
+  #folder_results <- paste0(getwd(), "/results/_paper/results/")
+  #dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
   
   
   df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
@@ -270,8 +279,7 @@ get_common_introns_across_age_groups <- function() {
         ## Merge with 'master' novel table
         query <- paste0("SELECT novel_junID, novel_type 
                         FROM 'novel' 
-                        WHERE novel_junID IN (", 
-                        paste(introns$novel_junID %>% unique(), collapse =","), ")")
+                        WHERE novel_junID IN (", paste(introns$novel_junID %>% unique(), collapse =","), ")")
         introns <- introns %>%
           inner_join(y = dbGetQuery(con, query) %>% as_tibble(),  by = "novel_junID")
         
@@ -340,7 +348,7 @@ get_common_introns_across_age_groups <- function() {
   
   
   ## Save data
-  file_name <- paste0(folder_results, "/", main_project, "_common_introns_all_age_groups.rds")
+  file_name <- paste0(results_folder, "/common_introns_all_age_groups.rds")
   saveRDS(object = df_age_groups_tidy, file = file_name)
   
 }
@@ -349,11 +357,8 @@ get_common_introns_across_age_groups <- function() {
 get_effsize_MSR_with_age <- function() {
   
 
-  folder_results <- paste0(getwd(), "/results/_paper/results/")
-  dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
-  
   ## Load common introns across age groups and tissues
-  file_name <- paste0(folder_results, "/", main_project, "_common_introns_all_age_groups.rds")
+  file_name <- paste0(results_folder, "/common_introns_all_age_groups.rds")
   df_age_groups_tidy <- readRDS(file = file_name)
   
   
@@ -365,6 +370,8 @@ get_effsize_MSR_with_age <- function() {
     spread(sample_type, MSR_D) %>%
     as_tibble()
     
+
+  
   
   ## MSR_A data preparation
   df_MSRA <- df_age_groups_tidy %>%
@@ -373,18 +380,21 @@ get_effsize_MSR_with_age <- function() {
     mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
     spread(sample_type, MSR_A) %>%
     as_tibble()
-    
-    
+  
+
   df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
       
     # MSR_type <- "MSR Donor"
     print( paste0( "Getting data from: '", MSR_type, "'..." ) )
 
-    map_df(age_projects, function(proj_id) {
+    doParallel::registerDoParallel(10)
+    all_samples_age_used <- foreach(i = seq(length(age_projects)), .combine = "rbind") %dopar%{
+
+      proj_id <- age_projects[i]
       
       # proj_id <- age_projects[2]
       # proj_id <- "KIDNEY"
-      print( paste0( proj_id ) )
+      message(proj_id)
       
       ###############################
       ## MSR_D INCREASING WITH AGE
@@ -432,11 +442,11 @@ get_effsize_MSR_with_age <- function() {
         return(NULL)
       }
       
-    })
+    }
     
   })
-  
-  file_name <- paste0(folder_results, "/", main_project, "_effsize_MSR_with_age.rds")
+
+  file_name <- paste0(results_folder, "/effsize_MSR_with_age.rds")
   saveRDS(object = df_wilcoxon, file = file_name)
   
 }
@@ -445,8 +455,7 @@ get_effsize_MSR_with_age <- function() {
 plot_effsize_MSR_with_age <- function() {
   
   
-  folder_results <- paste0(getwd(), "/results/_paper/results/")
-  file_name <- paste0(folder_results, "/", main_project, "_df_wilcoxon_effsize_paired_all_projects.rds")
+  file_name <- paste0(results_folder, "/effsize_MSR_with_age.rds")
   df_wilcoxon <- readRDS(file = file_name)
   
   #######################################################
@@ -465,9 +474,8 @@ plot_effsize_MSR_with_age <- function() {
   df_wilcoxon_tidy_final <- df_wilcoxon_tidy %>%
     filter(tissue %in% (df_wilcoxon_tidy %>%
                           group_by(tissue) %>%
-                          filter(pval <= 0.05) %>%
+                          filter(q <= 0.05) %>%
                           dplyr::count(pval) %>%
-                          #filter(q < 0.05) %>%
                           ungroup() %>% 
                           pull(tissue)) ) %>%
     mutate(tissue = str_replace(tissue, 
@@ -480,12 +488,14 @@ plot_effsize_MSR_with_age <- function() {
   
   
   write.csv(x = df_wilcoxon_tidy,
-            file = paste0(getwd(), "/results/_paper/results/age_wilcoxon_MSR_all_tissues.csv"))
+            file = paste0(results_folder, "/age_wilcoxon_MSR_all_tissues.csv"))
   
   
   
+  ####################################
+  ## PLOT 
+  ####################################
   
-  ## PLOT 1
   ggplot(data = df_wilcoxon_tidy_final ,
          aes(x = effsize, y = tissue, color = MSR_type, size = q)) +
     geom_point(alpha=.7) +
@@ -507,16 +517,15 @@ plot_effsize_MSR_with_age <- function() {
     scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
   
   ## Save the figure 3
-  folder_figures <- paste0(getwd(), "/results/_paper/figures/")
-  dir.create(file.path(folder_figures), recursive = TRUE, showWarnings = T)
   
-  ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a.svg"), 
-                  width = 180, height = 55, units = "mm", dpi = 300)
-  ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a.png"), 
+  ggplot2::ggsave(filename = paste0(figures_folder, "/msr_effectsize_age.png"), 
                   width = 180, height = 55, units = "mm", dpi = 300)
   
-  ggplot2::ggsave(filename = paste0(folder_figures, "/panel7a_larger.png"), 
+  ggplot2::ggsave(filename = paste0(figures_folder, "/msr_effectsize_age_larger.png"), 
                   width = 180, height = 90, units = "mm", dpi = 300)
+  
+  
+  
   ###################################
   ## STATS - DONOR
   ###################################
@@ -3043,8 +3052,7 @@ age_stratification_plot_MSR_across_tissues <- function(age_projects = c("BRAIN",
 ## CALLS
 ################################
 
-age_stratification_MSR_changing_with_age(database_path,
-                                         gtf_version)
+get_effsize_MSR_with_age()
 
 
 

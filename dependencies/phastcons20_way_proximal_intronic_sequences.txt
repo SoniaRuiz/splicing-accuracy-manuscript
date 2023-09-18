@@ -59,7 +59,7 @@ if ( !file.exists(file_name) ) {
 -- bash code:
 ------------------------------
 
-##https://bedops.readthedocs.io/en/latest/content/reference/set-operations/bedops.html#element-of-e-element-of
+## https://bedops.readthedocs.io/en/latest/content/reference/set-operations/bedops.html#element-of-e-element-of
 ## Both bed files need to be sorted!
 bedops --element-of 1 ./phastCons20way/hg38.phastCons20way.bed ./phastCons20way/introns_splicing_database.bed > ./phastCons20way/phastCons_splicing_database.bed
 

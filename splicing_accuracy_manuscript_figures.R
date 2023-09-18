@@ -6,27 +6,35 @@ library(biomaRt)
 library(DBI)
 library(ggforce)
 library(doParallel)
+library(ggridges)
 
 ####################################################
 ## CONNECT TO THE SPLICING DATABASE ################
 ####################################################
+
+# source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/splicing_accuracy_manuscript_figures.R")
+
 
 
 ## CONNECT TO THE DATABASE ------------------------------
 
 setwd(normalizePath("."))
 gtf_version <- 105
-main_project <- "splicing"
+main_project <- "splicing_1read"
 
-database_path <- paste0(getwd(), "/database/v", gtf_version, "/", main_project,
-                          "/", main_project, "_original.sqlite")
+database_path <- paste0(getwd(), "/database/", main_project, "/", gtf_version, "/", 
+                          "/", main_project, ".sqlite")
 
 
 con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
+
+results_folder <- file.path(getwd(), "results", main_project, gtf_version, "_paper_review/results")
+figures_folder <- file.path(getwd(), "results", main_project, gtf_version, "_paper_review/figures")
+
 ## GET FROM MASTER TABLE
-query = paste0("SELECT * FROM 'master'")
+query = paste0("SELECT * FROM 'metadata'")
 df_metadata <- dbGetQuery(con, query) %>% as_tibble()
 
 all_projects <- df_metadata$SRA_project %>% unique
@@ -78,7 +86,7 @@ get_database_stats <- function() {
   
   
   tables <- dbListTables(con)
-  query <- paste0("SELECT * from 'master'")
+  query <- paste0("SELECT * from 'metadata'")
   db_metadata <- dbGetQuery(con, query) %>% as_tibble()
   
   
@@ -122,8 +130,6 @@ get_database_stats <- function() {
     dplyr::count(novel_type)
   
   (db_novel %>% nrow()) / (db_introns %>% filter(misspliced==1) %>% nrow())
-  
-  
   
   ## Novel junctions exceed in X fold to annotated introns
   (db_novel %>% distinct(novel_junID) %>% nrow()) / (db_introns %>% distinct(ref_junID) %>% nrow())
@@ -743,7 +749,7 @@ get_unique_donor_acceptor_jxn <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
-  file_name <- paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_jxn.rds")
+  file_name <- file.path(getwd(), "results", main_project, gtf_version, "_paper_review/unique_donor_acceptor_jxn.rds")
 
  
   if ( !file.exists(file_name) )  {
@@ -828,15 +834,13 @@ get_unique_donor_acceptor_jxn <- function() {
     })
     
     ## Save results --------------------------------------------------------------------------
-    figures_path <- paste0(getwd(), "/results/_paper/results/")
-    dir.create(file.path(figures_path), recursive = TRUE, showWarnings = T)
     
     saveRDS(object = df_proportions, file = file_name)
     write.csv(x = df_proportions,
-              file = paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_jxn.csv"),
+              file = paste0(results_folder, "unique_donor_acceptor_jxn.csv"),
               row.names = F)
   } else {
-    df_proportions <- read.csv(file = paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_jxn.csv"))
+    df_proportions <- read.csv(file = paste0(results_folder, "unique_donor_acceptor_jxn.csv"))
     
     df_proportions %>%
       arrange(desc(annotated_prop))
@@ -935,7 +939,7 @@ get_unique_donor_acceptor_jxn <- function() {
                     ncol = 2,
                     nrow = 1)
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel2bc")
+  file_name <- paste0(figures_folder, "/panel2bc")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
@@ -955,7 +959,7 @@ get_unique_donor_acceptor_reads <- function() {
   df_metadata <- dbGetQuery(con, query) 
   all_projects <- df_metadata$SRA_project %>% unique()
   
-  file_name <- paste0(getwd(), "/results/_paper/results/unique_donor_acceptor_reads.rds")
+  file_name <- paste0(results_folder, "/unique_donor_acceptor_reads.rds")
   
   if ( !file.exists(file_name) )  {
      
@@ -1122,9 +1126,6 @@ get_unique_donor_acceptor_reads <- function() {
 
 get_mean_read_count_FTCX <- function() {
   
-  
-  
-  
   query <- paste0("SELECT * FROM 'master'")
   df_metadata <- dbGetQuery(con, query) 
   
@@ -1134,8 +1135,6 @@ get_mean_read_count_FTCX <- function() {
   #            "Brain - Frontal Cortex (BA9)_BRAIN_nevermisspliced")
   
   SRA_projects <- df_metadata$SRA_project %>% unique()
-  
-
   
   query <- paste0("SELECT novel_junID, novel_type from 'novel'")
   db_novel <- dbGetQuery(con, query) %>% as_tibble()
@@ -1155,11 +1154,13 @@ get_mean_read_count_FTCX <- function() {
       
       # cluster_id <- all_clusters[1]
       
-      query <- paste0("SELECT DISTINCT ref_junID, ref_sum_counts FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
+      query <- paste0("SELECT DISTINCT ref_junID, ref_sum_counts 
+                      FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       db_never <- dbGetQuery(con, query) %>% as_tibble()
       db_never$ref_sum_counts
       
-      query <- paste0("SELECT ref_junID, novel_junID, ref_sum_counts, novel_sum_counts FROM '", cluster_id, "_", project_id, "_misspliced'")
+      query <- paste0("SELECT ref_junID, novel_junID, ref_sum_counts, novel_sum_counts 
+                      FROM '", cluster_id, "_", project_id, "_misspliced'")
       db_misspliced <- dbGetQuery(con, query) %>% as_tibble()
       db_misspliced$ref_sum_counts
       
@@ -1200,7 +1201,7 @@ get_mean_read_count_FTCX <- function() {
   
   
   write.csv(x = df_read_count %>% relocate(tissue),
-            file = paste0(getwd(), "/results/_paper/results/05_supplementary_data_read_count.csv"),
+            file = paste0(results_folder, "/05_supplementary_data_read_count.csv"),
             row.names = F)
 
  
@@ -1232,7 +1233,7 @@ get_maxentscan_score <- function() {
   
   
   
-  file_name <- paste0(getwd(), "/results/_paper/results/df_mes.rds")
+  file_name <- paste0(results_folder, "/df_mes.rds")
   
   if ( !file.exists(file_name) )  {
     
@@ -1243,12 +1244,15 @@ get_maxentscan_score <- function() {
     
     
     ## Get the MES scores corresponding to the mis-spliced introns
-    query <- paste0("SELECT ref_junID, ref_ss5score, ref_ss3score FROM 'intron' WHERE  misspliced = 1 ")
+    query <- paste0("SELECT ref_junID, ref_ss5score, ref_ss3score 
+                    FROM 'intron' 
+                    WHERE  misspliced = 1 ")
     introns <- dbGetQuery(con, query) %>% as_tibble()
     
     
     ## Get the novel junctions
-    query <- paste0("SELECT ref_junID, novel_junID, novel_type, novel_ss5score, novel_ss3score FROM 'novel'")
+    query <- paste0("SELECT ref_junID, novel_junID, novel_type, novel_ss5score, novel_ss3score 
+                    FROM 'novel'")
     novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
     
     ###########################
@@ -1339,7 +1343,8 @@ get_maxentscan_score <- function() {
                      labels = c("a", "b"),
                      ncol = 2, 
                      nrow = 1)
-  file_name <- paste0(getwd(), "/results/_paper/figures/supplementary_fig3")
+  
+  file_name <- paste0(figures_folder, "/supplementary_fig3")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
@@ -1407,10 +1412,10 @@ get_maxentscan_score <- function() {
                      ncol = 2, 
                      nrow = 1)
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel3ab")
+  file_name <- paste0(figures_folder, "/panel3ab")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel3ab_large")
+  file_name <- paste0(figures_folder, "/panel3ab_large")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
@@ -1566,13 +1571,7 @@ get_distances <- function() {
   df_novel_tidy$novel_type = factor(df_novel_tidy$novel_type, 
                                     levels = c("novel donor", "novel acceptor"))
   
-  
-  
-  
-  #################################
-  ## GENERATE PLOT ################
-  #################################
-  
+
   plot_all <- ggplot(data = df_novel_tidy) + 
     geom_histogram(aes(x = distance, fill = novel_type),
                    bins = limit_bp * 2,
@@ -1610,6 +1609,11 @@ get_distances <- function() {
   plot_all
   
   
+  ## Save plot
+  file_name <- paste0(figures_folder, "/FCTX_distances_all")
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
+  
+
   #########################################
   ## GENERATE PLOT FOR ALL ################
   #########################################
@@ -1632,7 +1636,7 @@ get_distances <- function() {
                                ncol = 2, nrow = 1 )) +
     custom_ggtheme
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distances_large_all")
+  file_name <- paste0(figures_folder, "/FCTX_distances_large_all")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
@@ -1640,7 +1644,8 @@ get_distances <- function() {
   ## PROTEIN CODING
   ###############################
   
-  query <- paste0("SELECT ref_junID, protein_coding, lncRNA FROM 'intron'")
+  query <- paste0("SELECT ref_junID, protein_coding 
+                  FROM 'intron'")
   df_master_introns <- dbGetQuery(con, query) %>% as_tibble()
   
   df_novel_tidy <- db_misspliced_introns %>%
@@ -1661,12 +1666,7 @@ get_distances <- function() {
   
   
   
-  
-  
-  
-  #################################
-  ## GENERATE PLOT ################
-  #################################
+  ## GENERATE PLOT
   
   plot_legend <- ggpubr::get_legend(ggplot(data = df_novel_tidy %>% 
                                              filter(type_PC == "protein coding (PC)")) + 
@@ -1728,52 +1728,52 @@ get_distances <- function() {
     custom_ggtheme +
     theme(legend.position = "none") +
     
-    #########
-    geom_segment(data = data.frame(x = 5.8, xend = 9.1, linewidth = 1,
-                                   y = 980, yend = 980,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 5.9, xend = 5.9, linewidth = 1, 
-                        y = 960, yend = 980,
-                        colour = "#333333",
-                        novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 9.0, xend = 9.0, linewidth = 1,
-                                   y = 960, yend = 980,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) ) +
-    #########
-  
-    geom_segment(data = data.frame(x = 8.8, xend = 12.1, linewidth =1,
-                                   y = 780, yend = 780,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 8.9, xend = 8.9, linewidth =1, 
-                                   y = 760, yend = 780,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 12.0, xend = 12.0, linewidth =1,
-                                   y = 760, yend = 780,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) ) +
+    # #########
+    # geom_segment(data = data.frame(x = 5.8, xend = 9.1, linewidth = 1,
+    #                                y = 780, yend = 780,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 5.9, xend = 5.9, linewidth = 1, 
+    #                     y = 760, yend = 780,
+    #                     colour = "#333333",
+    #                     novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 9.0, xend = 9.0, linewidth = 1,
+    #                                y = 760, yend = 780,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend) ) +
+    # #########
+    # 
+    # geom_segment(data = data.frame(x = 8.8, xend = 12.1, linewidth =1,
+    #                                y = 580, yend = 580,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 8.9, xend = 8.9, linewidth =1, 
+    #                                y = 560, yend = 580,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 12.0, xend = 12.0, linewidth =1,
+    #                                y = 560, yend = 580,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
     geom_segment(data = data.frame(x = 11.8, xend = 15.1, linewidth =1,
-                                 y = 550, yend = 550,
+                                 y = 200, yend = 200,
                                  colour = "#333333",
                                  novel_type="Novel Acceptor"),
                aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 11.9, xend = 11.9, linewidth =1, 
-                                   y = 530, yend = 550,
+                                   y = 170, yend = 200,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 15.0, xend = 15.0, linewidth =1,
-                                   y = 530, yend = 550,
+                                   y = 170, yend = 200,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
@@ -1781,49 +1781,52 @@ get_distances <- function() {
 
     #########
     geom_segment(data = data.frame(x = 14.8, xend = 18.1, linewidth =1,
-                                 y = 440, yend = 440,
+                                 y = 160, yend = 160,
                                  colour = "#333333",
                                  novel_type="Novel Acceptor"),
                aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 14.9, xend = 14.9, linewidth =1, 
-                                   y = 420, yend = 440,
+                                   y = 140, yend = 160,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
     geom_segment(data = data.frame(x = 18.0, xend = 18.0, linewidth =1,
-                                   y = 420, yend = 440,
+                                   y = 140, yend = 160,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
-    geom_segment(data = data.frame(x = 17.8, xend = 21.1, linewidth =1,
-                                 y = 350, yend = 350,
+    geom_segment(data = data.frame(x = 17.6, xend = 20.7, linewidth =1,
+                                 y = 130, yend = 130,
                                  colour = "#333333",
                                  novel_type="Novel Acceptor"),
                aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 17.9, xend = 17.9, linewidth =1, 
-                                   y = 330, yend = 350,
+    geom_segment(data = data.frame(x = 17.7, xend = 17.7, linewidth =1, 
+                                   y = 110, yend = 130,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 21.0, xend = 21.0, linewidth =1,
-                                   y = 330, yend = 350,
+    geom_segment(data = data.frame(x = 20.7, xend = 20.7, linewidth =1,
+                                   y = 110, yend = 130,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
-    geom_segment(data = data.frame(x = 20.8, xend = 24.1, linewidth =1,
-                                 y = 290, yend = 290,
-                                 colour = "#333333",
-                                 novel_type="Novel Acceptor"),
-               aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 20.9, xend = 20.9, linewidth =1, 
-                                   y = 270, yend = 290,
+    geom_segment(data = data.frame(x = 21, xend = 24.3, 
+                                   linewidth = 1,
+                                   y = 128, yend = 128,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 24.0, xend = 24.0, linewidth =1,
-                                   y = 270, yend = 290,
+    geom_segment(data = data.frame(x = 21.1, xend = 21.1, 
+                                   linewidth =1, 
+                                   y = 108, yend = 128,
+                                   colour = "#333333",
+                                   novel_type="Novel Acceptor"),
+                 aes(x=x,y=y,yend=yend,xend=xend)) +
+    geom_segment(data = data.frame(x = 24.3, xend = 24.3, 
+                                   linewidth =1,
+                                   y = 108, yend =128,
                                    colour = "#333333",
                                    novel_type="Novel Acceptor"),
                  aes(x=x,y=y,yend=yend,xend=xend) )
@@ -1853,13 +1856,14 @@ get_distances <- function() {
                                      nrow = 2)
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/FCTX_distancesPC")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 183, height = 120, units = "mm", dpi = 300)
+  plot_PC
+  
+  file_name <- paste0(figures_folder, "/FCTX_distancesPC")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 100, height = 100, units = "mm", dpi = 300)
   
   
   
-  df_novel_tidy %>% filter(lncRNA == 100) %>% distinct(ref_junID) %>% nrow()
+  
   
   plot_NPC_donor <- ggplot(data = df_novel_tidy %>% 
                             filter(type_PC == "non PC",
@@ -1953,8 +1957,7 @@ get_distances <- function() {
   plot
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel3cd")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 110, units = "mm", dpi = 300)
+  file_name <- paste0(figures_folder, "FCTX_distances_biotype")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
@@ -1974,7 +1977,7 @@ get_distances <- function() {
   
   
   plot
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel3cd_large")
+  file_name <- paste0(figures_folder, "/panel3cd_large")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 140, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 140, units = "mm", dpi = 300)
   
@@ -2111,7 +2114,7 @@ get_distances_all_tissues <- function() {
     filter(tissue == "Brain - Frontal Cortex (BA9)")
   
   write.csv(x = df_distances_all_tissues,
-            file = paste0(getwd(), "/results/_paper/results/05_supplementary_data_distances_all_tissues.csv"),
+            file = paste0(results_folder, "/05_supplementary_data_distances_all_tissues.csv"),
             row.names = F)
 }
 
@@ -2126,7 +2129,7 @@ get_modulo <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
-  file_path <- paste0(getwd(), "/results/_paper/results/df_modulo_basic_tissues_100bpfilter.rds")
+  file_path <- paste0(results_folder, "/df_modulo_basic_tissues_100bpfilter.rds")
   
   if ( !file.exists(file_path) )  {
     
@@ -2211,8 +2214,6 @@ get_modulo <- function() {
   ## DENSITY PLOT
   ################
   
-  library(ggridges)
-  
   df_modulo_tissues <- df_modulo_tissues %>%
     mutate(freq = freq * 100)
   
@@ -2228,12 +2229,12 @@ get_modulo <- function() {
     scale_y_discrete(expand = c(0,0.5,1,0))
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel3e")
+  file_name <- paste0(figures_folder, "/panel3e")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel3e_large")
+  file_name <- paste0(figures_folder, "/panel3e_large")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 70, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 70, units = "mm", dpi = 300)
   
@@ -2269,6 +2270,8 @@ get_modulo <- function() {
     distinct(mean_freq) %>%
     mutate(sum_freq = mean_freq %>% sum) %>%
     pull(sum_freq)
+  
+  
 }
 
 
@@ -2354,7 +2357,7 @@ get_MSR_FCTX <- function()  {
     #ggtitle("All annotated introns") +
     xlab("Mis-splicing ratio value group") +
     ylab("") +
-    ggforce::facet_zoom(ylim=c(0,2500), split = TRUE) +
+    ggforce::facet_zoom(ylim=c(0,2300), split = TRUE) +
     #ylim(c(0,23000))+
     theme_light() +
     scale_fill_manual(values = c("#35B779FF","#64037d"),
@@ -2375,12 +2378,11 @@ get_MSR_FCTX <- function()  {
                     common.legend = T)
   
 
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel4a")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 75, units = "mm", dpi = 300)
+  file_name <- paste0(figures_folder, "/panel4a")
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 75, units = "mm", dpi = 300)
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel4a_large")
+  file_name <- paste0(figures_folder, "/panel4a_large")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 110, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 110, units = "mm", dpi = 300)
   
@@ -2446,7 +2448,6 @@ get_MSR_FCTX <- function()  {
                             caliper = c(mean_coverage = 0.005), 
                             std.caliper = FALSE)
   subsample <- MatchIt::match.data(m.out)
-  
   subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(biotype)
   
   plot_AS <- ggplot(data = subsample) +
@@ -2463,12 +2464,12 @@ get_MSR_FCTX <- function()  {
                     labels = c("a", "b"),
                     common.legend = T)
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_subsampling")
+  file_name <- paste0(figures_folder, "/MSR_FCTX_subsampling")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/MSR_FCTX_subsampling_large")
+  file_name <- paste0(figures_folder, "/MSR_FCTX_subsampling_large")
   ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 120, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 120, units = "mm", dpi = 300)
   
@@ -2604,7 +2605,7 @@ get_MSR_FCTX <- function()  {
   
   
   print(paste0(Sys.time(), " - saving plot..."))
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel4bc")
+  file_name <- paste0(figures_folder, "/panel4bc")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
@@ -2657,7 +2658,7 @@ get_MSR_FCTX <- function()  {
                     #labels = c("b", "c"))
   
   print(paste0(Sys.time(), " - saving plot..."))
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel4bc-zoomed")
+  file_name <- paste0(figures_folder, "/panel4bc-zoomed")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300,bg = "transparent")
   
@@ -2762,7 +2763,7 @@ get_MSR_tissues <- function()  {
   ## LOAD/GENERATE DATA
   ############################
   
-  file_name <- paste0(paste0(getwd(), "/results/_paper/results/05_supplementary_data_MSR_all_tissues.csv"))
+  file_name <- paste0(results_folder, "/05_supplementary_data_MSR_all_tissues.csv")
   
   
   if ( !file.exists(file_name) ) {
@@ -2774,9 +2775,7 @@ get_MSR_tissues <- function()  {
       #############################
       
       print(paste0(Sys.time(), " - ", project_id))
-      
-      # clusters_used <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-results/splicing-recount3-projects/",
-      #                                        project_id, "/raw_data/all_clusters_used.rds"))
+
       
       all_clusters <- df_metadata %>%
         filter(SRA_project == "BRAIN") %>%
@@ -2971,31 +2970,34 @@ get_lm_single_tissue <- function() {
   ###################################
   ## GET TPM
   
-  base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-  samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
-                                        "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
-  
-  
-  tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
-                               "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
-    dplyr::select(gene_id = gene, all_of(samples_used))
-  
-  
-  tpm <- tpm  %>%
-    dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-    dplyr::select(gene_id, tpm_median) 
-  
+  # base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
+  # samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
+  #                                       "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
+  # 
+  # 
+  # tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
+  #                              "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
+  #   dplyr::select(gene_id = gene, all_of(samples_used))
+  # 
+  # 
+  # tpm <- tpm  %>%
+  #   dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
+  #   dplyr::select(gene_id, tpm_median) 
+  # 
   #######################################
   ## GET DATA FROM THE DATABASE
   
-  query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_nevermisspliced' " )
+  query <- paste0("SELECT * 
+                  FROM '", cluster_id, "_", project_id, "_nevermisspliced' " )
   introns <- dbGetQuery(con, query) %>% as_tibble()
-  query <- paste0("SELECT * FROM '", cluster_id, "_", project_id, "_misspliced'")
+  query <- paste0("SELECT * 
+                  FROM '", cluster_id, "_", project_id, "_misspliced'")
   introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
   introns %>% nrow()
   
-  query <- paste0("SELECT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
-                  ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, protein_coding
+  query <- paste0("SELECT ref_junID, ref_length, ref_mes5ss, ref_mes3ss, 
+                  mean_phastCons20way5ss_35, mean_phastCons20way3ss_35, 
+mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                   FROM 'intron' 
                   WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),")")
   introns <- introns %>%
@@ -3035,24 +3037,21 @@ get_lm_single_tissue <- function() {
   #########################
   
   idb <- introns %>%
-    left_join(y = tpm,
-              by = c("gene_id.y"="gene_id")) %>% 
-    #dplyr::select(-gene_id,-gene_tpm) %>%
-    dplyr::rename(gene_tpm = tpm_median) %>%
     dplyr::select(ref_junID,
                   intron_length = ref_length,
-                  intron_5ss_score = ref_ss5score,
-                  intron_3ss_score = ref_ss3score,
+                  intron_5ss_score = ref_mes5ss,
+                  intron_3ss_score = ref_mes3ss,
                   gene_length = gene_width,
                   gene_tpm = gene_tpm,
                   gene_num_transcripts = n_transcripts,
-                  CDTS_5ss = ref_CDTS5score,
-                  CDTS_3ss = ref_CDTS3score,
+                  CDTS_5ss = mean_CDTS5ss_35,
+                  CDTS_3ss = mean_CDTS3ss_35,
                   protein_coding = protein_coding,
-                  mean_phastCons20way_5ss = ref_cons5score,
-                  mean_phastCons20way_3ss = ref_cons3score,
+                  mean_phastCons20way_5ss = mean_phastCons20way5ss_35,
+                  mean_phastCons20way_3ss = mean_phastCons20way3ss_35,
                   MSR_D,
-                  MSR_A)
+                  MSR_A) %>%
+    drop_na()
   
   
   idb %>% nrow()
@@ -3144,7 +3143,6 @@ get_lm_single_tissue <- function() {
   
   fit_donor <- lm(MSR_D ~ 
                     gene_length +
-                    gene_tpm +
                     gene_num_transcripts +
                     protein_coding +
                     intron_length +
@@ -3155,6 +3153,26 @@ get_lm_single_tissue <- function() {
                     mean_phastCons20way_5ss +
                     mean_phastCons20way_3ss, 
                   data = idb)
+  
+  fit_donor_tpm <- lm(MSR_D ~ 
+                      gene_length +
+                      gene_num_transcripts +
+                      protein_coding +
+                      intron_length +
+                      intron_5ss_score + 
+                      intron_3ss_score +
+                      CDTS_5ss +
+                      CDTS_3ss +
+                      mean_phastCons20way_5ss +
+                      mean_phastCons20way_3ss+
+                      gene_tpm , 
+                  data = idb)
+  
+  anova(fit_donor)
+  anova(fit_donor_tpm)
+  
+  anova(fit_donor,fit_donor_tpm)
+  
   fit_donor %>% summary()
   
   # fit_donor$coefficients[names(fit_donor$coefficients)[summary(fit_donor)$coefficients[,4] < 0.05]]  
@@ -3246,10 +3264,8 @@ get_lm_single_tissue <- function() {
                         mutate(q = p.adjust(pval,method = "fdr")) %>%
                         mutate(q = ifelse(q > 0.05, NA, q)) %>%
                         mutate(q = ifelse(q == 0, 2.2e-16, q)) %>%
-                        #mutate(q = pval %>% log10())%>%
                         mutate(names = names(summary(fit_donor)$coefficients[,4] ),
                                type = "MSR Donor") %>%
-                        #dplyr::rename(pvalue = pval) %>%
                         filter(names != "(Intercept)") %>%
                         rev(),
                       
@@ -3259,13 +3275,10 @@ get_lm_single_tissue <- function() {
                         mutate(q = p.adjust(pval,method = "fdr")) %>%
                         mutate(q = ifelse(q == 0, 2.2e-16, q)) %>%
                         mutate(q = ifelse(q > 0.05, NA, q)) %>%
-                        #mutate(q = q %>% log10()) %>%
                         mutate(names = names(summary(fit_acceptor)$coefficients[,4] ),
                                type = "MSR Acceptor") %>%
-                        #dplyr::rename(pvalue = pval) %>%
                         filter(names != "(Intercept)") %>%
                         rev()) %>%
-   # mutate(q = ifelse(abs(Estimate) <= 0.0001, NA, q)) %>%
     mutate(q = q %>% log10())
   
   tiles_data <- tiles_data %>%
@@ -3312,7 +3325,7 @@ get_lm_single_tissue <- function() {
                     nrow = 1)
 
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel4c_effsize")
+  file_name <- paste0(figures_folder, "/panel4c_effsize_unstandardized")
   ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 70, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
@@ -3361,6 +3374,7 @@ get_common_introns_across_tissues <- function () {
       query <- paste0("SELECT DISTINCT ref_junID 
                       FROM '", cluster_id, "_", project_id, "_nevermisspliced'")
       introns <- dbGetQuery(con, query) %>% as_tibble()
+      
       query <- paste0("SELECT DISTINCT ref_junID 
                       FROM '", cluster_id, "_", project_id, "_misspliced'")
       introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
@@ -3382,7 +3396,7 @@ get_common_introns_across_tissues <- function () {
                   WHERE ref_junID IN (", paste(common_introns$ref_junID, collapse = ","), ")")
   introns <- dbGetQuery(con, query) %>% as_tibble()
   
-  file_name <- paste0(getwd(), "/results/_paper/results/common_introns_all_tissues.rds")
+  file_name <- paste0(results_folder, "/common_introns_all_tissues.rds")
   saveRDS(object = introns, file = file_name)
   
 }
@@ -3395,8 +3409,7 @@ get_estimate_variance_across_tissues <- function() {
   all_projects <- df_metadata$SRA_project %>% unique()
   
   ## LOAD COMMON INTRONS
-  common_introns <- readRDS(file = paste0(getwd(), 
-                                          "/results/_paper/results/common_introns_all_tissues.rds"))
+  common_introns <- readRDS(file = paste0(results_folder, "/common_introns_all_tissues.rds"))
 
   ################################
   ## QUERY THE DATABASE PER TISSUE
@@ -3423,29 +3436,14 @@ get_estimate_variance_across_tissues <- function() {
       print(cluster_id)
       
       
-      ###################################
-      ## GET Median TPM value across the tissues
-      
-      base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-      samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
-                                            "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
-    
-      tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
-                                   "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
-        dplyr::select(gene_id = gene, all_of(samples_used))
-      
-      tpm <- tpm  %>%
-        dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-        dplyr::select(gene_id, gene_tpm = tpm_median) 
-      
-      
+     
       ##################################
       ## Get splicing data for the current tissue corresponding to the set of common introns
       
-      query <- paste0("SELECT ref_junID, MSR_D, MSR_A 
+      query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm 
                       FROM '", cluster_id, "_", project_id, "_nevermisspliced' ")
       introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT ref_junID, MSR_D, MSR_A 
+      query <- paste0("SELECT ref_junID, MSR_D, MSR_A, gene_tpm 
                       FROM '", cluster_id, "_", project_id, "_misspliced'")
       introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble() )
       
@@ -3495,9 +3493,9 @@ get_estimate_variance_across_tissues <- function() {
       
       
       ## JOIN WITH TPM DATA
-      introns <- introns %>%
-        left_join(y = tpm,
-                  by = c("gene_id.y" = "gene_id"))
+      # introns <- introns %>%
+      #   left_join(y = tpm,
+      #             by = c("gene_id.y" = "gene_id"))
       
       introns <- introns %>%
         dplyr::rename(gene_num_transcripts = n_transcripts )
@@ -3641,7 +3639,7 @@ get_estimate_variance_across_tissues <- function() {
   ## SAVE RESULTS
   #############################
   
-  file_name <- paste0(getwd(), "/results/_paper/results/variance_estimate_lm_all_tissues.rds")
+  file_name <- paste0(results_folder, "/variance_estimate_lm_all_tissues.rds")
   saveRDS(object = df_estimates, file = file_name)
   
 }
@@ -3653,7 +3651,7 @@ plot_estimate_variance_across_tissues <- function() {
   #   mutate(q = p.adjust(pval, method = "fdr")) %>%
   #   ungroup()
   ## 1. Load the estimate variance across tissues
-  df_estimate <- readRDS(file = paste0(getwd(), "/results/_paper/results/variance_estimate_lm_all_tissues.rds")) %>%
+  df_estimate <- readRDS(file = paste0(results_folder, "/variance_estimate_lm_all_tissues.rds")) %>%
     group_by(type) %>%
     mutate(q = p.adjust(pval, method = "fdr")) %>%
     ungroup()# %>%
@@ -3775,7 +3773,7 @@ plot_estimate_variance_across_tissues <- function() {
                                                   "PhastCons20 5'ss",
                                                   "PhastCons20 3'ss" ) %>% rev() )
   ## PLOT
-  plotTissuesMSRDonor <- ggplot(data = MSR_Donor_tidy %>%
+  plotTissues5ssLM <- ggplot(data = MSR_Donor_tidy %>%
                                   mutate(feature = feature ), 
                                 aes(tissue, feature, fill = feature)) + 
     geom_boxplot(fill = "#35B779FF") +
@@ -3795,9 +3793,8 @@ plot_estimate_variance_across_tissues <- function() {
     geom_hline(yintercept = 0,linetype='dotted')
   
   
-  plotTissuesMSRDonor
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel5a")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 57, units = "mm", dpi = 300)
+  plotTissues5ssLM
+  file_name <- paste0(figures_folder, "/panel5a")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 57, units = "mm", dpi = 300)
   
   
@@ -3821,12 +3818,20 @@ plot_estimate_variance_across_tissues <- function() {
   
   
   plotTissues3ssLM
-  file_name <- paste0(getwd(), "/results/_paper/figures/panel5b")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 57, units = "mm", dpi = 300)
+  file_name <- paste0(figures_folder, "/panel5b")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 57, units = "mm", dpi = 300)
   
   
 
+  ggpubr::ggarrange(plotTissues5ssLM,
+                    plotTissues3ssLM,
+                    nrow = 2,
+                    ncol = 1,
+                    labels = c("a", "b"),
+                    common.legend = T)#,
+  
+  file_name <- paste0(figures_folder, "/panel5")
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 57, units = "mm", dpi = 300)
   
   #######################################
   ## TISSUES WITH THE MOST EXTREME CONSERVATION
@@ -4009,17 +4014,18 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
               paste0(cluster_id2, "_", project_id2)) #c("Skin - Sun Exposed (Lower leg)", "Skin - Not Sun Exposed (Suprapubic)")
   
   
-  if ( !file.exists(paste0(getwd(), "/results/_paper/results/somatic_mutations_subsampled_", 
+  if ( !file.exists(paste0(results_folder, "/somatic_mutations_subsampled_", 
                            project_id1, "_", project_id2, ".rds")) ) {
     
     database_introns <- map_df(tables, function(table) {
       
       # table <- tables[1]
-      query <- paste0("SELECT DISTINCT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id FROM '", 
-                      table, "_nevermisspliced'")
+      query <- paste0("SELECT DISTINCT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id 
+                      FROM '", table, "_nevermisspliced'")
       df_introns <- dbGetQuery(con, query) %>% as_tibble()
-      query <- paste0("SELECT DISTINCT ref_junID, MSR_D,  MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id FROM '", 
-                      table, "_misspliced'")
+      
+      query <- paste0("SELECT DISTINCT ref_junID, MSR_D,  MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id 
+                      FROM '", table, "_misspliced'")
       df_introns <- rbind(df_introns, dbGetQuery(con, query) %>% as_tibble())
       
       query <- paste0("SELECT DISTINCT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
@@ -4071,7 +4077,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
       ungroup()  
     
     saveRDS(object = df_database_introns_tidy,
-            file = paste0(getwd(), "/results/_paper/results/introns_", project_id1, "_", project_id2, ".rds"))
+            file = paste0(results_folder, "/introns_", project_id1, "_", project_id2, ".rds"))
     
     ###########################
     ## SUBSAMPLING
@@ -4094,6 +4100,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     
     
     print(paste0(Sys.time(), " - subsampling..."))
+    
     ## SUBSAMPLE BY MEAN COVERAGE
     ## Subsampling introns to control by similarity in mean read coverage
     m.out <- MatchIt::matchit(tissue ~ mean_coverage, 
@@ -4106,13 +4113,13 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(tissue)
     
     saveRDS(object = subsample,
-            file = paste0(getwd(), "/results/_paper/results/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
+            file = paste0(results_folder, "/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
     
     print(paste0(Sys.time(), " - subsampling finished!"))
   } else {
     
-    df_database_introns_tidy <- readRDS(file = paste0(getwd(), "/results/_paper/results/introns_", project_id1, "_", project_id2, ".rds"))
-    subsample <- readRDS(paste0(getwd(), "/results/_paper/results/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
+    df_database_introns_tidy <- readRDS(file = paste0(results_folder, "/introns_", project_id1, "_", project_id2, ".rds"))
+    subsample <- readRDS(paste0(results_folder, "/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
     
   }
   
@@ -4157,8 +4164,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                     labels = c("a", "b"),
                     common.legend = T)
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/", project_id1, "_", project_id2, "_somatic_mutations_coverage")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  file_name <- paste0(figures_folder, "/", project_id1, "_", project_id2, "_somatic_mutations_coverage")
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   ################################
@@ -4264,9 +4270,8 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                     #labels = c("a", "d"),
                     common.legend = T)
   
-  file_name <- paste0(getwd(), "/results/_paper/figures/", project_id1, "_", project_id2, "_somatic_mutations_MSR")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+  file_name <- paste0(figures_folder, "/", project_id1, "_", project_id2, "_somatic_mutations_MSR")
+  ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 90, units = "mm", dpi = 300)
   
   ####################################
   ## STATS
@@ -4284,7 +4289,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     ## splicing noise at the donor is more frequent in introns from  vs "Skin - Sun Exposed (Lower leg)" 
     wilcox.test(x = df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_D") %>% pull(MSR),
                 y = df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_D") %>% pull(MSR),
-                #alternative = "greater",
+                alternative = "greater",
                 paired = T,
                 correct = T)
     rstatix::wilcox_effsize(data = df_coverage %>% 
@@ -4294,10 +4299,12 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                             paired = T)
     
     
+    
+    ## splicing noise at the acceptor 
+    
     df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_A") %>% pull(MSR) %>% summary
     df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_A") %>% pull(MSR) %>% summary
     
-    ## splicing noise at the acceptor 
     wilcox.test(x = df_coverage %>% filter(tissue == paste0(cluster_id1, "_", project_id1), MSR_type == "MSR_A") %>% pull(MSR),
                 y = df_coverage %>% filter(tissue == paste0(cluster_id2, "_", project_id2), MSR_type == "MSR_A") %>% pull(MSR),
                 alternative = "greater",
@@ -4310,162 +4317,9 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                             paired = T)
     
     
-    
-    # ####################################
-    # ## LM
-    # ####################################
-    # 
-    # df_coverage %>%
-    #   inner_join(y = skin_introns %>%
-    #                dplyr::select(ref_junID,
-    #                              gene_id, ref_length, ref_ss5score, ref_ss3score,
-    #                              ref_cons5score, ref_cons3score, ref_CDTS5score,
-    #                              ref_CDTS3score,
-    #                              protein_coding, n_transcripts, gene_width, gene_name),
-    #              by = "ref_junID")
-    # 
-    # 
-    # 
-    # #########################
-    # ## TIDY DATA
-    # #########################
-    # 
-    # idb <- introns %>%
-    #   as.data.frame() %>%
-    #   dplyr::distinct(ref_junID, .keep_all = T) %>%
-    #   dplyr::rename(intron_length = ref_length,
-    #                 intron_5ss_score = ref_ss5score,
-    #                 intron_3ss_score = ref_ss3score,
-    #                 gene_length = gene_width,
-    #                 gene_tpm = gene_tpm,
-    #                 gene_num_transcripts = n_transcripts,
-    #                 CDTS_5ss = ref_CDTS5score,
-    #                 CDTS_3ss = ref_CDTS3score,
-    #                 protein_coding = protein_coding,
-    #                 mean_phastCons20way_5ss = ref_cons5score,
-    #                 mean_phastCons20way_3ss = ref_cons3score)
-    # 
-    # 
-    # #########################
-    # ## LINEAR MODELS
-    # #########################
-    # 
-    # 
-    # fit_donor <- lm(MSR_D ~ 
-    #                   intron_length +
-    #                   intron_5ss_score + 
-    #                   intron_3ss_score +
-    #                   gene_length +
-    #                   gene_tpm +
-    #                   gene_num_transcripts +
-    #                   protein_coding +
-    #                   CDTS_5ss +
-    #                   CDTS_3ss +
-    #                   mean_phastCons20way_5ss +
-    #                   mean_phastCons20way_3ss, 
-    #                 data = idb)
-    # 
-    # 
-    # # fit_donor$coefficients[names(fit_donor$coefficients)[summary(fit_donor)$coefficients[,4] < 0.05]]  
-    # 
-    # fit_acceptor <- lm(MSR_A ~ 
-    #                      intron_length + 
-    #                      intron_5ss_score + 
-    #                      intron_3ss_score +
-    #                      gene_length +
-    #                      gene_tpm +
-    #                      gene_num_transcripts +
-    #                      protein_coding +
-    #                      CDTS_5ss +
-    #                      CDTS_3ss +
-    #                      mean_phastCons20way_5ss +
-    #                      mean_phastCons20way_3ss, 
-    #                    data = idb)
-    # fit_acceptor %>% summary()
-    # 
-    # model_names <- c("MSR_Donor", "MSR_Acceptor")
-    # 
-    # 
-    # coef_names <- c("Intron Length" = "intron_length",
-    #                 "Intron 5'ss MES score" = "intron_5ss_score",
-    #                 "Intron 3'ss MES score" = "intron_3ss_score", 
-    #                 #"Inter. 5'ss & 3'ss MES score" = "intron_5ss_score:intron_3ss_score", 
-    #                 #"Intron Type u2" = "u2_intronTRUE",
-    #                 #"Intron ClinVar mutation" = "clinvarTRUE",
-    #                 "Gene Length" = "gene_length",
-    #                 "Gene TPM" = "gene_tpm",
-    #                 "Gene num. transcripts" = "gene_num_transcripts",
-    #                 "CDTS 5'ss" = "CDTS_5ss",
-    #                 "CDTS 3'ss" = "CDTS_3ss",
-    #                 "Cons 5'ss" = "mean_phastCons20way_5ss",
-    #                 "Cons 3'ss" = "mean_phastCons20way_3ss",
-    #                 "Protein coding" = "protein_coding")
-    # 
-    # plotLM <- jtools::plot_summs(fit_donor, 
-    #                              fit_acceptor,
-    #                              #scale = TRUE, 
-    #                              #robust = T,
-    #                              #n.sd = 2,
-    #                              #pvals = TRUE,
-    #                              legend.title = "",
-    #                              #plot.distributions = TRUE,
-    #                              ci_level = 0.95,
-    #                              coefs = coef_names,
-    #                              colors = c("#35B779FF","#440154FF"),
-    #                              model.names = model_names,
-    #                              plot.distributions = T,
-    #                              rescale.distributions = T,
-    #                              
-    #                              point.shape = T
-    # ) + 
-    #   theme_minimal() + 
-    #   theme(axis.line = element_line(colour = "black"), 
-    #         axis.text.x = element_text(colour = "black", size = "12"),
-    #         axis.text.y = element_text(colour = "black", size = "12"),
-    #         axis.title = element_text(colour = "black", size = "12"),
-    #         legend.text = element_text(colour = "black", size = "12"),
-    #         legend.title = element_text(colour = "black", size = "12"),
-    #         legend.position = "top",
-    #         panel.grid.major.x = element_blank(),
-    #         panel.grid.major.y = element_blank(),
-    #         axis.ticks = element_line(colour = "black", size = 2)) +  
-    #   ylab("Covariates") +
-    #   geom_hline(yintercept = seq(from = 0,
-    #                               to = length((fit_donor$coefficients %>% names)[-1]) + .5,
-    #                               by = 1)) +
-    #   guides(colour = guide_legend(#title = NULL,
-    #     ncol = 2, 
-    #     nrow = 1))     +
-    #   scale_x_continuous(breaks = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025),
-    #                      labels = c(-0.01,-0.0075,-0.005,-0.0025, 0, 0.0025))
-    # 
-    # plotLM 
-    # plotLM +
-    #   annotate("text",
-    #            y = c(1.65, 2.65, 3.65, 4.65, 5.65, 6.65, 7.65, 8.65, 9.65, 10.65, 11.65),
-    #            x = -0.0025, 
-    #            label = c( paste("pval",(summary(fit_donor)$coefficients[,4] %>% 
-    #                                       as_tibble() %>%
-    #                                       mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
-    #            family = "", 
-    #            fontface = 1, 
-    #            size=3,
-    #            colour = c("#35B779FF") )  +
-    #   annotate("text",
-    #            y = c(1.25, 2.25, 3.25, 4.25, 5.25, 6.25, 7.25, 8.25, 9.25, 10.25, 11.25),
-    #            x = -0.0025, 
-    #            label = c( paste("pval",(summary(fit_acceptor)$coefficients[,4] %>% 
-    #                                       as_tibble() %>%
-    #                                       mutate(value = format(value, format = "e", digits = 2)))$value[-1] %>% rev(), sep = ":")),
-    #            family = "", 
-    #            fontface = 1, 
-    #            size=3,
-    #            colour = c("#440154FF") )
-    # 
-    # file_name <- paste0(getwd(), "/results/_paper/figures/lm_FTCX")
-    # ggplot2::ggsave(paste0(file_name, ".svg"), width = 183, height = 183, units = "mm", dpi = 300)
-    # ggplot2::ggsave(paste0(file_name, ".png"), width = 183, height = 183, units = "mm", dpi = 300)
+
   }
+  
 }
 
 plot_effect_size_data <- function() {
@@ -4760,14 +4614,34 @@ plot_effect_size_data <- function() {
 plot_data_AQR_U2AF2 <- function() {
   
   ## All plots only contain common introns across RBP projects 
-  
+  source(paste0(getwd(), "/code/helper_functions.R"))
   overwrite = T
   num_cores = 10 
   global_common_introns_path = paste0(getwd(), "/code/variables/global_common_introns_filtered.rds")
   global_common_novel_path = paste0(getwd(), "/code/variables/global_common_novel_filtered.rds")
   
   RBPs_path <- path.expand("/home/grocamora/RytenLab-Research/03-ENCODE_RBP_Automatization/RBPs")
+  ## READ THE METADATA
+  encode_metadata <- readr::read_delim("/home/grocamora/Core_Projects/ENCODE_Metadata_Extraction/Metadata_Results/metadata_combined.tsv", show_col_types = F)
+  encode_metadata %>% head()
   
+  #encode_metadata[1185:1195,]
+  
+  
+  ## LOAD RBP
+  target_RBPs <- encode_metadata %>%
+    dplyr::filter(if_any(c(Splicing_regulation, Spliceosome, Exon_junction_complex, NMD), ~ . != 0)) %>%
+    dplyr::pull(target_gene) %>%
+    unique() %>%
+    sort
+  
+  
+  metadata_RBPs <- encode_metadata %>% 
+    filter(target_gene %in% target_RBPs) %>%
+    pivot_longer(c("Splicing_regulation", "Spliceosome", "Exon_junction_complex", "NMD"), names_to = "Category") %>%
+    filter(value == 1) %>%
+    dplyr::select(-value) %>%
+    distinct(target_gene, sample_id, .keep_all = T)
   
   ################################################
   ## LOAD COMMON INTRONS
@@ -5111,6 +4985,369 @@ plot_data_AQR_U2AF2 <- function() {
   
 }
 
+plot_NMD_scatter_plot <- function () {
+  
+  overwrite = T
+  num_cores = 10 
+  source(paste0(getwd(), "/database_SQL_generation.R"))
+  source(paste0(getwd(), "/database_SQL_helper.R"))
+  source(paste0(getwd(), "/code/helper_functions.R"))
+  
+  global_common_introns_path = paste0(getwd(), "/code/variables/global_common_introns_filtered_w_scores.rds")
+  global_common_novel_path = paste0(getwd(), "/code/variables/global_common_novel_filtered_w_scores.rds")
+  
+  RBPs_path <- path.expand("/home/grocamora/Core_Projects/ENCODE_Splicing_Analysis/RBPs/")
+  
+  ## READ THE METADATA
+  encode_metadata <- readr::read_delim("/home/grocamora/Core_Projects/ENCODE_Metadata_Extraction/Metadata_Results/metadata_combined.tsv", 
+                                       show_col_types = F)
+  encode_metadata %>% head()
+  
+  ## LOAD RBP
+  target_RBPs <- encode_metadata %>%
+    dplyr::filter(if_any(c(Splicing_regulation, Spliceosome, Exon_junction_complex, NMD), ~ . != 0)) %>%
+    dplyr::pull(target_gene) %>%
+    unique() %>%
+    sort
+  
+  metadata_RBPs <- encode_metadata %>% 
+    filter(target_gene %in% target_RBPs) %>%
+    pivot_longer(c("Splicing_regulation", "Spliceosome", "Exon_junction_complex", "NMD"), names_to = "Category") %>%
+    filter(value == 1) %>%
+    dplyr::select(-value) %>%
+    distinct(target_gene, sample_id, .keep_all = T)
+  
+  required_clusters <- metadata_RBPs %>% pull(experiment_type) %>% unique
+  metadata_RBPs$target_gene %>% unique %>% sort
+  
+  ################################################
+  ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
+  ################################################
+  
+  # Load global common introns
+  if ( ! file.exists(global_common_introns_path) ){
+    
+    print(paste0("ERROR! Dependency file '", global_common_introns_path, "' does not exist!"))
+    global_common_introns <- generateCommonIntronsParallel(studied_RBPs = target_RBPs,
+                                                           RBP_path = RBPs_path,
+                                                           metadata = metadata_RBPs,
+                                                           required_clusters = required_clusters,
+                                                           file_output = global_common_introns_path,
+                                                           overwrite = T,
+                                                           num_cores = num_cores)
+    
+    ## ADD CONSERVATION AND CDTS FOR THE INTRONS
+    
+    message(Sys.time(), " - adding CDTS and Conservation scores...")
+    global_common_introns_scores <- add_cdts_cons_scores(db_introns = global_common_introns %>% # head() %>%
+                                                           dplyr::select(ref_junID, seqnames, start, end, strand) %>%
+                                                           distinct(ref_junID, .keep_all = T) %>%
+                                                           as_tibble()) %>% 
+      as_tibble() %>% 
+      drop_na() %>%
+      dplyr::rename(cons_ss5score = phastCons20way_5ss_mean, 
+                    cons_ss3score = phastCons20way_3ss_mean)
+    
+    global_common_introns_scores <- global_common_introns %>%
+      left_join(y = global_common_introns_scores %>% 
+                  dplyr::select(ref_junID, cons_ss5score, cons_ss3score),
+                by = "ref_junID")
+    
+    saveRDS(object = global_common_introns_scores,file = global_common_introns_path)
+    
+  } else {
+    
+    global_common_introns_scores <- readRDS(global_common_introns_path) %>% drop_na()
+  }
+  
+  
+  # Load global common novel
+  if( !file.exists(global_common_novel_path) ){
+    
+    
+    
+    print(paste0("ERROR! Dependency file 'novel junctions' does not exist!"))
+    common_ref_coordinates <- global_common_introns_scores %>% pull(ref_coordinates) %>% unique
+    global_common_novel <- generateCommonNovelParallel(studied_RBPs = target_RBPs, 
+                                                       common_ref_coordinates = common_ref_coordinates, 
+                                                       RBP_path = RBPs_path, 
+                                                       metadata = metadata_RBPs, 
+                                                       required_clusters = required_clusters, 
+                                                       file_output = global_common_novel_path, 
+                                                       overwrite = T, 
+                                                       num_cores)
+    
+    ## ADD CONSERVATION AND CDTS FOR THE NOVEL JUNCTIONS
+    message(Sys.time(), " - adding CDTS and Conservation scores...")
+    global_common_novel_scores <- add_cdts_cons_scores(db_introns = global_common_novel %>% #                                                      head %>%
+                                                          dplyr::select(novel_coordinates, seqnames, start, end, strand) %>%
+                                                          distinct(novel_coordinates, .keep_all = T) %>%
+                                                          as_tibble()) %>% 
+      as_tibble() %>% 
+      drop_na() %>%
+      dplyr::rename(cons_ss5score = phastCons20way_5ss_mean,
+                    cons_ss3score = phastCons20way_3ss_mean) 
+    
+    global_common_novel_scores <- global_common_novel %>%
+      left_join(y = global_common_novel_scores %>% 
+                  dplyr::select(novel_coordinates, cons_ss5score, cons_ss3score),
+                by = "novel_coordinates")
+    
+    saveRDS(object = global_common_novel_scores, file = global_common_novel_path)
+    
+  } else {
+    
+    global_common_novel_scores <- readRDS(global_common_novel_path)
+    
+  }
+  
+  # scales::show_col(colours = viridis::viridis_pal(option = "A")(n = 20))
+  # scales::show_col(colours = viridis::viridis_pal(option = "B")(n = 20))
+  # scales::show_col(colours = viridis::viridis_pal(option = "C")(n = 20))
+  # scales::show_col(colours = viridis::viridis_pal(option = "D")(n = 20))
+  # scales::show_col(colours = viridis::viridis_pal(option = "E")(n = 20))
+  # scales::show_col(colours = viridis::viridis_pal(option = "F")(n = 20))
+  
+  
+  
+  
+  
+  #################################################
+  ## PLOT COMBINED SCATTER PLOTS FOR "UPF1" 
+  #################################################
+  
+  target_genes = c("UPF1","UPF2")
+  global_common_novel_scores %>% dplyr::count(target_gene, cluster) %>% as.data.frame()
+   
+  NMD_novel <- global_common_novel_scores %>% filter(target_gene %in% target_genes)
+  NMD_novel %>% dplyr::count(target_gene, cluster)
+   
+  ## 1. COMBINED SCATTER PLOT 5'
+
+  plot_5ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[1],
+                              novel_type == "novel_donor"), 
+                     aes(x=cons_ss5score, y=mes_ss3score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 5'ss") +
+    xlab("Conservation (PhastCons20) 5'ss") +
+    ylim(c(-40, 20))
+  
+  
+  ## 2. COMBINED SCATTER PLOT 3'
+  
+  plot_3ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[1],
+                              novel_type == "novel_acceptor"), 
+                     aes(x=cons_ss3score, y=mes_ss3score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 3'ss") +
+    xlab("Conservation (PhastCons20) 3'ss")  +
+    ylim(c(-40, 20)) 
+  
+  
+  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
+                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
+                    labels = c("A", "B"))
+  
+  ggsave(file = paste0(getwd(), "/code/images/UPF1_knockdown_scatter_plot.png"), 
+         width = 180, height = 90, dpi = 300, units = "mm")
+  
+  #################################################
+  ## PLOT COMBINED SCATTER PLOTS FOR "UPF2"
+  #################################################
+  
+  ## 1. COMBINED SCATTER PLOT 5'
+  
+  plot_5ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[2],
+                              novel_type == "novel_donor"), 
+                     aes(x=cons_ss5score, y=mes_ss5score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 5'ss") +
+    xlab("Conservation (PhastCons20) 5'ss") +
+    ylim(c(-40, 20))
+  
+  ## 2. COMBINED SCATTER PLOT 3'
+  
+  plot_3ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[2],
+                              novel_type == "novel_acceptor"), 
+                     aes(x=cons_ss3score, y=mes_ss3score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 3'ss") +
+    xlab("Conservation (PhastCons20) 3'ss") +
+    ylim(c(-40, 20))
+  
+  
+  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
+                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
+                    labels = c("A", "B"))
+  
+  ggsave(file = paste0(getwd(), "/results/_paper/figures/UPF2_knockdown_scatter_plot.png"), 
+         width = 180, height = 90, dpi = 300, units = "mm")
+  
+  
+  ##########################################
+  ## WILCOXON TESTS
+  ##########################################
+  
+  ## Donor - MES
+  wilcox.test(x = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_donor",
+                       cluster == "case") %>%
+                pull(mes_ss5score),
+              y = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_donor",
+                       cluster == "control") %>%
+                pull(mes_ss5score),
+              alternative = "less")
+  
+  ## Donor - conservation
+  wilcox.test(x = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_donor",
+                       cluster == "case") %>%
+                pull(cons_ss5score),
+              y = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_donor",
+                       cluster == "control") %>%
+                pull(cons_ss5score),
+              alternative = "less")
+  
+  ## Acceptor - MES
+  wilcox.test(x = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_acceptor",
+                       cluster == "case") %>%
+                pull(mes_ss3score),
+              y = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_acceptor",
+                       cluster == "control") %>%
+                pull(mes_ss3score),
+              alternative = "less")
+  
+  ## Acceptor - Conservation
+  wilcox.test(x = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_acceptor",
+                       cluster == "case") %>%
+                pull(cons_ss3score),
+              y = NMD_novel %>%
+                filter(target_gene == target_genes[2],
+                       novel_type == "novel_acceptor",
+                       cluster == "control") %>%
+                pull(cons_ss3score),
+              alternative = "less")
+  
+  
+  
+  #################################################
+  ## PLOT COMBINED SCATTER PLOTS FOR "UPF1" 
+  #################################################
+  
+  target_genes = c("UPF1","UPF2")
+  
+  NMD_novel <- global_common_introns_scores %>% filter(target_gene %in% target_genes)
+  NMD_novel %>% dplyr::count(target_gene, cluster)
+  
+  
+  ## 1. COMBINED SCATTER PLOT 5'
+  
+  
+  plot_5ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[1]), 
+                     aes(x=ss5score, y=novel_ss5score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 5'ss") +
+    xlab("Conservation (PhastCons20) 5'ss") +
+    ylim(c(-40, 20))
+  
+  
+  ## 2. COMBINED SCATTER PLOT 3'
+  
+  plot_3ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[1],
+                              novel_type == "novel_acceptor"), 
+                     aes(x=ss3score, y=novel_ss3score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 3'ss") +
+    xlab("Conservation (PhastCons20) 3'ss")  +
+    ylim(c(-40, 20)) 
+  
+  
+  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
+                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
+                    labels = c("A", "B"))
+  
+  ggsave(file = paste0(getwd(), "/code/images/UPF1_knockdown_scatter_plot.png"), 
+         width = 180, height = 90, dpi = 300, units = "mm")
+  
+  #################################################
+  ## PLOT COMBINED SCATTER PLOTS FOR "UPF2"
+  #################################################
+  
+  ## 1. COMBINED SCATTER PLOT 5'
+  
+  plot_5ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[2],
+                              novel_type == "novel_donor"), 
+                     aes(x=ss5score, y=novel_ss5score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 5'ss") +
+    xlab("Conservation (PhastCons20) 5'ss") +
+    ylim(c(-40, 20))
+  
+  ## 2. COMBINED SCATTER PLOT 3'
+  
+  plot_3ss <- ggplot(NMD_novel %>%
+                       filter(target_gene == target_genes[2],
+                              novel_type == "novel_acceptor"), 
+                     aes(x=ss3score, y=novel_ss3score, colour=cluster)) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    ylab("MaxEntScan 3'ss") +
+    xlab("Conservation (PhastCons20) 3'ss") +
+    ylim(c(-40, 20))
+  
+  
+  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
+                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
+                    labels = c("A", "B"))
+  
+  ggsave(file = paste0(getwd(), "/results/_paper/figures/UPF2_knockdown_scatter_plot.png"), 
+         width = 180, height = 90, dpi = 300, units = "mm")
+
+  }
+
+
 
 
 
@@ -5219,10 +5456,7 @@ prepare_gtex_samples <- function() {
 ## CALLS
 ##################################
 
-plot_effect_size_data()
+#plot_NMD_scatter_plot()
 
-# compare_tissues_somatic_mutations(project_id1 = "BRAIN",
-#                                   cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)",
-#                                   project_id2 = "BLOOD",
-#                                   cluster_id2 = "Whole Blood")
+compare_tissues_somatic_mutations()
   
