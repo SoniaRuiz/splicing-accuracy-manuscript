@@ -12,25 +12,22 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
                                 project.name,
                                 all.clusters = NULL,
                                 database.folder,
+                                levelqc1.folder,
                                 results.folder) {
   
   
   message("Loading split reads QC level 1 ...")
   
   ## Load base recount3 object containing the split reads passing the QC criteria
-  if (str_detect(database.folder, pattern = "age")) {
-    all_split_reads_details_qc_level1 <- readRDS(file = paste0(here::here(), "/database/",project.name,"/105/all_split_reads_qc_level1.rds")) %>%
+  all_split_reads_details_qc_level1 <- readRDS(file = paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds")) %>%
       as_tibble()
-  } else {
-    all_split_reads_details_qc_level1 <- readRDS(file = paste0(database.folder, "/all_split_reads_qc_level1.rds")) %>%
-      as_tibble()
-  }
+  
   all_split_reads_details_qc_level1 %>% nrow()
   
   ############################################
   ## Discard all junctions from 
   ## 'EXCLUDE ME' samples, tissues with < 70 samples
-  ## samples RIN < 6, Brain Cortex and Cerebellum
+  ## samples RIN < 6
   ############################################
   
   message("Loading split reads QC level 2 ...")
@@ -307,7 +304,6 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
     inner_join(y = all_split_reads_details_qc_level2 %>% 
                  dplyr::select(junID, seqnames, start, end, width, strand, gene_id, tx_id_junction),
                by = c("ref_junID" = "junID"))
-  
   saveRDS(object = df_never_misspliced_tidy,
           file = paste0(database.folder, "/all_jxn_never_misspliced.rds"))
   

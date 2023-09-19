@@ -19,13 +19,14 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
   
   df_never <- map_df(recount3.project.IDs, function(project_id) {
     
-    # project_id <- recount3.project.IDs[1]
+    # project_id <- recount3.project.IDs[10]
     
-    #print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
+    print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     base_folder <- paste0(results.folder, "/", project_id)
     
-    if ( is.null(all.clusters) && file.exists(paste0(base_folder, "/base_data/", 
-                                                     project_id, "_samples_metadata.rds")) ) {
+    if ( is.null(all.clusters) && 
+         file.exists(paste0(base_folder, "/base_data/", project_id, "_samples_metadata.rds")) && 
+         file.exists(paste0(base_folder, "/base_data/", project_id, "_clusters_used.rds"))) {
       metadata.info <- readRDS(file = paste0(base_folder, "/base_data/", 
                                              project_id, "_samples_metadata.rds"))
       all.clusters <-  readRDS(file = paste0(base_folder, "/base_data/", 
@@ -33,23 +34,26 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
       
     } 
     
+    if ( !is.null(all.clusters) ) {
+      
+      map_df(all.clusters, function(cluster) { 
+        
+        # cluster <- all.clusters[1]
+        
+        print(paste0(Sys.time(), " --> ", cluster))
+        if ( file.exists(paste0(base_folder, "/junction_pairing/", cluster, 
+                                "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
+          df_introns_never <- readRDS(file = paste0(base_folder, "/junction_pairing/", cluster, 
+                                                    "/not-misspliced/",cluster, "_all_notmisspliced.rds")) %>% as_tibble()
+          return(data.frame(ref_junID = df_introns_never$value))
+        } else {
+          return(NULL)
+        }
+        
+      })
+    }
     
-    map_df(all.clusters, function(cluster) { 
-      
-      # cluster <- all.clusters[1]
-      
-      #print(paste0(Sys.time(), " --> ", cluster))
-      if ( file.exists(paste0(base_folder, "/junction_pairing/", cluster, 
-                              "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
-        df_introns_never <- readRDS(file = paste0(base_folder, "/junction_pairing/", cluster, 
-                                                  "/not-misspliced/", 
-                                                  cluster, "_all_notmisspliced.rds")) %>% as_tibble()
-        return(data.frame(ref_junID = df_introns_never$value))
-      } else {
-        return(NULL)
-      }
-      
-    })
+   
   })
   
   df_never %>%

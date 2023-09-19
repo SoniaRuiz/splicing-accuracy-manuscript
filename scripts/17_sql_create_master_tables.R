@@ -238,9 +238,9 @@ sql_create_master_tables <- function(database.path,
     dplyr::select(-donorSeqStart,
                   -donorSeqStop,
                   -AcceptorSeqStart,
-                  -AcceptorSeqStop,
-                  -donor_sequence,
-                  -acceptor_sequence)
+                  -AcceptorSeqStop) %>%
+    dplyr::rename(ref_donor_sequence = donor_sequence,
+                  ref_acceptor_sequence = acceptor_sequence)
   
   setwd(wd)
   
@@ -445,6 +445,8 @@ sql_create_master_tables <- function(database.path,
                   mean_CDTS5ss_100 DOUBLE NOT NULL, 
                   mean_CDTS3ss_100 DOUBLE NOT NULL, 
                   
+                  ref_donor_sequence TEXT NOT NULL,
+                  ref_acceptor_sequence TEXT NOT NULL,
 
                   u2_intron BOOL,
                   clinvar BOOL NOT NULL, 
@@ -527,9 +529,9 @@ sql_create_master_tables <- function(database.path,
     dplyr::select(-donorSeqStart,
                   -donorSeqStop,
                   -AcceptorSeqStart,
-                  -AcceptorSeqStop,
-                  -donor_sequence,
-                  -acceptor_sequence)
+                  -AcceptorSeqStop) %>%
+    dplyr::rename(novel_donor_sequence = donor_sequence,
+                  novel_acceptor_sequence = acceptor_sequence)
   
   setwd(wd)
   
@@ -593,11 +595,14 @@ sql_create_master_tables <- function(database.path,
   query <- paste0("CREATE TABLE IF NOT EXISTS 'novel'",
                   "(novel_junID NUMERIC NOT NULL,
                   ref_junID NUMERIC NOT NULL,
+
                   novel_coordinates TEXT NOT NULL, 
                   novel_mes5ss DOUBLE NOT NULL, 
                   novel_mes3ss DOUBLE NOT NULL,
-              
 
+                  novel_donor_sequence TEXT NOT NULL,
+                  novel_acceptor_sequence TEXT NOT NULL,
+              
                   novel_length INTEGER NOT NULL, 
                   novel_type TEXT NOT NULL, 
                   distance INTEGER NOT NULL,

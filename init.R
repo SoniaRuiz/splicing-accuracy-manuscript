@@ -38,7 +38,7 @@ gtf_versions <- c(105)
 
 ## This is the name of the project producing the database
 supportive_reads <- 1
-project_name <- paste0("splicing_",supportive_reads,"read")
+project_name <- paste0("splicing_", supportive_reads, "read")
 data_source <- "data_sources/gtex"
 
 ## Can be checked here: https://jhubiostatistics.shinyapps.io/recount3-study-explorer/
@@ -55,9 +55,6 @@ recount3_project_IDs <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",       
                            "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",        
                            "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",          
                            "STOMACH",         "THYROID" )
-
-
-
 
 
 #####################################
@@ -85,7 +82,6 @@ for (gtf_version in gtf_versions) {
   #                       levelqc1.folder = levelqc1_folder,
   #                        results.folder = results_folder)
    
-  
   # prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
   #                       project.name = project_name,
   #                       data.source = data_source,
@@ -104,53 +100,46 @@ for (gtf_version in gtf_versions) {
                    results.folder = results_folder,
                    supporting.reads = supportive_reads,
                    replace = T)
-
-
+  
   get_all_annotated_split_reads(recount3.project.IDs = recount3_project_IDs,
                                 database.folder = database_folder,
                                 results.folder = results_folder)
-
 
   get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
                            database.folder = database_folder,
                            results.folder = results_folder)
 
-  
   ## Use the projects passing the filtering criteria established across functions above
-  # recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
+  recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
+  
+  
+  tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
+                     project.name = project_name,
+                     database.folder = database_folder,
+                     levelqc1.folder = levelqc1_folder,
+                     results.folder = results_folder)
   
    
+  generate_transcript_biotype_percentage(recount3.project.IDs = recount3_project_IDs,
+                                         project.name = project_name,
+                                         gtf.version = gtf_version,
+                                         database.folder = database_folder,
+                                         results.folder = results_folder)
 
+  generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
+                        data.source = data_source,
+                        results.folder = results_folder)
 
+  database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
 
-  # generate_transcript_biotype_percentage(recount3.project.IDs = recount3_project_IDs,
-  #                                        project.name = project_name,
-  #                                        gtf.version = gtf_version,
-  #                                        database.folder = database_folder,
-  #                                        results.folder = results_folder)
-
-
-  # generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
-  #                       data.source = data_source,
-  #                       results.folder = results_folder)
-  
-  
-  # tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
-  #                    project.name = project_name,
-  #                    database.folder = database_folder,
-  #                    results.folder = results_folder)
-  # 
-  
-  # database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
-  # 
-  # sql_database_generation(database.path = database_path,
-  #                         recount3.project.IDs = recount3_project_IDs,
-  #                         project.name = project_name,
-  #                         gtf.version = gtf_version,
-  #                         remove.all = T,
-  #                         database.folder = database_folder,
-  #                         results.folder = results_folder,
-  #                         supportive.reads = supportive_reads)
+  sql_database_generation(database.path = database_path,
+                          recount3.project.IDs = recount3_project_IDs,
+                          project.name = project_name,
+                          gtf.version = gtf_version,
+                          remove.all = T,
+                          database.folder = database_folder,
+                          results.folder = results_folder,
+                          supportive.reads = supportive_reads)
   
   gc()
 }

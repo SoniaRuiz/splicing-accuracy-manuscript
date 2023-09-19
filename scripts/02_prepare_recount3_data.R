@@ -45,7 +45,6 @@ prepare_recount3_data <- function(recount3.project.IDs,
   message(all_split_reads_qc_level1 %>% nrow(), " initial number of split reads...")
   
   doParallel::registerDoParallel(num.cores)
-  
   foreach(i = seq(length(recount3.project.IDs))) %dopar%{
     
     project_id <- recount3.project.IDs[i]
@@ -61,6 +60,15 @@ prepare_recount3_data <- function(recount3.project.IDs,
     dir.create(file.path(local_folder_results), recursive = TRUE, showWarnings = T)
     message("Getting junction data from recount3 - '", project_id, "' ...")
     
+    
+    rse_jxn <- recount3::create_rse_manual(
+      project = project_id,
+      project_home = data.source,
+      organism = "human",
+      annotation = "gencode_v29",
+      type = "jxn"
+    )
+    
     #############################################################################
     
     ## THERE ARE OTHER RECOMMENDED WAYS OF DOWNLOADING DATA FROM RECOUNT3
@@ -70,91 +78,95 @@ prepare_recount3_data <- function(recount3.project.IDs,
     
     #############################################################################
     
-    bfc <- recount3::recount3_cache()
-    recount3_url <- getOption("recount3_url", "http://duffel.rail.bio/recount3")
-    verbose <- getOption("recount3_verbose", TRUE)
+    # bfc <- recount3::recount3_cache()
+    # recount3_url <- getOption("recount3_url", "http://duffel.rail.bio/recount3")
+    # verbose <- getOption("recount3_verbose", TRUE)
+    # 
+    # message(Sys.time()," loading metadata info.")
+    # metadata.info <- recount3::read_metadata(recount3::file_retrieve(
+    #   url = recount3::locate_url(
+    #     project = project_id,
+    #     project_home = data.source,
+    #     organism = "human",
+    #     annotation = "gencode_v29",
+    #     type = "metadata",
+    #     recount3_url = recount3_url
+    #   ),
+    #   bfc = bfc,
+    #   verbose = verbose
+    # ))
+    # 
+    # jxn_files <- recount3::locate_url(
+    #   project = project_id,
+    #   project_home = data.source,
+    #   organism = "human",
+    #   annotation = "gencode_v29",
+    #   #jxn_format = c("UNIQUE"),
+    #   type = "jxn",
+    #   recount3_url = recount3_url
+    # )
+    # 
+    # feature_info <- utils::read.delim(recount3::file_retrieve(
+    #   url = jxn_files[grep("\\.RR\\.gz$", jxn_files)],
+    #   bfc = bfc,
+    #   verbose = verbose
+    # ))
+    # feature_info$strand[feature_info$strand == "?"] <- "*"
+    # feature_info <- GenomicRanges::GRanges(feature_info)
+    # feature_info %>% length()
+    # 
+    # # feature_info_prev <- readRDS(file = paste0(local_folder_results, "/all_split_reads_raw.rds")) %>% pull(junID) 
+    # # gc()
+    # 
+    # if (verbose) {
+    #   message(
+    #     Sys.time(),
+    #     " matching exon-exon junction counts with the metadata."
+    #   )
+    # }
+    # 
+    # ## The samples in the MM jxn table are not in the same order as the metadata!
+    # jxn_rail <- read.delim(recount3::file_retrieve(
+    #   url = jxn_files[grep("\\.ID\\.gz$", jxn_files)],
+    #   bfc = bfc,
+    #   verbose = verbose
+    # ))
+    # m <- match(metadata.info$rail_id, jxn_rail$rail_id)
+    # stopifnot(
+    #   "Metadata rail_id and exon-exon junctions rail_id are not matching." =
+    #     !all(is.na(m))
+    # )
+    # 
+    # 
+    # 
+    # #################################
+    # ## GET SPLIT READS AND COUNTS  
+    # #################################
+    # 
+    # message(Sys.time()," loading count matrix.")
+    # counts <- Matrix::readMM(recount3::file_retrieve(
+    #   url = jxn_files[grep("\\.MM\\.gz$", jxn_files)],
+    #   bfc = bfc,
+    #   verbose = verbose
+    # ))
+    # counts %>% nrow()
+    # 
+    # message(Sys.time()," ordering count matrix.")
+    # counts <- counts[, m, drop = FALSE]
+    # colnames(counts) <- metadata.info$external_id[m]
+    # rownames(counts) <- feature_info %>% as.character()
+    # colnames(counts) %>% length()
+    # 
+    # ## Make names consistent
+    # names(feature_info) <- rownames(counts)
+    # rownames(metadata.info) <- colnames(counts)
+    # 
     
-    message(Sys.time()," loading metadata info.")
-    metadata.info <- recount3::read_metadata(recount3::file_retrieve(
-      url = recount3::locate_url(
-        project = project_id,
-        project_home = data.source,
-        organism = "human",
-        annotation = "gencode_v29",
-        type = "metadata",
-        recount3_url = recount3_url
-      ),
-      bfc = bfc,
-      verbose = verbose
-    ))
     
-    jxn_files <- recount3::locate_url(
-      project = project_id,
-      project_home = data.source,
-      organism = "human",
-      annotation = "gencode_v29",
-      #jxn_format = c("UNIQUE"),
-      type = "jxn",
-      recount3_url = recount3_url
-    )
-    
-    feature_info <- utils::read.delim(recount3::file_retrieve(
-      url = jxn_files[grep("\\.RR\\.gz$", jxn_files)],
-      bfc = bfc,
-      verbose = verbose
-    ))
-    feature_info$strand[feature_info$strand == "?"] <- "*"
-    feature_info <- GenomicRanges::GRanges(feature_info)
-    feature_info %>% length()
-    
-    # feature_info_prev <- readRDS(file = paste0(local_folder_results, "/all_split_reads_raw.rds")) %>% pull(junID) 
-    # gc()
-    
-    if (verbose) {
-      message(
-        Sys.time(),
-        " matching exon-exon junction counts with the metadata."
-      )
-    }
-    
-    ## The samples in the MM jxn table are not in the same order as the metadata!
-    jxn_rail <- read.delim(recount3::file_retrieve(
-      url = jxn_files[grep("\\.ID\\.gz$", jxn_files)],
-      bfc = bfc,
-      verbose = verbose
-    ))
-    m <- match(metadata.info$rail_id, jxn_rail$rail_id)
-    stopifnot(
-      "Metadata rail_id and exon-exon junctions rail_id are not matching." =
-        !all(is.na(m))
-    )
-    
-    
-    
-    #################################
-    ## GET SPLIT READS AND COUNTS  
-    #################################
-    
-    message(Sys.time()," loading count matrix.")
-    counts <- Matrix::readMM(recount3::file_retrieve(
-      url = jxn_files[grep("\\.MM\\.gz$", jxn_files)],
-      bfc = bfc,
-      verbose = verbose
-    ))
-    counts %>% nrow()
-    
-    message(Sys.time()," ordering count matrix.")
-    counts <- counts[, m, drop = FALSE]
-    colnames(counts) <- metadata.info$external_id[m]
-    rownames(counts) <- feature_info %>% as.character()
-    colnames(counts) %>% length()
-    
-    ## Make names consistent
-    names(feature_info) <- rownames(counts)
-    rownames(metadata.info) <- colnames(counts)
-    
+    metadata.info <- colData(rse_jxn)
     saveRDS(object = metadata.info, 
             file = paste0(local_folder_results, "/", project_id, "_samples_raw_metadata.rds"))
+    
     
     #################################
     ## GET SAMPLE CLUSTERS
@@ -163,7 +175,7 @@ prepare_recount3_data <- function(recount3.project.IDs,
     # metadata.info <- readRDS(file = paste0(folder_results, "/", project_id, "_samples_raw_metadata.rds"))
     metadata_tidy <- separate_clusters(project.metadata = metadata.info, data.source)
 
-    if (metadata_tidy %>% nrow() > 0) {
+    if ( metadata_tidy %>% nrow() > 0) {
       
       if (subsampling) {
         set.seed(12)
@@ -244,7 +256,7 @@ prepare_recount3_data <- function(recount3.project.IDs,
           message("Getting split read counts matrix for the current cluster...")
           
           ## Only samples passing the filtering criteria
-          local_counts <- counts[,(colnames(counts) %in% cluster_samples)]
+          local_counts <- assay(rse_jxn, "counts")[,(colnames(assay(rse_jxn, "counts")) %in% cluster_samples)]
           local_counts %>% nrow()
           
           ## Only split reads passing the LEVEL1 filtering criteria
@@ -337,10 +349,8 @@ prepare_recount3_data <- function(recount3.project.IDs,
     
     
     rm(metadata.info)
-    rm(jxn_files)
-    rm(feature_info)
-    rm(jxn_rail)
-    rm(counts)
+    rm(metadata_tidy)
+    rm(rse_jxn)
     gc()
   }
   
