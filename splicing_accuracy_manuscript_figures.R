@@ -20,7 +20,8 @@ library(ggridges)
 
 setwd(normalizePath("."))
 gtf_version <- 105
-main_project <- "splicing_1read"
+supporting_reads <- 2
+main_project <- paste0("splicing_",supporting_reads,"read")
 
 database_path <- paste0(getwd(), "/database/", main_project, "/", gtf_version, "/", 
                           "/", main_project, ".sqlite")
@@ -125,9 +126,9 @@ get_database_stats <- function() {
   db_novel <- dbGetQuery(con, query) 
   db_novel %>% head
   db_novel %>% nrow() 
-  
   db_novel %>% 
     dplyr::count(novel_type)
+  
   
   (db_novel %>% nrow()) / (db_introns %>% filter(misspliced==1) %>% nrow())
   
@@ -3050,8 +3051,7 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                   mean_phastCons20way_5ss = mean_phastCons20way5ss_35,
                   mean_phastCons20way_3ss = mean_phastCons20way3ss_35,
                   MSR_D,
-                  MSR_A) %>%
-    drop_na()
+                  MSR_A) 
   
   
   idb %>% nrow()

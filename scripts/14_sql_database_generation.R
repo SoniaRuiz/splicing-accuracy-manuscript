@@ -15,8 +15,6 @@
 #' @examples
 sql_database_generation <- function(database.path,
                                     recount3.project.IDs, 
-                                    project.name,
-                                    gtf.version,
                                     remove.all = NULL,
                                     database.folder,
                                     results.folder,
@@ -35,11 +33,11 @@ sql_database_generation <- function(database.path,
     sql_remove_tables(database.path = database.path, all = remove.all)
   }
   
+  tables <- DBI::dbListTables(conn = con)
+  tables %>% print()
   
   if ( !any(tables == 'metadata') ) {
     sql_create_master_table_metadata(database.path = database.path,
-                                     project.name = project.name,
-                                     gtf.version = gtf.version,
                                      recount3.project.IDs = recount3.project.IDs,
                                      results.folder = results.folder)
   }
@@ -47,8 +45,6 @@ sql_database_generation <- function(database.path,
   
   if ( !any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
     sql_create_master_tables(database.path = database.path,
-                             project.name = project.name,
-                             gtf.version = gtf.version,
                              database.folder,
                              results.folder)
   }
@@ -60,9 +56,7 @@ sql_database_generation <- function(database.path,
   print(paste0(Sys.time(), " - creating cluster tables ..."))
   
   sql_create_child_tables(database.path = database.path,
-                          gtf.version = gtf.version,
                           recount3.project.IDs = recount3.project.IDs,
-                          project.name = project.name,
                           database.folder,
                           results.folder,
                           supportive.reads = supportive.reads)

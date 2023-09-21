@@ -2,7 +2,6 @@
 #' Create metadata table
 #' @param database.path Local path to the .sqlite database
 #' @param recount3.project.IDs List of recount3 projects 
-#' @param gtf.version Version of the reference transcriptome Ensembl (e.g. 105)
 #' @param project.name Name given to the current project
 #' @param results.folder Path to the local folder where the results to read from are stored
 #'
@@ -12,7 +11,6 @@
 #' @examples
 sql_create_master_table_metadata <- function(database.path,
                                              recount3.project.IDs,
-                                             gtf.version,
                                              project.name,
                                              results.folder)  {
   

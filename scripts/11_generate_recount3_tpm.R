@@ -29,6 +29,7 @@ library(protr)
 #' @examples
 generate_recount3_tpm <- function(recount3.project.IDs,
                                   data.source,
+                                  tpm.folder,
                                   results.folder) {
   
   
@@ -43,7 +44,7 @@ generate_recount3_tpm <- function(recount3.project.IDs,
     results_folder_local_tpm <- paste0(results_folder_local, "/tpm/")
     dir.create(file.path(results_folder_local_tpm), recursive = TRUE, showWarnings = T)
     
-    if ( !file.exists(paste0(here::here(), "/results/tpm/", project_id, "_tpm.rds")) ) {
+    if ( !file.exists(paste0(tpm.folder, "/", project_id, "_tpm.rds")) ) {
     
       message("Downloading raw counts from ", project_id, "...")
       
@@ -67,7 +68,7 @@ generate_recount3_tpm <- function(recount3.project.IDs,
       ## Save tpm values for all genes across all samples
       
       saveRDS(object = recount_tpm,
-              file = paste0(here::here(), "/results/", project_id, "_tpm.rds"))
+              file = paste0(tpm.folder, "/", project_id, "_tpm.rds"))
       
       ## Release some memory
       rm(rse)
@@ -76,7 +77,7 @@ generate_recount3_tpm <- function(recount3.project.IDs,
     } else {
       
       message("Loading TPM data for ", project_id, "...")
-      recount_tpm <- readRDS(file = paste0(here::here(), "/results/tpm/", project_id, "_tpm.rds"))
+      recount_tpm <- readRDS(file = paste0(tpm.folder, "/", project_id, "_tpm.rds"))
       
     }
     
@@ -98,10 +99,10 @@ generate_recount3_tpm <- function(recount3.project.IDs,
                                                  project_id, "_", cluster_id, "_samples_used.rds"))
 
         ## Filter the object for the set of samples corresponding to the current cluster
-        recount_tpm_local <- recount_tpm %>% #head %>%
+        recount_tpm_local <- recount_tpm %>% 
           as_tibble(rownames = "gene_id") %>%
           #rename_with(~stringr::str_replace_all(., '\\.1', '')) %>%
-          mutate(gene_id = stringr::str_replace_all(gene_id, '\\.*', '')) %>% 
+          mutate(gene_id = gsub(pattern = "\\..*",replacement = "",x = gene_id)) %>% 
           dplyr::select(c("gene_id", all_of(cluster_samples)))
 
         ## Save results
@@ -133,10 +134,10 @@ generate_recount3_tpm <- function(recount3.project.IDs,
                                                  project_id, "_", cluster_id, "_samples_used.rds"))
 
         ## Filter the object for the set of samples corresponding to the current cluster
-        recount_tpm_local <- recount_tpm %>% #head %>% 
+        recount_tpm_local <- recount_tpm %>% #head %>%
           as_tibble(rownames = "gene_id") %>%
           #rename_with(~stringr::str_replace_all(., '\\.1', '')) %>%
-          mutate(gene_id = stringr::str_replace_all(gene_id, '\\.*', '')) %>%
+          mutate(gene_id = gsub(pattern = "\\..*",replacement = "",x = gene_id)) %>%
           dplyr::select(c("gene_id", all_of(cluster_samples)))
 
         recount_tpm_local %>% head %>% print()
@@ -164,25 +165,27 @@ generate_recount3_tpm <- function(recount3.project.IDs,
 
 
 # --------------------------------------------------------------------------------------------------------------
-# source("/mnt/PROJECTS/splicing-accuracy-manuscript/scripts/10_generate_recount3_tpm.R")
+# source("/mnt/PROJECTS/splicing-accuracy-manuscript/scripts/11_generate_recount3_tpm.R")
 
 
 
-# recount3_project_IDs <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND", "BLOOD", "BLOOD_VESSEL", "BONE_MARROW",
-#                            "BRAIN",           "COLON",           "ESOPHAGUS",       "HEART",           "KIDNEY",
-#                            "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",
-#                            "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",
-#                            "STOMACH",         "THYROID" )
-# 
-# ## This is the name of the project producing the database
-# dependencies_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript/dependencies/")
-# project_name <- "splicing_1read"
-# data_source <- "data_sources/gtex"
-# gtf_version <- 105
-# results_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results", paste0(project_name, "/", gtf_version, "/"))
-# #file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/"))
-# 
-# generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
-#                       data.source = data_source,
-#                       results.folder = results_folder)
+recount3_project_IDs <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND",    "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
+                           "BRAIN",           "COLON",           "ESOPHAGUS",       "HEART",           "KIDNEY",
+                           "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",
+                           "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",
+                           "STOMACH",         "THYROID" )
+
+## This is the name of the project producing the database
+dependencies_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript/dependencies/")
+project_name <- "splicing_1read"
+data_source <- "data_sources/gtex"
+gtf_version <- 105
+tpm_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results/tpm")
+results_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results", paste0(project_name, "/", gtf_version, "/"))
+#file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/"))
+
+generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
+                      data.source = data_source,
+                      tpm.folder = tpm_folder,
+                      results.folder = results_folder)
 

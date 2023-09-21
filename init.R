@@ -82,21 +82,15 @@ for (gtf_version in gtf_versions) {
   #                       levelqc1.folder = levelqc1_folder,
   #                        results.folder = results_folder)
    
-  # prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
-  #                       project.name = project_name,
-  #                       data.source = data_source,
-  #                       gtf.version = gtf_version,
-  #                       database.folder = database_folder,
-  #                       results.folder = results_folder,
-  #                       subsampling = F,
-  #                       levelqc1.folder = levelqc1_folder,
-  #                       supporting.reads = supportive_reads,
-  #                       num.cores = 5)
+  prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
+                        data.source = data_source,
+                        results.folder = results_folder,
+                        subsampling = F,
+                        levelqc1.folder = levelqc1_folder,
+                        supporting.reads = supportive_reads,
+                        num.cores = 5)
 
   junction_pairing(recount3.project.IDs = recount3_project_IDs,
-                   project.name = project_name,
-                   gtf.version = gtf_version,
-                   database.folder = database_folder,
                    results.folder = results_folder,
                    supporting.reads = supportive_reads,
                    replace = T)
@@ -108,18 +102,17 @@ for (gtf_version in gtf_versions) {
   get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
                            database.folder = database_folder,
                            results.folder = results_folder)
-
-  ## Use the projects passing the filtering criteria established across functions above
+   
+  # ## Use the projects passing the filtering criteria established across functions above
   recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
-  
-  
+   
+   
   tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
-                     project.name = project_name,
                      database.folder = database_folder,
                      levelqc1.folder = levelqc1_folder,
                      results.folder = results_folder)
-  
-   
+
+
   generate_transcript_biotype_percentage(recount3.project.IDs = recount3_project_IDs,
                                          project.name = project_name,
                                          gtf.version = gtf_version,
@@ -134,8 +127,6 @@ for (gtf_version in gtf_versions) {
 
   sql_database_generation(database.path = database_path,
                           recount3.project.IDs = recount3_project_IDs,
-                          project.name = project_name,
-                          gtf.version = gtf_version,
                           remove.all = T,
                           database.folder = database_folder,
                           results.folder = results_folder,

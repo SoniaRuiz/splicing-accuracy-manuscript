@@ -21,7 +21,7 @@ setwd(normalizePath("."))
 ##################################
 
 gtf_version <- 105
-project_name <- "splicing_2reads"
+project_name <- "splicing_1read"
 database_name <- paste0(project_name, "_age")
 
 
@@ -66,7 +66,7 @@ age_stratification_get_stats <- function() {
   
   
   tables <- dbListTables(con)
-  query <- paste0("SELECT * from 'master'")
+  query <- paste0("SELECT * from 'metadata'")
   
   ## Total number of samples considered
   db_metadata <- dbGetQuery(con, query) %>% as_tibble()
@@ -122,6 +122,7 @@ age_stratification_get_stats <- function() {
   
   query <- paste0("SELECT * from 'novel'")
   novel <- dbGetQuery(con, query) 
+  
   ## It also included 719,069 novel donor and 999,041 novel acceptor junctions
   novel %>% distinct(novel_junID) %>% nrow()
   novel %>% dplyr::count(novel_type)
@@ -142,7 +143,7 @@ age_stratification_plot_metadata <- function() {
   
 
   tables <- dbListTables(con)
-  query <- paste0("SELECT * from 'master'")
+  query <- paste0("SELECT * from 'metadata'")
   db_metadata <- dbGetQuery(con, query) %>% 
     as_tibble() %>% 
     mutate(gender = gender %>% as.integer())
@@ -228,7 +229,7 @@ get_common_introns_across_age_groups <- function() {
   ## CONNECT TO THE DATABASE
   con <- dbConnect(RSQLite::SQLite(), database_path) 
   dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
+  query <- paste0("SELECT * FROM 'metadata'")
   
   
   ## Load metadata

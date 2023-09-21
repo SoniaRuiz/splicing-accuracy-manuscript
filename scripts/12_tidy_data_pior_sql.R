@@ -1,7 +1,6 @@
 #' Title
 #' Removes the ambiguous junctions and prepares the data prior generation of the SQL database
 #' @param recount3.project.IDs List of recount3 projects to analyse
-#' @param project.name Name given to the project 
 #' @param all.clusters Clusters of samples. In GTEx projects, samples were clustered by tissue (eg. 'Puituitary', 'Thyroid', etc)
 #'
 #' @return
@@ -9,7 +8,6 @@
 #'
 #' @examples
 tidy_data_pior_sql <- function (recount3.project.IDs,
-                                project.name,
                                 all.clusters = NULL,
                                 database.folder,
                                 levelqc1.folder,
@@ -122,7 +120,6 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   
   df_never_misspliced <- get_all_intron_never_misspliced(recount3.project.IDs = recount3.project.IDs,
                                                          all.clusters = all.clusters,
-                                                         project.name = project.name,
                                                          database.folder,
                                                          results.folder)
   

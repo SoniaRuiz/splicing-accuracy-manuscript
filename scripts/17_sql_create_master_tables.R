@@ -50,8 +50,6 @@ if ( !exists("hg38_transcripts") ) {
 ## Create 'intron' and 'novel' master tables ----------------------------------------------------
 
 sql_create_master_tables <- function(database.path,
-                                     project.name,
-                                     gtf.version,
                                      database.folder,
                                      results.folder) {
   
@@ -168,6 +166,10 @@ sql_create_master_tables <- function(database.path,
       dplyr::select(-ambiguous)
   }
   
+  message(df_introns_introverse_tidy %>%
+            distinct(ref_junID) %>%
+            nrow(), " annotated introns")
+  
   #saveRDS(object = df_introns_introverse_tidy,
   #        file = paste0(folder_database, "/df_all_introns_database_tidy.rds"))
   
@@ -210,8 +212,8 @@ sql_create_master_tables <- function(database.path,
     dplyr::rename(transcript_id = id) 
   
   
-  df_introns_introverse_tidy %>%
-    distinct(ref_junID)
+  message(df_introns_introverse_tidy %>%
+            distinct(ref_junID) %>% nrow(), " introns to store")
   
   
   ######################################
@@ -225,12 +227,15 @@ sql_create_master_tables <- function(database.path,
                            "/Homo_sapiens.GRCh38.dna.primary_assembly.fa")) ) {
     print(paste0("ERROR! File dependency 'Homo_sapiens.GRCh38.dna.primary_assembly.fa'
                  does not exist within the specified dependencies folder."))
+    break;
   }
   ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_introns_introverse_tidy %>% dplyr::rename(junID = ref_junID),
+  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_introns_introverse_tidy %>% dplyr::rename(junID = ref_junID) %>% distinct(junID, .keep_all = T),
                                                  max_ent_tool_path = paste0(dependencies_folder, "/fordownload/"),
                                                  homo_sapiens_fasta_path = paste0(dependencies_folder, 
                                                                                   "/Homo_sapiens.GRCh38.dna.primary_assembly.fa") )
+  rm(df_introns_introverse_tidy)
+  gc()
   
   all_split_reads_tidy <- all_split_reads_tidy %>% as_tibble()
   
@@ -322,8 +327,7 @@ sql_create_master_tables <- function(database.path,
   
   print(paste0(Sys.time(), " - adding the ClinVar data...")) 
   
-  clinvar_tidy <- readRDS(file = paste0(dependencies_folder, "/clinvar_intronic_tidy.rds")) %>%
-    GRanges() 
+  clinvar_tidy <- readRDS(file = paste0(dependencies_folder, "/clinvar_intronic_tidy.rds")) %>% GRanges() %>% diffloop::addchr()
   clinvar_tidy %>% head()
   
   df_all_introns_tidy <- df_all_introns %>%
@@ -343,12 +347,17 @@ sql_create_master_tables <- function(database.path,
   #elementMetadata(df_all_introns_tidy)[subjectHits(overlaps), "clinvar_start"] <- clinvar_tidy[queryHits(overlaps), ] %>% start()
   #elementMetadata(df_all_introns_tidy)[subjectHits(overlaps), "clinvar_end"] <- clinvar_tidy[queryHits(overlaps), ] %>% end()
   
+  message(df_all_introns_tidy %>%
+            as_tibble() %>%
+            filter(clinvar == T) %>%
+            nrow(), " introns containing ClinVar variants")
   df_all_introns_tidy %>% head()
   
   
   ######################################
   ## INTRONS - ADD THE INTRON TYPE
-  ## This intron type corresponds to whether the intron is spliced out by the minor or the major spliceosome
+  ## This intron type corresponds to whether the intron is 
+  ## spliced out by the minor or the major spliceosome
   ######################################
   
   print(paste0(Sys.time(), " - adding the IAOD intron data...")) 
@@ -367,45 +376,22 @@ sql_create_master_tables <- function(database.path,
   
   ## MINOR INTRON
   print(paste0(Sys.time(), " - Getting junctions spliced out by the minor spliceosome."))
-  overlaps <- GenomicRanges::findOverlaps(query = GenomicRanges::GRanges(seqnames = u12_introns %>% seqnames(),
-                                                                         ranges = IRanges(start = u12_introns %>% start(), 
-                                                                                          end = u12_introns %>% end()),
-                                                                         strand = u12_introns %>% strand()),
-                                          subject = GenomicRanges::GRanges(seqnames = df_all_introns_tidy$seqnames,
-                                                                           ranges = IRanges(start = df_all_introns_tidy$start, 
-                                                                                            end = df_all_introns_tidy$end),
-                                                                           strand = df_all_introns_tidy$strand),
+  overlaps <- GenomicRanges::findOverlaps(query = u12_introns,
+                                          subject = df_all_introns_tidy %>% GRanges(),
                                           ignore.strand = FALSE,
                                           type = "equal")
   
-  queryHits(overlaps) %>% length()
+  message(queryHits(overlaps) %>% length(), " introns spliced by the minor spliceosome!")
   df_all_introns_tidy[subjectHits(overlaps),]$u2_intron <- F
   
   
+  df_all_introns_tidy <- df_all_introns_tidy %>%
+    filter(u2_intron == T) %>%
+    dplyr::select(-u2_intron)
   
   
-  ## MAJOR INTRON
-  #print(paste0(Sys.time(), " - Getting junctions spliced out by the major spliceosome."))
-  
-  #overlaps <- GenomicRanges::findOverlaps(query = GenomicRanges::GRanges(seqnames = u2_introns$seqnames %>% as.character(),
-  #                                                                       ranges = IRanges(start = u2_introns$start,
-  #                                                                                        end = u2_introns$end),
-  #                                                                       strand = u2_introns$strand),
-  #                                        subject = GenomicRanges::GRanges(seqnames = df_all_introns_tidy$seqnames,
-  #                                                                         ranges = IRanges(start = df_all_introns_tidy$start,
-  #                                                                                          end = df_all_introns_tidy$end),
-  #                                                                         strand = df_all_introns_tidy$strand),
-  #                                        ignore.strand = FALSE,
-  #                                        type = "equal")
-  
-  # print(overlaps)
-  #subjectHits(overlaps) %>% length()
-  #df_all_introns_tidy[subjectHits(overlaps),]$u2_intron <- T
-  
-  
-  df_all_introns_tidy$ref_junID %>% unique %>% length()
+  message(df_all_introns_tidy$ref_junID %>% unique %>% length(), " introns to be stored!")
   df_all_introns_tidy %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(misspliced)
-  
   
   ######################################
   ## INTRONS - POPULATE THE TABLE
@@ -416,6 +402,12 @@ sql_create_master_tables <- function(database.path,
   query <- paste0("CREATE TABLE IF NOT EXISTS 'intron'",
                   "(ref_junID NUMERIC PRIMARY KEY NOT NULL,
                   ref_coordinates TEXT NOT NULL, 
+
+                  seqnames NUMERIC NOT NULL,
+                  start NUMERIC NOT NULL,
+                  end NUMERIC NOT NULL,
+                  strand TEXT NOT NULL, 
+
                   ref_length INTEGER NOT NULL, 
                   ref_mes5ss DOUBLE NOT NULL, 
                   ref_mes3ss DOUBLE NOT NULL, 
@@ -465,17 +457,10 @@ sql_create_master_tables <- function(database.path,
   
   ## POPULATE INTRON TABLE ----------------------------------------------------
   df_all_introns_tidy_final <- df_all_introns_tidy %>% 
-    #as_tibble() %>%
-    #unnest(gene_id) %>%
     dplyr::rename(ref_length = width,
                   ref_coordinates = ref_junID) %>%
-                  #ref_mes5ss = ref_ss5score, 
-                  #ref_mes3ss = ref_ss3score,
-                  #clinvar = clinvar_type) %>%
     distinct(ref_coordinates, .keep_all = T) %>%
-    tibble::rowid_to_column("ref_junID") %>%
-    dplyr::select(-c(seqnames, start, end, strand) ) 
-                     #clinvar_start, clinvar_end) )
+    tibble::rowid_to_column("ref_junID")
   
   if (all(df_all_introns_tidy_final$misspliced == T)) {
     print("ERROR! all introns classified as misspliced!")
@@ -513,12 +498,13 @@ sql_create_master_tables <- function(database.path,
                   strand = novel_strand,
                   novel_junID, ref_junID, 
                   novel_type = type, distance) %>%
-    distinct(novel_junID, .keep_all = T)
+    distinct(novel_junID, .keep_all = T) %>%
+    filter(ref_junID %in% df_all_introns_tidy_final$ref_coordinates)
   
   wd <- getwd()
   
   ## Add MaxEntScan score to the split reads
-  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID),
+  all_split_reads_tidy <- generate_max_ent_score(junc_tidy = df_all_novel_raw_tidy %>% dplyr::rename(junID = novel_junID) %>% distinct(junID, .keep_all = T),
                                                  max_ent_tool_path = paste0(dependencies_folder,"/fordownload/"),
                                                  homo_sapiens_fasta_path = paste0(dependencies_folder,
                                                                                   "/Homo_sapiens.GRCh38.dna.primary_assembly.fa"))
@@ -539,16 +525,21 @@ sql_create_master_tables <- function(database.path,
   df_all_novels_tidy <- all_split_reads_tidy %>%
     mutate(novel_junID = paste0("chr", seqnames, ":", start, "-", end, ":", strand)) 
   
+  if ((setdiff(df_all_novels_tidy$junID, df_all_novels_tidy$novel_junID) %>% length()) > 0) {
+    print("ERROR! Novel junctions have been analysed under different sorting.")
+    break;
+  }
+  
+  rm(all_split_reads_tidy)
+  gc()
+  
   df_all_novels_tidy <- df_all_novels_tidy %>%
     dplyr::select(-one_of("junID","novel_ss5score","novel_ss3score")) %>% 
     dplyr::rename(novel_mes5ss = ss5score, 
                   novel_mes3ss = ss3score) %>%
     dplyr::relocate(ref_junID, novel_junID) %>%
-    dplyr::relocate(c(novel_mes5ss, novel_mes3ss), .before = novel_type ) 
-  
-  
-  df_all_novels_tidy <- df_all_novels_tidy %>% as_tibble()
-  df_all_novels_tidy
+    dplyr::relocate(c(novel_mes5ss, novel_mes3ss), .before = novel_type ) %>% 
+    as_tibble()
   
   ################################################
   ## NOVEL - ADD THE CONSERVATION AND CDTS INFO
@@ -586,7 +577,9 @@ sql_create_master_tables <- function(database.path,
     as_tibble() %>%
     dplyr::relocate(ref_junID)
   
+  rm(df_all_novels_tidy)
   
+  df_all_novels_tidy_final
   ####################################
   ## CREATE NOVEL JUNCTION TABLE
   ####################################
@@ -595,6 +588,11 @@ sql_create_master_tables <- function(database.path,
   query <- paste0("CREATE TABLE IF NOT EXISTS 'novel'",
                   "(novel_junID NUMERIC NOT NULL,
                   ref_junID NUMERIC NOT NULL,
+
+                  seqnames NUMERIC NOT NULL,
+                  start NUMERIC NOT NULL,
+                  end NUMERIC NOT NULL,
+                  strand TEXT NOT NULL, 
 
                   novel_coordinates TEXT NOT NULL, 
                   novel_mes5ss DOUBLE NOT NULL, 
@@ -621,10 +619,10 @@ sql_create_master_tables <- function(database.path,
     GRanges() %>%
     as_tibble() %>%
     tibble::rowid_to_column("novel_junID") %>%
-    dplyr::select(-seqnames, -start, -end, -strand) %>%
     dplyr::rename(novel_length = width)
   
   df_all_novels_tidy_final
+  
   if (any(duplicated(df_all_novels_tidy_final$novel_coordinates))) {
     print("ERROR! some novel junctions are duplicated")
     break;

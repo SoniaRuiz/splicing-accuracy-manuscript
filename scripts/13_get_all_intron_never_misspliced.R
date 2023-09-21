@@ -2,7 +2,6 @@
 #' Load all annotated introns with no evidence of mis-splicing activity across all recount3 projects indicated
 #' @param recount3.project.IDs List of recount3 projects to analyse
 #' @param all.clusters Clusters of samples. In GTEx projects, samples were clustered by tissue (eg. 'Puituitary', 'Thyroid', etc)
-#' @param project.name Name given to the project 
 #' @param database.folder Path to the local folder that stores the database to be produced and the files needed to produce it
 #' @param results.folder Local path to the folder that contains the results of the analyses performed
 #'
@@ -12,7 +11,6 @@
 #' @examples
 get_all_intron_never_misspliced <- function (recount3.project.IDs,
                                              all.clusters = NULL,
-                                             project.name,
                                              database.folder,
                                              results.folder) {
   

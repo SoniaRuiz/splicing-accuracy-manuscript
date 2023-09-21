@@ -3,9 +3,7 @@
 #' Title
 #' Creates the child tables for each of the recount3 ID projects indicated
 #' @param database.path Local path to the .sqlite database
-#' @param project.name Name given to the current project
 #' @param recount3.project.IDs Vector with the ID of the recount3 projects to work with
-#' @param gtf.version Version of the reference transcriptome (i.e. 105 for Ensembl v105)
 #' @param database.folder Local path to the folder that contains the database
 #' @param results.folder Local path to the folder that contains the result files
 #'
@@ -14,9 +12,7 @@
 #'
 #' @examples
 sql_create_child_tables <- function(database.path,
-                                    project.name,
                                     recount3.project.IDs = NULL,
-                                    gtf.version,
                                     database.folder,
                                     results.folder,
                                     supportive.reads) {
@@ -65,12 +61,13 @@ sql_create_child_tables <- function(database.path,
   }
   
   ## Loop through the projects parallely
-  #doParallel::registerDoParallel(10)
-  #foreach(i = seq(length(recount3.project.IDs)), .combine = "rbind") %dopar%{
-  #project_id <- recount3.project.IDs[i]
+  # doParallel::registerDoParallel(10)
+  # foreach(i = seq(length(recount3.project.IDs))) %dopar%{
+  #   
+  #   project_id <- recount3.project.IDs[i]
   
   for (project_id in recount3.project.IDs) { 
-  
+    
     # project_id <- recount3.project.IDs[1]
     
     message(Sys.time(), " --> Working with '", project_id, "' ...")
@@ -298,7 +295,10 @@ sql_create_child_tables <- function(database.path,
           df_all_misspliced <- df_all_misspliced %>%
             dplyr::select(-novel_coordinates)
           
-          ## CHECK PARENT INTEGRITY
+          
+          
+          
+          ## CHECK INTEGRITY WITH PARENT TABLE
           
           df <- df_novel %>%
             dplyr::select(novel_junID, ref_junID) %>%
@@ -307,8 +307,6 @@ sql_create_child_tables <- function(database.path,
                          dplyr::select(novel_junID, ref_junID) %>%
                          arrange(novel_junID),
                        by = "novel_junID")
-          
-          
           
           diff <- df %>% 
             dplyr::filter(ref_junID.x != ref_junID.y)
@@ -367,8 +365,13 @@ sql_create_child_tables <- function(database.path,
               summarize_all(max) %>%
               ungroup()
             
+            
+            df_gene %>%
+              filter(gene_id == "ENSG00000000419")
+            
+            
             tpm_tidy <- tpm %>%
-              inner_join(y = df_gene %>%  as_tibble(),
+              inner_join(y = df_gene %>% as_tibble(),
                          by = c("gene_id" = "gene_id")) %>%
               inner_join(y = df_transcript %>% as_tibble(),
                          by = c("id" = "gene_id"),

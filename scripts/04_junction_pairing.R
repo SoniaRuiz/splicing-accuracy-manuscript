@@ -4,22 +4,12 @@
 #' (i.e. case/control, tissue, etc)
 #' @param recount3.project.IDs array with the recount3 projects to download
 #' e.g. "SRP009615" 
-#' @param project.name name given locally to the recount3 project.
-#' A given recount3 project can be separated in multiple independent projects in recount3.
-#' For instance, GTEx is stored in recount3 in multiple independent projects ID (e.g. BRAIN, SKIN, BLOOD, etc), 
-#' but all of them belong to GTEx. Hence, it is useulf to have a folder named "project.name" that will contain
-#' multiple subfolders named as the elements contained within the object 'recount3.project.IDs'
-#' @param gtf.version Ensembl version (tested using Ensembl v105)
-#' e.g. "105"
 #'
 #' @return
 #' @export
 #'
 #' @examples
 junction_pairing <- function(recount3.project.IDs, 
-                             project.name,
-                             gtf.version,
-                             database.folder,
                              results.folder,
                              supporting.reads,
                              replace) {
@@ -32,6 +22,7 @@ junction_pairing <- function(recount3.project.IDs,
     project_id <- recount3.project.IDs[i]
     
     # project_id <- recount3.project.IDs[1]
+    # project_id <- "BRAIN"
     
     folder_root <- paste0(results.folder, "/", project_id)
     folder_base_data <- paste0(folder_root, "/base_data/")
@@ -49,7 +40,7 @@ junction_pairing <- function(recount3.project.IDs,
       for (cluster_id in clusters_ID) {
         
         # cluster_id <- clusters_ID[1]
-        # cluster_id <- clusters_ID[2]
+        # cluster_id <- "Brain - Amygdala"
         
         print(paste0(Sys.time(), " - loading '", cluster_id, "' source data ..."))
         
@@ -71,7 +62,7 @@ junction_pairing <- function(recount3.project.IDs,
         
         stopifnot(
             split_read_counts %>% 
-            mutate(sumCounts = rowSums(select(., !contains("junID")))) %>%
+            mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
             filter(sumCounts < supporting.reads) %>% 
             nrow() == 0
         )
@@ -116,11 +107,7 @@ junction_pairing <- function(recount3.project.IDs,
         rm(split_read_counts)
         gc()
         
-        #}
       }
     }
-    
   }
 }
-
-

@@ -4,13 +4,6 @@
 #' (e.g. by case/control cluster, by tissue, etc. )
 #' @param recount3.project.IDs array with the recount3 projects to download
 #' e.g. "SRP009615"
-#' @param project.name name given locally to the recount3 project.
-#' A given recount3 project can be separated in multiple independent projects in recount3.
-#' For instance, GTEx is stored in recount3 in multiple independent projects ID (e.g. BRAIN, SKIN, BLOOD, etc), 
-#' but all of them belong to GTEx. Hence, it is useulf to have a folder named "project.name" that will contain
-#' multiple subfolders named as the elements contained within the object 'recount3.project.IDs'
-#' @param gtf.version Ensembl version (tested using Ensembl v105)
-#' e.g. "105"
 #' @param data.source source of the project in recount3. It can be:
 #' - "data_sources/sra"  
 #' - "data_sources/gtex" 
@@ -21,10 +14,7 @@
 #'
 #' @examples
 prepare_recount3_data <- function(recount3.project.IDs, 
-                                  project.name,
-                                  gtf.version,
                                   data.source,
-                                  database.folder,
                                   results.folder,
                                   subsampling = F,
                                   levelqc1.folder,
