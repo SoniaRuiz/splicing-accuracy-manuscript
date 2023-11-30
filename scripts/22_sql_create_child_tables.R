@@ -1,5 +1,4 @@
 
-
 #' Title
 #' Creates the child tables for each of the recount3 ID projects indicated
 #' @param database.path Local path to the .sqlite database
@@ -14,8 +13,12 @@
 sql_create_child_tables <- function(database.path,
                                     recount3.project.IDs = NULL,
                                     database.folder,
-                                    results.folder,
-                                    supportive.reads) {
+                                    results.folder) {
+  
+  if ( !file.exists(paste0(database.folder, "/all_split_reads_qc_level2.rds")) ) {
+    message("ERROR! Second-filter level of split reads file not found!")
+    break;
+  }
   
   all_split_reads_details_105 <- readRDS(file = paste0(database.folder, "/all_split_reads_qc_level2.rds"))
   
@@ -81,6 +84,8 @@ sql_create_child_tables <- function(database.path,
     for (cluster_id in clusters) { 
       
       # cluster_id <- clusters[1]
+      # cluster_id <- "Brain - Frontal Cortex (BA9)"
+      
       message(Sys.time(), " --> ", cluster_id)
       
       ###############################
@@ -98,14 +103,16 @@ sql_create_child_tables <- function(database.path,
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(results_folder_local, "/base_data/", 
                                                    project_id, "_", cluster_id, "_split_read_counts.rds")) 
+        
         print(paste0(Sys.time(), " --> ", cluster_id, " split read counts loaded!"))
-        stopifnot(
-          "Still there are split reads with less than N number of supportive reads" =
-            split_read_counts %>% 
-            mutate(sumCounts = rowSums(select(., !contains("junID")))) %>%
-            filter(sumCounts < supportive.reads) %>% 
-            nrow() == 0
-        )
+        
+        # stopifnot(
+        #   "Still there are split reads with less than N number of supportive reads" =
+        #     split_read_counts %>% 
+        #     mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
+        #     filter(sumCounts < supportive.reads) %>% 
+        #     nrow() == 0
+        # )
         
         
         if ( is.null(names(split_read_counts)) ) {
@@ -215,14 +222,16 @@ sql_create_child_tables <- function(database.path,
         
         if (any(str_detect(df_intron_novel_merged$ref_junID,pattern = "//*"))) {
           print("ERROR: some IDs contain '*'")
+          break;
         }
         if (any(str_detect(df_intron_novel_merged$novel_junID,pattern = "//*"))) {
           print("ERROR: some IDs contain '*'")
+          break;
         }
         if (any(df_intron_novel_merged$ref_junID %>% is.na())) {
           print("ERROR: There are missing reference introns!!")
+          break;
         }
-        
         
         
         ## JOIN data with MASTER NOVEL table
@@ -255,12 +264,13 @@ sql_create_child_tables <- function(database.path,
         
         if (which(str_detect(df_all_misspliced$novel_coordinates,pattern = "//*")) %>% length() > 0) {
           print("ERROR: some IDs contain '*'")
+          break;
         }
         
         
         ## PREPARE DATA PRIOR POPULATING THE TABLE
         df_all_misspliced <- df_all_misspliced %>%
-          relocate(ref_junID, novel_junID)
+          dplyr::relocate(ref_junID, novel_junID)
         
         
         
@@ -279,6 +289,7 @@ sql_create_child_tables <- function(database.path,
         if ( !(identical(df_all_misspliced$novel_coordinates %>% sort(), 
                          master_novel$novel_coordinates %>% sort())) ) {
           print("ERROR! Tables not identical")
+          
           if ( all(intersect(setdiff(df_all_misspliced$novel_coordinates, 
                                      master_novel$novel_coordinates),
                              ambiguous_novel_junc$novel_junID) == setdiff(df_all_misspliced$novel_coordinates, 
@@ -287,6 +298,7 @@ sql_create_child_tables <- function(database.path,
               as.data.table() %>%
               dplyr::filter(!(novel_coordinates %in% ambiguous_novel_junc$novel_junID))
           }
+          break;
         }
         
         if ( identical(df_all_misspliced$novel_coordinates %>% sort(), 
@@ -294,8 +306,6 @@ sql_create_child_tables <- function(database.path,
           
           df_all_misspliced <- df_all_misspliced %>%
             dplyr::select(-novel_coordinates)
-          
-          
           
           
           ## CHECK INTEGRITY WITH PARENT TABLE
@@ -326,24 +336,25 @@ sql_create_child_tables <- function(database.path,
           
           print(paste0(Sys.time(), " --> calculating MSR measures ... "))
           
-          # df_all_misspliced %>% dplyr::filter(ref_junID == "17") %>% as.data.frame()
+          # df_all_misspliced %>% dplyr::filter(ref_junID == "100025") %>% as.data.frame()
           
           db_introns <- df_all_misspliced %>%
             group_by(ref_junID, novel_type) %>%
             mutate(MSR = sum(novel_sum_counts)/(sum(novel_sum_counts) + ref_sum_counts)) %>%
             ungroup()
           
-          # db_introns %>% dplyr::filter(ref_junID == "17") %>% as.data.frame()
+          # db_introns %>% dplyr::filter(ref_junID == "100025") %>% as.data.frame()
           
-          db_introns <- db_introns %>% 
+          db_introns <- db_introns %>%
             spread(key = novel_type, value = MSR, fill = 0) %>%
             group_by(ref_junID) %>% 
-            ## If the annotated intron is mis-spliced at both splice sites, it will have some rows MSR=0 and some rows MSR>0 at the 5' 
-            ## and at the 3'ss. We select the highest value
+            ## If the annotated intron is mis-spliced at both splice sites, it will have some rows MSR=0 and some rows MSR>0 at the 5' and at the 3'ss. 
+            ## We select the highest value
             dplyr::mutate(MSR_Donor = max(novel_donor, na.rm = T)) %>%
             dplyr::mutate(MSR_Acceptor = max(novel_acceptor, na.rm = T)) %>%
             ungroup()
           
+          # db_introns %>% dplyr::filter(ref_junID == "100025") %>% as.data.frame()
           
           #####################################
           ## GET THE GENE TPM
@@ -353,6 +364,8 @@ sql_create_child_tables <- function(database.path,
             
             tpm <- readRDS(file = paste0(results.folder,  "/", project_id, "/tpm/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
               dplyr::select(gene_id, all_of(samples))
+            
+            
             
             tpm <- tpm  %>%
               dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
@@ -365,11 +378,8 @@ sql_create_child_tables <- function(database.path,
               summarize_all(max) %>%
               ungroup()
             
-            
-            df_gene %>%
-              filter(gene_id == "ENSG00000000419")
-            
-            
+            tpm %>% as_tibble()
+
             tpm_tidy <- tpm %>%
               inner_join(y = df_gene %>% as_tibble(),
                          by = c("gene_id" = "gene_id")) %>%
@@ -422,7 +432,7 @@ sql_create_child_tables <- function(database.path,
           ## CREATE AND POPULATE CHILD 'MIS-SPLICED' INTRON TABLE
           #########################################################
           
-          print(paste0(Sys.time(), " --> creating 'intron' table ... "))
+          print(paste0(Sys.time(), " --> creating 'mis-spliced' table ... "))
           
           # dbRemoveTable(conn = con, paste0(cluster_id, "_", project_id))
           query <- paste0("CREATE TABLE IF NOT EXISTS '", paste0(cluster_id, "_", project_id, "_misspliced"), "'", 
@@ -687,3 +697,15 @@ sql_create_child_tables <- function(database.path,
     gc()
   }
 }
+
+
+
+# ref_junID <- 100025
+# novel_junID <- 172729
+# database.path <- "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/database/splicing_2read/110//splicing_2read.sqlite"
+# recount3.project.IDs <- "BRAIN"
+# database.folder <- "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/database/splicing_2read/110/"
+# results.folder <- "/home/sruiz/PROJECTS/splicing-accuracy-manuscript/results/splicing_2read/110/"
+# supportive.reads <- 2
+# 
+# source("scripts/99_utils.R")

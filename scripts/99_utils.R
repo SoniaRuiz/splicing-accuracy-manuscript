@@ -87,6 +87,14 @@ generate_coverage <- function(split_read_counts,
 }
 
 
+#' Title
+#' Splits a string with the formatting: "chrX:start-end:strand" into separated elements 'seqnames', 'start', 'end', 'strand'
+#' @param coordinates 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 get_genomic_coordinates <- function(coordinates) {
   
   map_df(coordinates, function(coordinate) {
@@ -113,6 +121,7 @@ get_genomic_coordinates <- function(coordinates) {
     
   })
 }
+
 
 #' Title
 #' Function to calculate the TPM value per gene
@@ -178,4 +187,74 @@ generate_tpm <- function(rse,
   
   
   return(tpm)
+}
+
+
+
+#' Title
+#' Converts a string dataframe into a numeric dataframe
+#' @param sample.metadata 
+#' @param samples 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+tidy_sample_metadata <- function(sample.metadata,
+                                 samples) {
+  
+  
+  
+  age_numeric <- as.numeric(factor(as.matrix(sample.metadata$gtex.age))) 
+  sample.metadata$gtex.age <- age_numeric
+  
+  sample.metadata <- sample.metadata %>%
+    as.data.table() %>%
+    tibble::column_to_rownames(var = "external_id")
+  
+  covariates <- c("gtex.age", "gtex.smcenter", "gtex.smtsd",
+                  "gtex.smgebtch", "gtex.smgebtchd",
+                  "gtex.smnabtch", "gtex.smnabtchd", "gtex.smnabtcht",
+                  "gtex.dthhrdy", "gtex.sex", "gtex.smrin")
+  
+  
+  smcenter <- as.numeric(factor(as.matrix(sample.metadata$gtex.smcenter))) 
+  sample.metadata$gtex.smcenter <- smcenter
+  
+  gtex.smgebtch <- as.numeric(factor(as.matrix(sample.metadata$gtex.smgebtch))) 
+  sample.metadata$gtex.smgebtch <- gtex.smgebtch
+  
+  gtex.smgebtchd <- as.numeric(factor(as.matrix(sample.metadata$gtex.smgebtchd))) 
+  sample.metadata$gtex.smgebtchd <- gtex.smgebtchd
+  
+  gtex.smnabtch <- as.numeric(factor(as.matrix(sample.metadata$gtex.smnabtch))) 
+  sample.metadata$gtex.smnabtch <- gtex.smnabtch
+  
+  gtex.smnabtchd <- as.numeric(factor(as.matrix(sample.metadata$gtex.smnabtchd))) 
+  sample.metadata$gtex.smnabtchd <- gtex.smnabtchd
+  
+  gtex.smnabtcht <- as.numeric(factor(as.matrix(sample.metadata$gtex.smnabtcht))) 
+  sample.metadata$gtex.smnabtcht <- gtex.smnabtcht
+  
+  gtex.smtsd <- as.numeric(factor(as.matrix(sample.metadata$gtex.smtsd))) 
+  sample.metadata$gtex.smtsd <- gtex.smtsd
+  
+  
+  # 8. Return covariates ---------------------------
+  
+  return(t(sample.metadata %>%
+             dplyr::select(all_of(covariates))))
+}
+
+#' Title
+#' Calculates the mode value from a vector of numbers
+#' @param vector 
+#'
+#' @return
+#' @export
+#'
+#' @examples
+get_mode <- function(vector) {
+  uniqv <- unique(vector)
+  uniqv[which.max(tabulate(match(vector, uniqv)))]
 }

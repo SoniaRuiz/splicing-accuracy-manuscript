@@ -9,6 +9,7 @@ library(doParallel)
 library(Biostrings)
 library(tidyverse)
 library(protr)
+library(optparse)
 
 # source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/init.R")
 
@@ -24,13 +25,9 @@ files.sources = list.files()
 sapply(files.sources, source)
 setwd(file.path(base_folder))
 
-get_mode <- function(vector) {
-  uniqv <- unique(vector)
-  uniqv[which.max(tabulate(match(vector, uniqv)))]
-}
 
 #####################################
-## CALLS - PREPARE RECOUNT3 DATA
+## SET MAIN VARIABLES
 #####################################
 
 ## This is the Ensembl gtf transcriptome version 
@@ -40,6 +37,8 @@ gtf_versions <- c(105)
 supportive_reads <- 1
 project_name <- paste0("splicing_", supportive_reads, "read")
 data_source <- "data_sources/gtex"
+
+
 
 ## Can be checked here: https://jhubiostatistics.shinyapps.io/recount3-study-explorer/
 all_projects <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLADDER",         "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
@@ -61,67 +60,66 @@ recount3_project_IDs <- c( "ADIPOSE_TISSUE",  "ADRENAL_GLAND",   "BLOOD",       
 ## INIT - DATABASE RECOUNT3 PROJECT
 #####################################
 
-## This is the Ensembl gtf transcriptome version 
-gtf_versions <- c(105)
-
 
 for (gtf_version in gtf_versions) {
   
   # gtf_version <- gtf_versions[1]
   
   database_folder <- paste0(base_folder, "/database/", project_name, "/", gtf_version, "/")
-  results_folder <- file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/"))
+  results_folder <- paste0(base_folder, "/results/", project_name, "/", gtf_version, "/")
   levelqc1_folder <- paste0(base_folder, "/database/")
+  tpm_folder <- paste0(base_folder, "/results/tpm/")
 
   
   # download_recount3_data(recount3.project.IDs = all_projects,
   #                        project.name = project_name,
   #                        gtf.version = gtf_version,
   #                        data.source = data_source,
-  #                        database.folder = database_folder,
-  #                       levelqc1.folder = levelqc1_folder,
+  #                        database.folder = levelqc1_folder,
   #                        results.folder = results_folder)
    
-  prepare_recount3_data(recount3.project.IDs = recount3_project_IDs,
-                        data.source = data_source,
-                        results.folder = results_folder,
-                        subsampling = F,
-                        levelqc1.folder = levelqc1_folder,
-                        supporting.reads = supportive_reads,
-                        num.cores = 5)
+  # prepare_recount3_data(recount3.project.IDs = recount3_project_IDs[-6],
+  #                       data.source = data_source,
+  #                       results.folder = results_folder,
+  #                       subsampling = F,
+  #                       levelqc1.folder = levelqc1_folder,
+  #                       supporting.reads = supportive_reads,
+  #                       num.cores = 5)
 
-  junction_pairing(recount3.project.IDs = recount3_project_IDs,
-                   results.folder = results_folder,
-                   supporting.reads = supportive_reads,
-                   replace = T)
-  
-  get_all_annotated_split_reads(recount3.project.IDs = recount3_project_IDs,
-                                database.folder = database_folder,
-                                results.folder = results_folder)
-
-  get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
-                           database.folder = database_folder,
-                           results.folder = results_folder)
+  # junction_pairing(recount3.project.IDs = recount3_project_IDs,
+  #                  results.folder = results_folder,
+  #                  replace = T,
+  #                  num.cores = 10)
+  # 
+  # get_all_annotated_split_reads(recount3.project.IDs = recount3_project_IDs,
+  #                               database.folder = database_folder,
+  #                               results.folder = results_folder)
+  # 
+  # get_all_raw_jxn_pairings(recount3.project.IDs = recount3_project_IDs,
+  #                          database.folder = database_folder,
+  #                          results.folder = results_folder)
    
-  # ## Use the projects passing the filtering criteria established across functions above
+  ## Use the projects passing the filtering criteria established across functions above
   recount3_project_IDs <- readRDS(file = paste0(results_folder, "/all_final_projects_used.rds"))
    
    
-  tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
-                     database.folder = database_folder,
-                     levelqc1.folder = levelqc1_folder,
-                     results.folder = results_folder)
+  # tidy_data_pior_sql(recount3.project.IDs = recount3_project_IDs,
+  #                    database.folder = database_folder,
+  #                    levelqc1.folder = levelqc1_folder,
+  #                    results.folder = results_folder)
 
 
-  generate_transcript_biotype_percentage(recount3.project.IDs = recount3_project_IDs,
-                                         project.name = project_name,
-                                         gtf.version = gtf_version,
-                                         database.folder = database_folder,
-                                         results.folder = results_folder)
+  # if ( !file.exists(paste0(results_folder, "/all_junID_PC_biotype.rds")) ) {
+  #   generate_transcript_biotype_percentage(gtf.version = gtf_version,
+  #                                          database.folder = database_folder,
+  #                                          results.folder = results_folder)
+  # }
 
-  generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
-                        data.source = data_source,
-                        results.folder = results_folder)
+
+  # generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
+  #                       data.source = data_source,
+  #                       tpm.folder = tpm_folder,
+  #                       results.folder = results_folder)
 
   database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
 
@@ -130,7 +128,7 @@ for (gtf_version in gtf_versions) {
                           remove.all = T,
                           database.folder = database_folder,
                           results.folder = results_folder,
-                          supportive.reads = supportive_reads)
+                          gtf.version = gtf_version)
   
   gc()
 }

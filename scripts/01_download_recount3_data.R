@@ -7,8 +7,7 @@
 #' For instance, GTEx is stored in recount3 in multiple independent projects ID (e.g. BRAIN, SKIN, BLOOD, etc), 
 #' but all of them belong to GTEx. Hence, it is useulf to have a folder named "project.name" that will contain
 #' multiple subfolders named as the elements contained within the object 'recount3.project.IDs'
-#' @param gtf.version Ensembl version (tested using Ensembl v105)
-#' e.g. "105"
+#' @param gtf.version Ensembl version, e.g. "105"
 #' @param data.source source of the data within recount3. It can be:
 #' - "data_sources/sra"  
 #' - "data_sources/gtex" 
@@ -30,7 +29,7 @@ download_recount3_data <- function (recount3.project.IDs,
   ## Read all the split reads and return them by tissue
   ##########################################################
   
-  if ( file.exists(paste0(here::here(), "/database/all_split_reads_raw.rds")) ) {
+  if ( file.exists(paste0(database.folder, "/all_split_reads_raw.rds")) ) {
     
     message("Loading 'all_split_reads_raw.rds' file...")
     all_split_reads_raw <- readRDS(file = paste0(database.folder, "/all_split_reads_raw.rds"))
@@ -42,7 +41,7 @@ download_recount3_data <- function (recount3.project.IDs,
       
       project_id <- recount3.project.IDs[j]
       
-      # project_id <- recount3.project.IDs[1]
+      # project_id <- recount3.project.IDs[2]
       # project_id <- "KIDNEY"
       message(Sys.time(), " - getting data from '", project_id, "' recount3 project...")
       
@@ -75,50 +74,47 @@ download_recount3_data <- function (recount3.project.IDs,
         verbose = getOption("recount3_verbose", TRUE)
       ))
       
-      ## Convert unstranded junctions from '*' to '?' to facilitate later conversion to genome:ranges
+      ## Convert unstranded junctions from '*' to '?' to facilitate later conversion to GRanges
       feature_info$strand[feature_info$strand == "?"] <- "*"
-      #feature_info <- GenomicRanges::GRanges(feature_info)
       
-      all_split_reads <- data.frame(chr = feature_info$chromosome,
+      all_split_reads <- data.frame(junID = paste0(feature_info$chromosome, ":",
+                                                   feature_info$start, "-", 
+                                                   feature_info$end, ":",
+                                                   feature_info$strand),
+                                    chr = feature_info$chromosome,
                                     start = feature_info$start,
                                     end = feature_info$end,
                                     strand = feature_info$strand,
                                     width = feature_info$length,
                                     annotated = feature_info$annotated,
-                                    junID = paste0(feature_info$chromosome, ":",
-                                                   feature_info$start, "-", feature_info$end, ":",
-                                                   feature_info$strand))
-      
-      saveRDS(object = all_split_reads %>% data.table::as.data.table(),
-              file = paste0(folder_root, "/all_split_reads_raw.rds"))
-      
+                                    left_motif = feature_info$left_motif,
+                                    right_motif = feature_info$right_motif) %>%
+        as_tibble()
+
       return(all_split_reads %>%
-               distinct(junID, .keep_all = T))
+               distinct(junID, .keep_all = T) %>%
+               mutate(recount_project = project_id))
     }
     
-    # ## We access recount3 files directly to save memory
-    # all_split_reads_raw <- map_df(recount3.project.IDs, function(project_id) {
-    #   
-    #   
-    # })
+    all_split_reads_raw <- all_split_reads_raw %>% 
+      dplyr::group_by(junID) %>%
+      mutate(n_projects = n()) %>%
+      ungroup() %>%
+      distinct(junID, .keep_all = T) %>%
+      dplyr::select(-recount_project)
     
-    
-    all_split_reads_raw <- all_split_reads_raw %>%
-      distinct(junID, .keep_all = T)
-    
+
     print(paste0(Sys.time(), " - ", all_split_reads_raw %>% nrow(), " initial number of split reads"))
     gc()
     
     ## Save data
     dir.create(file.path(database.folder), recursive = TRUE, showWarnings = T)
-    saveRDS(object = all_split_reads_raw %>% data.table::as.data.table(),
+    saveRDS(object = all_split_reads_raw,
             file = paste0(database.folder, "/all_split_reads_raw.rds"))
     
   }
   
-  all_split_reads_raw %>% 
-    distinct(junID) %>%
-    nrow()
+  print(paste0(Sys.time(), " - ", all_split_reads_raw %>% nrow(), " initial number of split reads"))
   
   #######################################################################
   ## 1. Discard all split reads shorter than 25 bp
@@ -146,6 +142,7 @@ download_recount3_data <- function (recount3.project.IDs,
     filter(!(strand=="?")) %>%
     GenomicRanges::GRanges() %>%
     diffloop::rmchr()
+  
   rm(all_split_reads_raw_tidy)
   gc()
   
@@ -182,8 +179,6 @@ download_recount3_data <- function (recount3.project.IDs,
     nrow() %>%
     print()
   
-  
-  
   #######################################################
   ## 4. Anotate using 'dasper'
   #######################################################
@@ -215,30 +210,22 @@ download_recount3_data <- function (recount3.project.IDs,
   print(paste0(Sys.time(), " - removing split reads not classified as 'annotated', 'novel_donor' or 'novel_acceptor'..."))
   
   ## Subset columns
-  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol[,c("junID", "gene_id_junction", "in_ref", "type", "tx_id_junction")]
+  all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol[,c("junID", "gene_id_junction", "in_ref", "type", "tx_id_junction",
+                                                                          "annotated", "left_motif", "right_motif", "n_projects")]
   
   ## Only use annotated introns, novel donor and novel acceptor junctions
   all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol[(elementMetadata(all_split_reads_details_w_symbol)[,"type"] %in% 
                                                                           c("annotated", "novel_donor", "novel_acceptor"))]
   
   
-  all_split_reads_details_w_symbol %>% length()
-  
-  
-  # ############################################
-  # ## 6. Make sure none of the split reads are shorter than 25bp
-  # ############################################
-  # 
-  # print(paste0(Sys.time(), " - removing split reads shorter than 25bp..."))
-  # 
-  # all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol[all_split_reads_details_w_symbol %>% width() >= 25,]
-  
+  print(paste0(Sys.time(), " --> ", all_split_reads_details_w_symbol %>% length(), 
+               " annotated, novel donor and novel acceptor junctions."))
   
   ############################################################################
-  ## 6. Discard all introns assigned to multiple genes (i.e. ambiguous introns)
+  ## 6. Discard all ambiguous split reads (i.e. assigned to multiple genes)
   ############################################################################
   
-  print(paste0(Sys.time(), " - discarding ambiguous introns..."))
+  print(paste0(Sys.time(), " - discarding ambiguous split reads ..."))
   
   all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>%
     as_tibble() %>%
@@ -249,36 +236,28 @@ download_recount3_data <- function (recount3.project.IDs,
   ambiguous_introns <- all_split_reads_details_w_symbol %>%
     dplyr::filter(ambiguous == T)
   
-  ambiguous_introns %>%
-    distinct(junID, .keep_all = T) %>%
-    dplyr::count(type) %>% 
-    print()
-  
-  ambiguous_introns %>% 
-    distinct(junID, .keep_all = T) %>%
-    print()
+  print(paste0(Sys.time(), " - ", ambiguous_introns %>% nrow(), " ambiguous split reads discarded."))
   
   saveRDS(object = ambiguous_introns,
           file = paste0(database.folder, "/all_ambiguous_jxn.rds"))
+  
+  
+  #####################
+  ## 7. SAVE RESULTS
+  #####################
   
   all_split_reads_details_w_symbol <- all_split_reads_details_w_symbol %>%
     dplyr::filter(ambiguous == F) %>%
     dplyr::select(-ambiguous)
   
-  all_split_reads_details_w_symbol %>% nrow()
-  
+  print(paste0(Sys.time(), " - ", ambiguous_introns %>% nrow(), " ambiguous split reads discarded."))
   saveRDS(object = all_split_reads_details_w_symbol %>% dplyr::rename(gene_id = gene_id_junction),
           file = paste0(database.folder, "/all_split_reads_qc_level1.rds"))
   
   
   ## FREE UP SOME MEMORY
-  rm(edb)
   rm(ambiguous_introns)
-  rm(all_split_reads_raw_tidy_gr)
   rm(all_split_reads_details_w_symbol)
-  rm(all_split_reads_details_w_symbol_reduced)
-  rm(all_split_reads_details_w_symbol_reduced_keep_gr)
-  rm(all_split_reads_details_w_symbol_reduced_keep)
-  rm(all_split_reads_details_w_symbol_reduced_discard)
   gc()
+  
 }

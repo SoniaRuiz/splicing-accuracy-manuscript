@@ -2,7 +2,6 @@
 #' Create metadata table
 #' @param database.path Local path to the .sqlite database
 #' @param recount3.project.IDs List of recount3 projects 
-#' @param project.name Name given to the current project
 #' @param results.folder Path to the local folder where the results to read from are stored
 #'
 #' @return
@@ -11,7 +10,6 @@
 #' @examples
 sql_create_master_table_metadata <- function(database.path,
                                              recount3.project.IDs,
-                                             project.name,
                                              results.folder)  {
   
   message(Sys.time(), " - creating metadata table ... ")

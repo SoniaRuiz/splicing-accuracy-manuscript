@@ -1,58 +1,25 @@
 
-
-## LOAD DATA DEPENDENCIES ------------------------------------------------------------------------
-
-## MANE transcripts
-if ( !exists("hg_mane_transcripts") ) {
-  
-  print("Loading the 'hg_MANE' file...")
-  hg_MANE <- rtracklayer::import(con = paste0(dependencies_folder,
-                                              "/MANE.GRCh38.v1.0.ensembl_genomic.gtf"))
-  hg_MANE_tidy <- hg_MANE %>%
-    as_tibble() %>%
-    dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
-                  -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
-    mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
-    drop_na()
-  
-  hg_mane_transcripts <- hg_MANE_tidy %>%
-    dplyr::filter(type == "transcript") %>%
-    distinct(transcript_id) %>%
-    mutate(MANE = T)
-  
-} else {
-  print("'hg_mane_transcripts' file already loaded!")
-}
-
-# GET INFO FROM THE HG38
-if ( !exists("hg38_transcripts") ) {
-  
-  print("Loading the 'hg38' file...")
-  
-  if ( !exists("hg38") ) {
-    hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
-                                             "/Homo_sapiens.GRCh38.105.chr.gtf"))
-  }
-  
-  hg38_transcripts <- hg38 %>%
-    as_tibble() %>%
-    dplyr::filter(type == "transcript") %>%
-    dplyr::select(transcript_id, transcript_support_level) %>%
-    mutate(transcript_support_level = str_sub(string = transcript_support_level,
-                                              start = 1,
-                                              end = 1))
-} else {
-  print("'hg38_transcripts' file already loaded!")
-}
-
-
-
-## Create 'intron' and 'novel' master tables ----------------------------------------------------
-
+#' Title
+#' Creates the 'intron' and 'novel' master tables
+#' @param database.path 
+#' @param gtf.version 
+#' @param database.folder 
+#' @param results.folder 
+#'
+#' @return
+#' @export
+#'
+#' @examples
 sql_create_master_tables <- function(database.path,
+                                     gtf.version,
                                      database.folder,
                                      results.folder) {
   
+  
+  message(Sys.time(), " - loading GRCh38 reference...")
+  
+  hg38 <- rtracklayer::import(con = paste0(dependencies_folder,
+                                           "/Homo_sapiens.GRCh38.",gtf.version,".chr.gtf"))
   
   ##########################################
   ## LOAD AND TIDY THE PAIR-WISE DISTANCES
@@ -63,7 +30,7 @@ sql_create_master_tables <- function(database.path,
   
   if ( file.exists(paste0(database.folder, "/all_jxn_correct_pairings.rds")) ) {
     
-    print(paste0(Sys.time(), " - loading the pre-generated pair-wise distances data..."))
+    message(Sys.time(), " - loading the pre-generated pair-wise distances data...")
     
     df_all_distances_pairings <- readRDS(file = paste0(database.folder, "/all_jxn_correct_pairings.rds"))
     
@@ -177,8 +144,15 @@ sql_create_master_tables <- function(database.path,
   ## GENES - CREATE GENE TABLE
   ######################################
   
+  
+  # 
+  # df_protein <- readRDS(file = paste0(results.folder, "/all_genes_PC_biotype.rds")) %>%
+  #   as_tibble()
+  
+  
   sql_create_master_table_gene(database.path = database.path,
-                               hg38,
+                               hg38 = hg38,
+                               # protein_biotype = df_protein,
                                gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id) )
   
   
@@ -189,13 +163,13 @@ sql_create_master_tables <- function(database.path,
   
   sql_create_master_table_transcript(database.path = database.path,
                                      gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
-                                     hg38,
+                                     hg38 = hg38,
                                      tx_ids = df_introns_introverse_tidy %>% unnest(tx_id_junction) %>% distinct(tx_id_junction))
   
   
-  ######################################
+  ############################################
   ## INTRONS - ADD THE TRANSCRIPT FOREING KEY
-  ######################################
+  ############################################
   
   print(paste0(Sys.time(), " --> adding TRANSCRIPT foreing key to the introns..."))
   
@@ -260,7 +234,7 @@ sql_create_master_tables <- function(database.path,
   df_all_introns %>% as_tibble()
   
   df_all_introns <- df_all_introns %>%
-    dplyr::select(-one_of("junID","ref_ss5score","ref_ss3score")) %>% 
+    dplyr::select(-one_of("junID", "ref_ss5score", "ref_ss3score")) %>% 
     dplyr::rename(ref_mes5ss = ss5score, 
                   ref_mes3ss = ss3score) %>%
     dplyr::relocate(ref_junID) %>%
@@ -280,7 +254,9 @@ sql_create_master_tables <- function(database.path,
   
   df_all_introns <- generate_cdts_phastcons_scores(db_introns = df_all_introns %>% 
                                                      distinct(ref_junID, .keep_all = T) %>%
-                                                     as_tibble()) %>%
+                                                     as_tibble(),
+                                                   intron_size = c(35,50,100),
+                                                   phastcons_type = 17) %>%
     as_tibble()
   
   df_all_introns <- df_all_introns %>% 
@@ -302,24 +278,6 @@ sql_create_master_tables <- function(database.path,
   
   df_all_introns %>% as_tibble()
   
-  ######################################
-  ## INTRONS - ADD THE BIOTYPE INFO
-  ######################################
-  
-  print(paste0(Sys.time(), " - adding the transcript biotype ... "))
-  
-  df_protein <- readRDS(file = paste0(results.folder, "/all_split_reads_qc_level2_PC_biotype.rds")) %>%
-    as_tibble()
-  
-  print(paste0(Sys.time(), " - ", intersect(df_all_introns$ref_junID, df_protein$junID) %>% length(), " total number of introns found!."))
-  print(paste0(Sys.time(), " - ", df_all_introns %>% distinct(ref_junID) %>% nrow(), " total number of introns."))
-  
-  df_all_introns <- df_all_introns %>%
-    left_join(y = df_protein, by = c("ref_junID" = "junID")) %>%
-    dplyr::rename(protein_coding = percent_PC,
-                  lncRNA = percent_lncRNA)
-  
-  print(paste0(Sys.time(), " - ", df_all_introns %>% distinct(ref_junID) %>% nrow(), " total number of introns after adding transcript biotype."))
   
   ######################################
   ## INTRONS - ADD THE CLINVAR DATA
@@ -327,7 +285,9 @@ sql_create_master_tables <- function(database.path,
   
   print(paste0(Sys.time(), " - adding the ClinVar data...")) 
   
-  clinvar_tidy <- readRDS(file = paste0(dependencies_folder, "/clinvar_intronic_tidy.rds")) %>% GRanges() %>% diffloop::addchr()
+  clinvar_tidy <- readRDS(file = paste0(dependencies_folder, "/clinvar_intronic_tidy.rds")) %>% 
+    GRanges() %>% 
+    diffloop::addchr()
   clinvar_tidy %>% head()
   
   df_all_introns_tidy <- df_all_introns %>%
@@ -393,9 +353,43 @@ sql_create_master_tables <- function(database.path,
   message(df_all_introns_tidy$ref_junID %>% unique %>% length(), " introns to be stored!")
   df_all_introns_tidy %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(misspliced)
   
+  
+  ######################################
+  ## INTRONS - ADD THE TRANSCRIPT BIOTYPE
+  ######################################
+  
+  
+  df_protein_junID <- readRDS(file = paste0(results.folder, "/all_junID_PC_biotype.rds")) %>%
+    as_tibble()
+  
+  df_all_introns_tidy <- df_all_introns_tidy %>%
+    inner_join(y = df_protein_junID %>% dplyr::select(junID, protein_coding),
+               by = c("ref_junID" = "junID"))
+  
   ######################################
   ## INTRONS - POPULATE THE TABLE
   ######################################
+  
+  # mean_phastCons7way5ss_35 DOUBLE NOT NULL, 
+  # mean_phastCons7way3ss_35 DOUBLE NOT NULL, 
+  # mean_phastCons20way5ss_35 DOUBLE NOT NULL, 
+  # mean_phastCons20way3ss_35 DOUBLE NOT NULL, 
+  # mean_phastCons4way5ss_70 DOUBLE NOT NULL, 
+  # mean_phastCons4way3ss_70 DOUBLE NOT NULL, 
+  # mean_phastCons7way5ss_70 DOUBLE NOT NULL, 
+  # mean_phastCons7way3ss_70 DOUBLE NOT NULL, 
+  # mean_phastCons20way5ss_70 DOUBLE NOT NULL, 
+  # mean_phastCons20way3ss_70 DOUBLE NOT NULL, 
+  # mean_CDTS5ss_70 DOUBLE NOT NULL, 
+  # mean_CDTS3ss_70 DOUBLE NOT NULL, 
+  # mean_phastCons4way5ss_100 DOUBLE NOT NULL, 
+  # mean_phastCons4way3ss_100 DOUBLE NOT NULL, 
+  # mean_phastCons7way5ss_100 DOUBLE NOT NULL, 
+  # mean_phastCons7way3ss_100 DOUBLE NOT NULL, 
+  # mean_phastCons20way5ss_100 DOUBLE NOT NULL, 
+  # mean_phastCons20way3ss_100 DOUBLE NOT NULL, 
+  # mean_CDTS5ss_100 DOUBLE NOT NULL, 
+  # mean_CDTS3ss_100 DOUBLE NOT NULL, 
   
   df_all_introns_tidy %>% names()
   
@@ -412,38 +406,27 @@ sql_create_master_tables <- function(database.path,
                   ref_mes5ss DOUBLE NOT NULL, 
                   ref_mes3ss DOUBLE NOT NULL, 
 
-                  mean_phastCons4way5ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons4way3ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons7way5ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons7way3ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons20way5ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons20way3ss_35 DOUBLE NOT NULL, 
-                  mean_CDTS5ss_35 DOUBLE NOT NULL, 
-                  mean_CDTS3ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons4way5ss_70 DOUBLE NOT NULL, 
-                  mean_phastCons4way3ss_70 DOUBLE NOT NULL, 
-                  mean_phastCons7way5ss_70 DOUBLE NOT NULL, 
-                  mean_phastCons7way3ss_70 DOUBLE NOT NULL, 
-                  mean_phastCons20way5ss_70 DOUBLE NOT NULL, 
-                  mean_phastCons20way3ss_70 DOUBLE NOT NULL, 
-                  mean_CDTS5ss_70 DOUBLE NOT NULL, 
-                  mean_CDTS3ss_70 DOUBLE NOT NULL, 
-                  mean_phastCons4way5ss_100 DOUBLE NOT NULL, 
-                  mean_phastCons4way3ss_100 DOUBLE NOT NULL, 
-                  mean_phastCons7way5ss_100 DOUBLE NOT NULL, 
-                  mean_phastCons7way3ss_100 DOUBLE NOT NULL, 
-                  mean_phastCons20way5ss_100 DOUBLE NOT NULL, 
-                  mean_phastCons20way3ss_100 DOUBLE NOT NULL, 
+                  mean_phastCons17way5ss_100 DOUBLE NOT NULL, 
+                  mean_phastCons17way3ss_100 DOUBLE NOT NULL, 
+                  mean_phastCons17way5ss_50 DOUBLE NOT NULL, 
+                  mean_phastCons17way3ss_50 DOUBLE NOT NULL, 
+                  mean_phastCons17way5ss_35 DOUBLE NOT NULL, 
+                  mean_phastCons17way3ss_35 DOUBLE NOT NULL, 
+                  
                   mean_CDTS5ss_100 DOUBLE NOT NULL, 
                   mean_CDTS3ss_100 DOUBLE NOT NULL, 
+                  mean_CDTS5ss_50 DOUBLE NOT NULL, 
+                  mean_CDTS3ss_50 DOUBLE NOT NULL, 
+                  mean_CDTS5ss_35 DOUBLE NOT NULL, 
+                  mean_CDTS3ss_35 DOUBLE NOT NULL, 
                   
                   ref_donor_sequence TEXT NOT NULL,
                   ref_acceptor_sequence TEXT NOT NULL,
 
                   u2_intron BOOL,
                   clinvar BOOL NOT NULL, 
-                  lncRNA INTEGER NOT NULL,
-                  protein_coding INTEGER NOT NULL,
+                  protein_coding DOUBLE NOT NULL, 
+                  
                   misspliced BOOL NOT NULL,
                   transcript_id INTEGER NOT NULL,
                   FOREIGN KEY (transcript_id) REFERENCES 'transcript'(id))")
@@ -465,9 +448,9 @@ sql_create_master_tables <- function(database.path,
   if (all(df_all_introns_tidy_final$misspliced == T)) {
     print("ERROR! all introns classified as misspliced!")
   }
-  if (any(is.na(df_all_introns_tidy_final$lncRNA))) {
-    print("ERROR! some introns do not have a biotype assigned")
-  }
+  # if (any(is.na(df_all_introns_tidy_final$lncRNA))) {
+  #   print("ERROR! some introns do not have a biotype assigned")
+  # }
   if (any(df_all_introns_tidy_final$transcript_id %>% is.na())) {
     print("ERROR! some introns do not have a gene assigned")
   }

@@ -11,11 +11,12 @@
 #' @examples
 junction_pairing <- function(recount3.project.IDs, 
                              results.folder,
-                             supporting.reads,
-                             replace) {
+                             #supporting.reads,
+                             replace,
+                             num.cores) {
   
   
-  doParallel::registerDoParallel(10)
+  doParallel::registerDoParallel(num.cores)
   
   foreach(i = seq(length(recount3.project.IDs)), .combine = "rbind") %dopar%{
     
@@ -60,12 +61,12 @@ junction_pairing <- function(recount3.project.IDs,
         split_read_counts <- readRDS(file = paste0(folder_base_data, "/", project_id, "_", cluster_id, "_",
                                                    "split_read_counts.rds")) %>% as_tibble()
         
-        stopifnot(
-            split_read_counts %>% 
-            mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
-            filter(sumCounts < supporting.reads) %>% 
-            nrow() == 0
-        )
+        # stopifnot(
+        #     split_read_counts %>% 
+        #     mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
+        #     filter(sumCounts < supporting.reads) %>% 
+        #     nrow() == 0
+        # )
         
         
         if ( !identical(all_split_reads_details$junID, split_read_counts$junID) ) {

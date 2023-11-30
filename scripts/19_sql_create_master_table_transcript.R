@@ -14,6 +14,22 @@ sql_create_master_table_transcript  <- function(database.path,
                                                 hg38,
                                                 tx_ids) {
   
+  
+  ## Load MANE transcripts
+  hg_mane_transcripts <- rtracklayer::import(con = paste0(dependencies_folder,
+                                              "/MANE.GRCh38.v1.0.ensembl_genomic.gtf")) %>%
+    as_tibble() %>%
+    dplyr::select(-source, -score, -phase, -gene_id, -gene_type, -tag, -protein_id,
+                  -db_xref,-transcript_type,-exon_id,-exon_number, -width ) %>%
+    mutate(transcript_id = transcript_id %>% str_sub(start = 1, end = 15)) %>%
+    drop_na() %>%
+    dplyr::filter(type == "transcript") %>%
+    distinct(transcript_id) %>%
+    mutate(MANE = T)
+
+  
+  ## Create 'Transcript' MANE data
+  
   message(Sys.time(), " --> creating 'transcript' master table...")
   con <- dbConnect(RSQLite::SQLite(), database.path)
   
@@ -27,6 +43,8 @@ sql_create_master_table_transcript  <- function(database.path,
     dplyr::filter(gene_id %in% gene_ids$gene_id) %>%
     dplyr::select(transcript_id, TSL = transcript_support_level, gene_id) %>%
     mutate(TSL = str_sub(TSL, start = 1, end = 2) %>% as.integer())
+  
+  
   hg38_transcripts_gene[is.na(hg38_transcripts_gene[,"TSL"]),"TSL"] <- 10
   
   ## ADD MANE INFO

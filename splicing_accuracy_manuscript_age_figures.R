@@ -1,34 +1,31 @@
 library(tidyverse)
-library(SummarizedExperiment)
-library(data.table)
-library(GenomicRanges)
 library(DBI)
 library(dplyr)
 library(here)
 library(doParallel)
 library(Biostrings)
 library(tidyverse)
-library(protr)
 
 # source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/splicing_accuracy_manuscript_age_figures.R")
-
-
-setwd(normalizePath("."))
-
 
 ##################################
 ## CONNECT TO THE DATABASE
 ##################################
 
+base_folder <- here::here()
+
 gtf_version <- 105
-project_name <- "splicing_1read"
+
+
+supporting_reads <- 1
+project_name <-  paste0("splicing_", supporting_reads, "read")
 database_name <- paste0(project_name, "_age")
 
 
-database_folder <- paste0(getwd(), "/database/", database_name, "/", gtf_version, "/")
+database_folder <- paste0(base_folder, "/database/", database_name, "/", gtf_version, "/")
 
-figures_folder <- file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/_paper_review/figures/"))
-results_folder <- file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/_paper_review/results/"))
+figures_folder <- paste0(base_folder, "/results/", project_name, "/", gtf_version, "/_paper_review/figures/")
+results_folder <- paste0(base_folder, "/results/", project_name, "/", gtf_version, "/_paper_review/results/")
 
 
 database_path <- paste0(database_folder,  "/", database_name, ".sqlite")
@@ -36,22 +33,18 @@ database_path <- paste0(database_folder,  "/", database_name, ".sqlite")
 con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
-
-
-age_projects <- readRDS(file = file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/all_final_projects_used.rds")))
+age_projects <- readRDS(file = paste0(base_folder, "/results/",  project_name, 
+                                      "/", gtf_version, "/all_final_projects_used.rds"))
 
 
 custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = "black"),
-                         
                          axis.ticks = element_line(colour = "black", linewidth = 2),
                          axis.text = element_text(size = 7, family="Arial", colour = "black"),
                          axis.line = element_line(colour = "black"),
                          axis.title = element_text(size = 7, family="Arial", colour = "black"),
                          axis.text.y = element_text(size = 7, family="Arial", colour = "black"),
-                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", 
-                                                    hjust = 0.5, vjust = 0.5),
+                         axis.text.x = element_text(size = 7, family="Arial", colour = "black", hjust = 0.5, vjust = 0.5),
                          strip.text = element_text(size = 7, family="Arial", colour = "black"),
-                         
                          legend.text = element_text(size = "7", family="Arial", colour = "black"),
                          legend.title = element_blank(),
                          legend.position = "top",
@@ -293,7 +286,8 @@ get_common_introns_across_age_groups <- function() {
         
         
         ## Add transcript info
-        query <- paste0("SELECT id, gene_id FROM 'transcript' WHERE id IN (", 
+        query <- paste0("SELECT id, gene_id 
+                        FROM 'transcript' WHERE id IN (", 
                         paste(introns$transcript_id %>% unique(), collapse =","), ")")
         introns %>% nrow()
         introns <- introns %>%
@@ -302,7 +296,8 @@ get_common_introns_across_age_groups <- function() {
         
         
         ## Add gene info
-        query <- paste0("SELECT id, gene_name FROM 'gene' WHERE id IN (", 
+        query <- paste0("SELECT id, gene_name 
+                        FROM 'gene' WHERE id IN (", 
                         paste(introns$gene_id %>% unique(), collapse =","), ")")
         introns <- introns %>%
           inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
@@ -371,8 +366,6 @@ get_effsize_MSR_with_age <- function() {
     spread(sample_type, MSR_D) %>%
     as_tibble()
     
-
-  
   
   ## MSR_A data preparation
   df_MSRA <- df_age_groups_tidy %>%
@@ -381,6 +374,7 @@ get_effsize_MSR_with_age <- function() {
     mutate(MSR_A = MSR_A %>% round(digits = 4)) %>%
     spread(sample_type, MSR_A) %>%
     as_tibble()
+
   
 
   df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
@@ -476,7 +470,6 @@ plot_effsize_MSR_with_age <- function() {
     filter(tissue %in% (df_wilcoxon_tidy %>%
                           group_by(tissue) %>%
                           filter(q <= 0.05) %>%
-                          dplyr::count(pval) %>%
                           ungroup() %>% 
                           pull(tissue)) ) %>%
     mutate(tissue = str_replace(tissue, 
@@ -1614,318 +1607,305 @@ overlap_ENCORI_introns_MSR <- function(project_id = "BRAIN") {
   
   con <- dbConnect(RSQLite::SQLite(), database_path)
   dbListTables(con)
-  query <- paste0("SELECT * FROM 'master'")
+  query <- paste0("SELECT * FROM 'metadata'")
   df_metadata <- dbGetQuery(con, query)
   
   
-  chain <- rtracklayer::import.chain(con = "data/hg19ToHg38.over.chain")
+  # chain <- rtracklayer::import.chain(con = paste0(dependencies_folder, "/hg19ToHg38.over.chain"))
   
   
   ###########################
-  ## TIDY INTRONS
+  ## GET ANNOTATED INTRONS FROM THE DATABASE
   ###########################
   
   query <- paste0("SELECT * FROM 'intron'")
   df_intron <- dbGetQuery(con, query)
 
- 
-  df_positions <- map_df (df_intron$ref_coordinates, function (coordinate) {
+  
+  encori_overlaps_all_tissues <- map_df(age_projects, function(project_id) {
+    ## MSR_D
     
-    # coordinate <- "chr7:69596434-69597233:-"
+    df_MSRD <- readRDS(file = paste0(results_folder, "/common_introns_all_age_groups.rds")) %>%
+      dplyr::rename("body_site" = "project_id") %>%
+      filter(body_site == project_id) %>%
+      left_join( y = df_intron %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+                 by = "ref_junID" )
     
-    print(coordinate)
+    df_MSRD_introns_increasing <- df_MSRD %>%
+      dplyr::select(ref_junID, MSR_D, sample_type, seqnames, start, end, strand) %>%
+      spread(key = "sample_type", value = "MSR_D") %>%
+      filter((`20-39` < `40-59` |
+                `20-39` < `60-79`) | 
+               `40-59` < `60-79`) %>%
+      #mutate(start = start - 100) %>% 
+      GRanges()
     
-    chr_j <- str_sub(string = coordinate,
-                     start = 1,
-                     end = str_locate_all(string = coordinate, pattern = ":")[[1]][1,2]-1)
-    start_j <- str_sub(string = coordinate,
-                       start = str_locate_all(string = coordinate, pattern = ":")[[1]][1,2]+1,
-                       end = str_locate_all(string = coordinate, pattern = "-")[[1]][1,2]-1) %>% as.integer()
-    end_j <- str_sub(string = coordinate,
-                     start = str_locate_all(string = coordinate, pattern = "-")[[1]][1,2]+1,
-                     end = str_locate_all(string = coordinate, pattern = ":")[[1]][2,2]-1) %>% as.integer()
-    strand_j <- str_sub(string = coordinate,
-                        start = str_locate_all(string = coordinate, pattern = ":")[[1]][2,2]+1,
-                        end = coordinate %>% stringr::str_count())
-    print(coordinate)
     
-    return(data.frame(ref_coordinates = coordinate,
-                      seqnames = chr_j %>% as.character(),
-                      start = start_j %>% as.integer(),
-                      end = end_j %>% as.integer(),
-                      strand = strand_j %>% as.character()))
+    df_MSRD_introns_decreasing <- df_MSRD %>%
+      dplyr::select(ref_junID, MSR_D, sample_type, seqnames, start, end, strand) %>%
+      spread(key = "sample_type", value = "MSR_D") %>%
+      filter((`20-39` > `40-59` |
+                `20-39` > `60-79`) | 
+               `40-59` > `60-79`) %>%
+      #mutate(start = start - 100) %>% 
+      GRanges()
     
-  })
-  
-  df_intron_tidy <- df_intron %>%
-    left_join(y = df_positions,
-              by = "ref_coordinates")
-  
-  ###########################
-  ## MSR_D
-  ###########################
-
-  
-  df_MSRD <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
-                                   gtf_version,"/",main_project,"/results/df_MSRD_common_introns_all_projects.rds")) %>%
-    dplyr::rename("body_site" = project_id) %>%
-    filter(body_site == project_id) %>%
-    left_join( y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
-               by.x = "ref_junID",
-               by.y = "ref_junID" )
-  
-  df_MSRD_introns_increasing <- df_MSRD %>%
-    filter((`20-39` < `40-59` |
-             `20-39` < `60-79`) | 
-             `40-59` < `60-79`) %>%
-    mutate(start = start - 25) %>% 
-    GRanges()
-  
-  
-  df_MSRD_introns_decreasing <- df_MSRD %>%
-    filter( !(ref_junID %in% df_MSRD_introns_increasing$ref_junID) ) 
-  df_MSRD_introns_decreasing <- df_MSRD_introns_decreasing[sample(nrow(df_MSRD_introns_decreasing), 
-                                                                  (df_MSRD_introns_increasing$ref_junID %>% length()) ), ]
-  df_MSRD_introns_decreasing <- df_MSRD_introns_decreasing %>%
-    mutate(start = start - 25) %>% 
-    GRanges()
-  
-  # genes_MSRD_increasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
-  #                                                "/", main_project, "/results/genes_increase_MSRD_", project_id, ".rds"))
-  # genes_MSRD_increasing <- merge(genes_MSRD_increasing,
-  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
-  #                                by.x = "ref_junID",
-  #                                by.y = "ref_junID")
-  # genes_MSRD_increasing <- genes_MSRD_increasing %>%
-  #   mutate(start = start - 25, end = end + 25) %>% 
-  #   GRanges()
-  # 
-  # 
-  # genes_MSRD_decreasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
-  #                                                "/", main_project, "/results/genes_decrease_MSRD_", project_id, ".rds"))
-  # genes_MSRD_decreasing <- merge(genes_MSRD_decreasing,
-  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
-  #                                by.x = "ref_junID",
-  #                                by.y = "ref_junID")
-  # genes_MSRD_decreasing <- genes_MSRD_decreasing %>%
-  #   mutate(start = start - 25, end = end + 25) %>% 
-  #   GRanges()
-  
-  
-  
-  ###########################
-  ## MSR_A
-  ###########################
-  
-  df_MSRA <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
-                                   gtf_version,"/",main_project,"/results/df_MSRA_common_introns_all_projects.rds")) %>%
-    dplyr::rename("body_site" = project_id) %>%
-    filter(body_site == project_id) %>%
-    left_join( y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
-               by.x = "ref_junID",
-               by.y = "ref_junID" )
-  
-  df_MSRA_introns_increasing <- df_MSRA %>%
-    filter( (`20-39` < `40-59` &
-             `20-39` < `60-79`) | 
-             `40-59` < `60-79`) %>%
-    mutate(end = end + 25) %>% 
-    GRanges()
-  
-  df_MSRA_introns_decreasing <- df_MSRA %>%
-    filter( !(ref_junID %in% df_MSRA_introns_increasing$ref_junID) ) 
-  df_MSRA_introns_decreasing <- df_MSRA_introns_decreasing[sample(nrow(df_MSRA_introns_decreasing), 
-                                                                  (df_MSRA_introns_increasing$ref_junID %>% length()) ), ]
-  df_MSRA_introns_decreasing <- df_MSRA_introns_decreasing %>%
-    mutate(end = end + 25) %>% 
-    GRanges()
-  # df_MSRA_introns_decreasing <- df_MSRA %>%
-  #   filter((`20-39` > `40-59` #&
-  #          #  `40-59` > `60-79`
-  #          )) %>%
-  #   mutate(end = end + 25) %>% 
-  #   GRanges()
-  
-  # genes_MSRA_increasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
-  #                                                "/", main_project, "/results/genes_increase_MSRA_", project_id, ".rds"))
-  # genes_MSRA_increasing <- merge(genes_MSRA_increasing,
-  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
-  #                                by.x = "ref_junID",
-  #                                by.y = "ref_junID")
-  # 
-  # genes_MSRA_increasing <- genes_MSRA_increasing %>%
-  #   mutate(start = start - 25, end = end + 25) %>% 
-  #   GRanges()
-  # 
-  # genes_MSRA_decreasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
-  #                                                "/", main_project, "/results/genes_decrease_MSRA_", project_id, ".rds"))
-  # genes_MSRA_decreasing <- merge(genes_MSRA_decreasing,
-  #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
-  #                                by.x = "ref_junID",
-  #                                by.y = "ref_junID")
-  # 
-  # genes_MSRA_decreasing <- genes_MSRA_decreasing %>%
-  #   mutate(start = start - 25, end = end + 25) %>% 
-  #   GRanges()
-  
-  ######################################################################
-  ## GET OVERLAPS - ENCORI AND INTRONS WITH INCREASING MSR_D AND MSR_A
-  ######################################################################
-  
-  
- 
-  
-  
-  df_RBP_ENCORI_MSR_result <- map_df( c("RBPs_affected_age", "RBPs_notaffected_age"), function(type) {
     
-    # type <- "RBPs_notaffected_age"
-    # type <- "RBPs_affected_age"
+    # df_MSRD_introns_decreasing <- df_MSRD %>%
+    #   filter( !(ref_junID %in% df_MSRD_introns_increasing$ref_junID) )
+    # df_MSRD_introns_decreasing <- df_MSRD_introns_decreasing[sample(nrow(df_MSRD_introns_decreasing),
+    #                                                                 (df_MSRD_introns_increasing$ref_junID %>% length()) ), ]
+    # df_MSRD_introns_decreasing <- df_MSRD_introns_decreasing %>%
+    #   #mutate(start = start - 25) %>%
+    #   GRanges()
     
-    if ( !exists("ensembl105") ) {
-      ensembl105 <- rtracklayer::import(con = "/data/references/ensembl/gtf/v105/Homo_sapiens.GRCh38.105.chr.gtf")  
-    } 
+    # genes_MSRD_increasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+    #                                                "/", main_project, "/results/genes_increase_MSRD_", project_id, ".rds"))
+    # genes_MSRD_increasing <- merge(genes_MSRD_increasing,
+    #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+    #                                by.x = "ref_junID",
+    #                                by.y = "ref_junID")
+    # genes_MSRD_increasing <- genes_MSRD_increasing %>%
+    #   mutate(start = start - 25, end = end + 25) %>% 
+    #   GRanges()
+    # 
+    # 
+    # genes_MSRD_decreasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+    #                                                "/", main_project, "/results/genes_decrease_MSRD_", project_id, ".rds"))
+    # genes_MSRD_decreasing <- merge(genes_MSRD_decreasing,
+    #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+    #                                by.x = "ref_junID",
+    #                                by.y = "ref_junID")
+    # genes_MSRD_decreasing <- genes_MSRD_decreasing %>%
+    #   mutate(start = start - 25, end = end + 25) %>% 
+    #   GRanges()
     
-    ## LOAD RPB list
-    if ( type == "RBPs_affected_age" ) {
+    
+    
+    
+    ## MSR_A
+    
+    
+    df_MSRA <- readRDS(file = paste0(results_folder, "/common_introns_all_age_groups.rds")) %>%
+      dplyr::rename("body_site" = "project_id") %>%
+      filter(body_site == project_id) %>%
+      left_join( y = df_intron %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+                 by = "ref_junID" )
+    
+    df_MSRA_introns_increasing <- df_MSRA %>%
+      dplyr::select(ref_junID, MSR_A, sample_type, seqnames, start, end, strand) %>%
+      spread(key = "sample_type", value = "MSR_A") %>%
+      filter((`20-39` == `40-59` & `40-59` < `60-79`) |
+               (`20-39` < `40-59` & `40-59` == `60-79`) | 
+               (`20-39` < `40-59` & `40-59` < `60-79`)) %>%
+      #mutate(start = start - 100) %>% 
+      GRanges()
+    
+    
+    df_MSRA_introns_decreasing <- df_MSRA %>%
+      dplyr::select(ref_junID, MSR_A, sample_type, seqnames, start, end, strand) %>%
+      spread(key = "sample_type", value = "MSR_A") %>%
+      filter((`20-39` > `40-59` |
+                `20-39` > `60-79`) | 
+               `40-59` > `60-79`) %>%
+      #mutate(start = start - 100) %>% 
+      GRanges()
+    
+    
+    # df_MSRA <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v",
+    #                                  gtf_version,"/",main_project,"/results/df_MSRA_common_introns_all_projects.rds")) %>%
+    #   dplyr::rename("body_site" = project_id) %>%
+    #   filter(body_site == project_id) %>%
+    #   left_join( y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+    #              by.x = "ref_junID",
+    #              by.y = "ref_junID" )
+    # 
+    # df_MSRA_introns_increasing <- df_MSRA %>%
+    #   filter( (`20-39` < `40-59` &
+    #            `20-39` < `60-79`) | 
+    #            `40-59` < `60-79`) %>%
+    #   mutate(end = end + 25) %>% 
+    #   GRanges()
+    # 
+    # df_MSRA_introns_decreasing <- df_MSRA %>%
+    #   filter( !(ref_junID %in% df_MSRA_introns_increasing$ref_junID) ) 
+    # df_MSRA_introns_decreasing <- df_MSRA_introns_decreasing[sample(nrow(df_MSRA_introns_decreasing), 
+    #                                                                 (df_MSRA_introns_increasing$ref_junID %>% length()) ), ]
+    # df_MSRA_introns_decreasing <- df_MSRA_introns_decreasing %>%
+    #   mutate(end = end + 25) %>% 
+    #   GRanges()
+    # df_MSRA_introns_decreasing <- df_MSRA %>%
+    #   filter((`20-39` > `40-59` #&
+    #          #  `40-59` > `60-79`
+    #          )) %>%
+    #   mutate(end = end + 25) %>% 
+    #   GRanges()
+    
+    # genes_MSRA_increasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+    #                                                "/", main_project, "/results/genes_increase_MSRA_", project_id, ".rds"))
+    # genes_MSRA_increasing <- merge(genes_MSRA_increasing,
+    #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+    #                                by.x = "ref_junID",
+    #                                by.y = "ref_junID")
+    # 
+    # genes_MSRA_increasing <- genes_MSRA_increasing %>%
+    #   mutate(start = start - 25, end = end + 25) %>% 
+    #   GRanges()
+    # 
+    # genes_MSRA_decreasing <- readRDS(file = paste0("/home/sruiz/PROJECTS/splicing-project-recount3/database/v", gtf_version, 
+    #                                                "/", main_project, "/results/genes_decrease_MSRA_", project_id, ".rds"))
+    # genes_MSRA_decreasing <- merge(genes_MSRA_decreasing,
+    #                                y = df_intron_tidy %>% dplyr::select(ref_junID, start, end, seqnames, strand),
+    #                                by.x = "ref_junID",
+    #                                by.y = "ref_junID")
+    # 
+    # genes_MSRA_decreasing <- genes_MSRA_decreasing %>%
+    #   mutate(start = start - 25, end = end + 25) %>% 
+    #   GRanges()
+    
+    ######################################################################
+    ## GET OVERLAPS - ENCORI AND INTRONS WITH INCREASING MSR_D AND MSR_A
+    ######################################################################
+    
+    gene_age_lm <- readRDS(file = file.path(results_folder, "RBP_genes_age_lm.rds")) 
+    
+    
+    map_df( c("RBPs_affected_age", "RBPs_notaffected_age"), function(type) {
       
-      RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv",
-                       header = F)
+      # type <- "RBPs_notaffected_age"
+      # type <- "RBPs_affected_age"
+      
+      if ( !exists("ensembl105") ) {
+        ensembl105 <- rtracklayer::import(con = paste0(dependencies_folder, "/Homo_sapiens.GRCh38.", gtf_version,".chr.gtf"))  
+      } 
       
       
-      # RBPs <- spread_matrix %>%
-      #   filter(`20-39` > `40-59` ,
-      #          `40-59` > `60-79`) %>%
-      #   left_join(y = ensembl105 %>%
-      #               as_tibble() %>%
-      #               dplyr::select(gene_id, gene_name) %>%
-      #               distinct(gene_id, .keep_all = T),
-      #             by = c("RBP" = "gene_id")) %>%
-      #   dplyr::select(V1 = gene_name) 
-
-      
-    } else {
-      
-      RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv", 
-                       header = F)
-      
-      # RBPs <-  spread_matrix %>%
-      #   filter(!(RBP %in%  (spread_matrix %>%
-      #                         filter(`20-39` > `40-59` ,
-      #                                `40-59` > `60-79`) %>%
-      #                         pull(RBP)))) %>%
-      #   left_join(y = ensembl105 %>%
-      #               as_tibble() %>%
-      #               dplyr::select(gene_id, gene_name) %>%
-      #               distinct(gene_id, .keep_all = T),
-      #             by = c("RBP" = "gene_id")) %>%
-      #   dplyr::select(V1 = gene_name) 
-      
-    }
-    
-    ##############################
-    ## Check ENCORI iCLIP results
-    ##############################
-    
-    map_df( RBPs$V1 %>% sort(), function (RBP) {
-      
-      # RBP <- "ADAR"
-      file_name <- paste0("/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/results/ENCORI/",
-                          "/ENCORI_hg19_", RBP, "_allgenes.txt")
-      
-      #print(file_name)
-      
-      if ( file.exists(file_name) ) {
+      ## LOAD RPB list
+      if ( type == "RBPs_affected_age" ) {
         
-        ENCORI_RBP_result <- read.delim(file = file_name, header = T, skip = 3, sep = "\t") 
+        # RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_decrease.csv", header = F)
+        RBPs <- gene_age_lm %>% 
+          filter(q <= 0.05) %>%
+          distinct(name)
         
-        if ( ENCORI_RBP_result %>% nrow() > 1) {
-          
-          print(paste0(RBP, " - ", type))
-          
-          ENCORI_RBP_result <- ENCORI_RBP_result %>% 
-            as.data.frame() %>%
-            mutate(chromosome = chromosome %>% as.factor(),
-                   strand = strand %>% as.factor()) %>%
-            distinct(geneID, .keep_all = T) %>%
-            dplyr::select(RBP, seqnames = chromosome, start = broadStart, end = broadEnd, strand) %>% 
-            GenomicRanges::GRanges()
-          
-          
-          #######################
-          # Liftover
-          #######################
-          
-          # http://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/
-          
-          ENCORI_RBP_result_GRh38 <- rtracklayer::liftOver(x = ENCORI_RBP_result, 
-                                                           chain = chain) %>% 
-            unlist() 
-          
-          #######################
-          ## Overlaps - MSR_D
-          #######################
-          
-          overlaps_MSRD <- GenomicRanges::findOverlaps(query = df_MSRD_introns_increasing,
-                                                       subject = ENCORI_RBP_result_GRh38,
-                                                       type = "any",
-                                                       ignore.strand = F)
-          
-          overlaps_MSRDd <- GenomicRanges::findOverlaps(query = df_MSRD_introns_decreasing,
-                                                        subject = ENCORI_RBP_result_GRh38,
-                                                        type = "any",
-                                                        ignore.strand = F)
-          
-          
-          #######################
-          ## Overlaps - MSR_A
-          #######################
-          
-          overlaps_MSRA <- GenomicRanges::findOverlaps(query = df_MSRA_introns_increasing,
-                                                       subject = ENCORI_RBP_result_GRh38,
-                                                       type = "any",
-                                                       ignore.strand = F)
-          
-          overlaps_MSRAd <- GenomicRanges::findOverlaps(query = df_MSRA_introns_decreasing,
-                                                        subject = ENCORI_RBP_result_GRh38,
-                                                        type = "any",
-                                                        ignore.strand = F)
-          
-          #######################
-          ## Return result
-          #######################
-          
-          
-          data.frame(RBP_name = RBP,
-                     RBP_type = type,
-                     ovlps_MSRD = df_MSRD_introns_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRA = df_MSRA_introns_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRD = df_MSRD_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRA = df_MSRA_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRD_perc = (((df_MSRD_introns_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                          df_MSRD_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
-                     ovlps_MSRA_perc = (((df_MSRA_introns_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                          df_MSRA_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
-                     
-                     ovlps_MSRDd = df_MSRD_introns_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRAd = df_MSRA_introns_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRDd = df_MSRD_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     total_MSRAd = df_MSRA_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
-                     ovlps_MSRD_percd = (((df_MSRD_introns_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                           df_MSRD_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
-                     ovlps_MSRA_percd = (((df_MSRA_introns_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
-                                           df_MSRA_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow())
-          ) %>% return()
-        }
+      } else {
+        
+        # RBPs <- read.csv(file = "/home/sruiz/PROJECTS/splicing-project-recount3/paper_figures/iCLIP/RBPs_other.csv", header = F)
+        RBPs <- gene_age_lm %>% 
+          filter(q > 0.05)%>%
+          distinct(name)
       }
+      
+      ##############################
+      ## Check ENCORI iCLIP results
+      ##############################
+      
+      map_df( RBPs$name %>% sort(), function (RBP_name) {
+        
+        # RBP_name <- "ADAR"
+        # RBP_name <- (RBPs$name %>% sort())[1]
+        file_name <- paste0(dependencies_folder, "/ENCORI_hg38_RBPTarget_",RBP_name,".txt")
+        
+        #print(file_name)
+        
+        if ( file.exists(file_name) ) {
+          
+          ENCORI_RBP_result <- read.delim(file = file_name, header = T, skip = 3, sep = "\t") 
+          
+          if ( ENCORI_RBP_result %>% nrow() > 1) {
+            
+            print(paste0(RBP, " - ", type))
+            
+            ENCORI_RBP_result <- ENCORI_RBP_result %>% 
+              as.data.frame() %>%
+              mutate(chromosome = chromosome %>% as.factor(),
+                     strand = strand %>% as.factor()) %>%
+              distinct(geneID, .keep_all = T) %>%
+              dplyr::select(RBP, seqnames = chromosome, start = broadStart, end = broadEnd, strand) %>% 
+              GenomicRanges::GRanges()
+            
+            
+            # #######################
+            # # Liftover
+            # #######################
+            # 
+            # # http://hgdownload.soe.ucsc.edu/goldenPath/hg19/liftOver/
+            # 
+            # ENCORI_RBP_result_GRh38 <- rtracklayer::liftOver(x = ENCORI_RBP_result, 
+            #                                                  chain = chain) %>% 
+            #   unlist() 
+            
+            #######################
+            ## Overlaps - MSR_D
+            #######################
+            
+            overlaps_MSRD <- GenomicRanges::findOverlaps(query = df_MSRD_introns_increasing,
+                                                         subject = ENCORI_RBP_result,
+                                                         type = "any",
+                                                         ignore.strand = F)
+            
+            overlaps_MSRDd <- GenomicRanges::findOverlaps(query = df_MSRD_introns_decreasing,
+                                                          subject = ENCORI_RBP_result,
+                                                          type = "any",
+                                                          ignore.strand = F)
+            
+            
+            #######################
+            ## Overlaps - MSR_A
+            #######################
+            
+            overlaps_MSRA <- GenomicRanges::findOverlaps(query = df_MSRA_introns_increasing,
+                                                         subject = ENCORI_RBP_result,
+                                                         type = "any",
+                                                         ignore.strand = F)
+            
+            overlaps_MSRAd <- GenomicRanges::findOverlaps(query = df_MSRA_introns_decreasing,
+                                                          subject = ENCORI_RBP_result,
+                                                          type = "any",
+                                                          ignore.strand = F)
+            
+            #######################
+            ## Return result
+            #######################
+            
+            
+            data.frame(RBP_name = RBP,
+                       RBP_type = type,
+                       recount_projectID = project_id,
+                       ovlps_MSRD = df_MSRD_introns_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       ovlps_MSRA = df_MSRA_introns_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       total_MSRD = df_MSRD_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       total_MSRA = df_MSRA_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       ovlps_MSRD_perc = (((df_MSRD_introns_increasing[queryHits(overlaps_MSRD),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                            df_MSRD_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
+                       ovlps_MSRA_perc = (((df_MSRA_introns_increasing[queryHits(overlaps_MSRA),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                            df_MSRA_introns_increasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
+                       
+                       ovlps_MSRDd = df_MSRD_introns_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       ovlps_MSRAd = df_MSRA_introns_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       total_MSRDd = df_MSRD_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       total_MSRAd = df_MSRA_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow,
+                       ovlps_MSRD_percd = (((df_MSRD_introns_decreasing[queryHits(overlaps_MSRDd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                             df_MSRD_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow()),
+                       ovlps_MSRA_percd = (((df_MSRA_introns_decreasing[queryHits(overlaps_MSRAd),] %>% as_tibble %>% distinct(ref_junID) %>% nrow) * 100) / 
+                                             df_MSRA_introns_decreasing %>% as_tibble %>% distinct(ref_junID) %>% nrow())) %>% 
+              return()
+          }
+        }
+        
+      })
       
     })
     
+
   })
   
-  write_csv(x = df_RBP_ENCORI_MSR_result,
-            file = "paper_figures/iCLIP/results/RBPs_ENCORI_MSR.csv", col_names = T)
+
+  saveRDS(object = df_RBP_ENCORI_MSR_result,
+          file = paste0(results_folder, "/RBPs_ENCORI_MSR.csv"))
   
   df_RBP_ENCORI_MSR_result %>% as_tibble()
+  
   
 }
 

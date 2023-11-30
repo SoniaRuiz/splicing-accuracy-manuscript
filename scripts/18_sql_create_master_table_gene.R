@@ -9,6 +9,7 @@
 #'
 #' @examples
 sql_create_master_table_gene <- function(database.path,
+                                         #protein_biotype,
                                          hg38,
                                          gene_ids) {
   
@@ -41,16 +42,30 @@ sql_create_master_table_gene <- function(database.path,
     as_tibble()
   
   
+  # ######################################
+  # ## ADD THE BIOTYPE INFO
+  # ######################################
+  # 
+  # print(paste0(Sys.time(), " - adding the transcript biotype ... "))
+  # 
+  # hg38_tidy <- hg38_tidy %>%
+  #   left_join(y = protein_biotype,
+  #             by = c("gene_id")) 
+  # 
+  # ######################################
+  
+  
+  
+  
   ## CREATE GENE_NAME TABLE
   sql_statement <- paste0("CREATE TABLE IF NOT EXISTS 'gene'", 
                           "(id INTEGER PRIMARY KEY NOT NULL,
                           gene_id TEXT NOT NULL,
                           gene_name TEXT,
-                          n_transcripts INTEGER NOT NULL,
-                          gene_width INTEGER NOT NULL)")
+                          gene_width INTEGER NOT NULL, 
+                          n_transcripts INTEGER NOT NULL)")
   res <- DBI::dbSendQuery(con, sql_statement)
   DBI::dbClearResult(res)
-  
   
   ## POPULATE GENE TABLE
   hg38_tidy_final <- hg38_tidy %>% 

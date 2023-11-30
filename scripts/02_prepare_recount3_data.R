@@ -25,11 +25,21 @@ prepare_recount3_data <- function(recount3.project.IDs,
   message(Sys.time()," loading all QC split reads ...")
   
   if ( !file.exists(paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds")) ) {
+    
     message("Error! The file with the split reads passing LEVEL 1 of filtering criteria does not exist!")
     break;
+    
   } else {
+    
+    ## Only consider those junctions that are found in at least N recount3 projects
+    
+    message(Sys.time(), "Loading the file with the split reads passing LEVEL 1 of filtering criteria...")
+    
     all_split_reads_qc_level1 <- 
-      readRDS(file = paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds"))  
+      readRDS(file = paste0(levelqc1.folder, "/all_split_reads_qc_level1.rds"))
+    
+    message(all_split_reads_qc_level1 %>% nrow(), " initial number of split reads...")
+    
   }
   
   message(all_split_reads_qc_level1 %>% nrow(), " initial number of split reads...")
@@ -42,8 +52,9 @@ prepare_recount3_data <- function(recount3.project.IDs,
     
     ## If this is GTEx, the recount3.project.IDs object can contain up to 54 different values
     ## e.g. KIDNEY, BRAIN, BLOOD, etc
-    # project_id <- recount3.project.IDs[12]
+    # project_id <- recount3.project.IDs[1]
     # project_id <- "LUNG"
+    # project_id <- "HEART"
     
     
     local_folder_results <- paste0(results.folder, "/", project_id, "/base_data/")
@@ -58,101 +69,7 @@ prepare_recount3_data <- function(recount3.project.IDs,
       annotation = "gencode_v29",
       type = "jxn"
     )
-    
-    #############################################################################
-    
-    ## THERE ARE OTHER RECOMMENDED WAYS OF DOWNLOADING DATA FROM RECOUNT3
-    ## HOWEVER, THIS ALTERNATIVE METHOD IS FOLLOWED IN ORDER TO REDUCE MEMORY USAGE
-    ## PARTICULARLY USEFUL WITH LARGE DATASETS SUCH AS GTEX (https://github.com/LieberInstitute/recount3/blob/devel/R/create_rse_manual.R)
-    ## FOR OTHER RECOMMENDED METHODS, SEE (https://bioconductor.org/packages/release/bioc/manuals/recount3/man/recount3.pdf) - ACCESSED 08/07/2023
-    
-    #############################################################################
-    
-    # bfc <- recount3::recount3_cache()
-    # recount3_url <- getOption("recount3_url", "http://duffel.rail.bio/recount3")
-    # verbose <- getOption("recount3_verbose", TRUE)
-    # 
-    # message(Sys.time()," loading metadata info.")
-    # metadata.info <- recount3::read_metadata(recount3::file_retrieve(
-    #   url = recount3::locate_url(
-    #     project = project_id,
-    #     project_home = data.source,
-    #     organism = "human",
-    #     annotation = "gencode_v29",
-    #     type = "metadata",
-    #     recount3_url = recount3_url
-    #   ),
-    #   bfc = bfc,
-    #   verbose = verbose
-    # ))
-    # 
-    # jxn_files <- recount3::locate_url(
-    #   project = project_id,
-    #   project_home = data.source,
-    #   organism = "human",
-    #   annotation = "gencode_v29",
-    #   #jxn_format = c("UNIQUE"),
-    #   type = "jxn",
-    #   recount3_url = recount3_url
-    # )
-    # 
-    # feature_info <- utils::read.delim(recount3::file_retrieve(
-    #   url = jxn_files[grep("\\.RR\\.gz$", jxn_files)],
-    #   bfc = bfc,
-    #   verbose = verbose
-    # ))
-    # feature_info$strand[feature_info$strand == "?"] <- "*"
-    # feature_info <- GenomicRanges::GRanges(feature_info)
-    # feature_info %>% length()
-    # 
-    # # feature_info_prev <- readRDS(file = paste0(local_folder_results, "/all_split_reads_raw.rds")) %>% pull(junID) 
-    # # gc()
-    # 
-    # if (verbose) {
-    #   message(
-    #     Sys.time(),
-    #     " matching exon-exon junction counts with the metadata."
-    #   )
-    # }
-    # 
-    # ## The samples in the MM jxn table are not in the same order as the metadata!
-    # jxn_rail <- read.delim(recount3::file_retrieve(
-    #   url = jxn_files[grep("\\.ID\\.gz$", jxn_files)],
-    #   bfc = bfc,
-    #   verbose = verbose
-    # ))
-    # m <- match(metadata.info$rail_id, jxn_rail$rail_id)
-    # stopifnot(
-    #   "Metadata rail_id and exon-exon junctions rail_id are not matching." =
-    #     !all(is.na(m))
-    # )
-    # 
-    # 
-    # 
-    # #################################
-    # ## GET SPLIT READS AND COUNTS  
-    # #################################
-    # 
-    # message(Sys.time()," loading count matrix.")
-    # counts <- Matrix::readMM(recount3::file_retrieve(
-    #   url = jxn_files[grep("\\.MM\\.gz$", jxn_files)],
-    #   bfc = bfc,
-    #   verbose = verbose
-    # ))
-    # counts %>% nrow()
-    # 
-    # message(Sys.time()," ordering count matrix.")
-    # counts <- counts[, m, drop = FALSE]
-    # colnames(counts) <- metadata.info$external_id[m]
-    # rownames(counts) <- feature_info %>% as.character()
-    # colnames(counts) %>% length()
-    # 
-    # ## Make names consistent
-    # names(feature_info) <- rownames(counts)
-    # rownames(metadata.info) <- colnames(counts)
-    # 
-    
-    
+   
     metadata.info <- colData(rse_jxn)
     saveRDS(object = metadata.info, 
             file = paste0(local_folder_results, "/", project_id, "_samples_raw_metadata.rds"))
@@ -168,19 +85,34 @@ prepare_recount3_data <- function(recount3.project.IDs,
     if ( metadata_tidy %>% nrow() > 0) {
       
       if (subsampling) {
+        
         set.seed(12)
-        ## From the samples obtained, only keep the ones matching similar RIN numbers
-        m.out <- MatchIt::matchit(cluster ~ rin_score,
-                                  data = metadata_tidy,
-                                  distance = metadata_tidy$rin_score,
-                                  method = "nearest",
-                                  caliper = c(rin_score = 0),
-                                  std.caliper = F)
+        
+        if ( !all(is.na(metadata_tidy$rin)) ) {
+          ## From the samples obtained, only keep the ones matching similar RIN numbers
+          m.out <- MatchIt::matchit(cluster ~ all_mapped_reads,
+                                    data = metadata_tidy,
+                                    distance = metadata_tidy$all_mapped_reads,
+                                    method = "nearest",
+                                    caliper = c(all_mapped_reads = 500000),
+                                    std.caliper = F)
+        } else {
+          ## From the samples obtained, only keep the ones matching similar age numbers
+          m.out <- MatchIt::matchit(cluster ~ age,
+                                    data = metadata_tidy,
+                                    distance = metadata_tidy$age,
+                                    method = "nearest",
+                                    caliper = c(age = 1),
+                                    std.caliper = F)
+        }
+        
+        
+        
         metadata_tidy_filter <- MatchIt::match.data(m.out) %>%
           dplyr::select(-c("distance", "weights", "subclass"))
         metadata_tidy_filter %>% 
           distinct(external_id, .keep_all = T) %>%
-          count(cluster)
+          dplyr::count(cluster)
         metadata_tidy_filter %>% 
           distinct(external_id, .keep_all = T) %>%
           as_tibble()
@@ -190,11 +122,12 @@ prepare_recount3_data <- function(recount3.project.IDs,
         metadata_tidy_filter <- metadata_tidy
       }
       
-      
-      stopifnot(
-        "There are samples with RIN lower than 6!" =
-          all(metadata_tidy_filter$rin >= 6)
-      )
+      if ( !all(is.na(metadata_tidy$rin)) ) {
+        stopifnot(
+          "There are samples with RIN lower than 6!" =
+            all(metadata_tidy_filter$rin >= 6)
+        )
+      }
       
       
       saveRDS(object = metadata_tidy_filter, 
@@ -205,14 +138,46 @@ prepare_recount3_data <- function(recount3.project.IDs,
       # metadata_tidy_filter %>% as_tibble()
       # metadata_tidy_filter$external_id %>% sort()
       
+      
+      #############################################################
+      ## FILTERS NEEDED TO CALL A SPLICE SITE 
+      #############################################################
+      
+      project_samples <- metadata_tidy_filter %>% 
+        distinct(external_id) %>% 
+        pull()
+      
+      
+      ## Only samples passing the filtering criteria
+      all_counts <- assay(rse_jxn, "counts")[,(colnames(assay(rse_jxn, "counts")) %in% project_samples)]
+      all_counts %>% nrow()
+      
+      
+      ## Only consider novel and annotated junctions passing the LEVEL 1
+      all_counts <- all_counts[(rownames(all_counts) %in% all_split_reads_qc_level1$junID),]
+      all_counts %>% nrow()
+      
+      
+      ##  Only consider novel and annotated junctions with at least N number of supporting split reads accross clusters
+      all_counts <- all_counts[rowSums(all_counts) >= supporting.reads, ]
+      all_counts %>% nrow()
+      
+      
+      ##  Only consider novel and annotated junctions that are present in at least N independent samples accross clusters
+      all_counts <- all_counts %>% as.matrix()
+      all_counts <- all_counts[rowCounts(all_counts) >= supporting.reads, ]
+      all_counts %>% nrow()
+      
+      
       ###################################
       ## GET SPLIT READ DATA PER CLUSTER
       ###################################
       
       ## Separate data per cluster
       clusters_ID <- metadata_tidy$cluster %>% unique()
+      print(clusters_ID)
+      
       clusters_used <- NULL
-      gc()
       
       for (cluster_id in clusters_ID) {
         
@@ -239,48 +204,41 @@ prepare_recount3_data <- function(recount3.project.IDs,
           
           clusters_used <- c(clusters_used, cluster_id)
           
-          ################
-          ## Get counts
-          ################
+          ###################################
+          ## Get counts for current cluster
+          ###################################
           
           message("Getting split read counts matrix for the current cluster...")
           
-          ## Only samples passing the filtering criteria
-          local_counts <- assay(rse_jxn, "counts")[,(colnames(assay(rse_jxn, "counts")) %in% cluster_samples)]
+          local_counts <- all_counts[,(colnames(all_counts) %in% cluster_samples)]
+          
+          
+          ##  Only consider novel and annotated junctions with at least 1 supporting split read across the samples of the current project
+          local_counts <- local_counts[rowSums(local_counts) >= 1, ]
           local_counts %>% nrow()
           
-          ## Only split reads passing the LEVEL1 filtering criteria
-          local_counts <- local_counts[(rownames(local_counts) %in% 
-                                          all_split_reads_qc_level1$junID),]
-          local_counts %>% nrow()
-          
-          message(cluster_id, " - converting the split read counts matrix into tibble ...")
-          
-          local_counts %>% nrow()
-          local_counts %>% head()
-          local_counts <- local_counts %>% as.matrix()
-        
-          ## At least N number of supporting reads
-          local_counts <- local_counts[rowSums(local_counts) >= supporting.reads, ]
-          local_counts %>% nrow()
-
-          #local_counts["chr1:43422633-43422820:+", ]
-          
+          ## Convert to tibble
           local_counts <- local_counts %>% as_tibble(rownames = "junID")
-
+          local_counts %>% nrow()
+          
+          message(Sys.time(), " - ", cluster_id, " --> ", local_counts %>% nrow(), " final split reads.")
+          
+          
+          ## QC check and save data
           print(paste0(Sys.time(), " - saving data."))
           print(object.size(local_counts), units = "GB")
           
           stopifnot(
             "Still there are split reads with a lower number of supporting reads indicated by parameter." =
-              local_counts %>% 
+              local_counts %>%
               mutate(sumCounts = rowSums(select(., !contains("junID")))) %>%
-              filter(sumCounts < supporting.reads) %>% 
+              filter(sumCounts < 1) %>%
               nrow() == 0
           )
           
           saveRDS(object = local_counts,
-                  file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_split_read_counts.rds"))
+                  file = paste0(local_folder_results, "/", project_id, "_", 
+                                cluster_id, "_split_read_counts.rds"))
           gc()
           
           #######################
@@ -313,7 +271,7 @@ prepare_recount3_data <- function(recount3.project.IDs,
           message(cluster_id, " - saving data.")
           
           ## Save the object
-          saveRDS(object = all_split_reads %>% data.table::as.data.table(),
+          saveRDS(object = all_split_reads %>% as_tibble(),
                   file = paste0(local_folder_results, "/", project_id, "_", cluster_id, "_all_split_reads.rds"))
           
           

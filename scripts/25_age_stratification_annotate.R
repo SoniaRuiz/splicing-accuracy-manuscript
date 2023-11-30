@@ -17,8 +17,7 @@ age_stratification_annotate <- function (age.groups,
                                          gtf.version,
                                          project.id,
                                          age.samples.clusters,
-                                         results.folder,
-                                         supportive.reads) {
+                                         results.folder) {
   
   
   all_samples_used <- NULL
@@ -74,12 +73,12 @@ age_stratification_annotate <- function (age.groups,
             as_tibble(rownames = "junID")
         }
         
-        if ( split_read_counts_local %>%
-             mutate(total=rowSums(select_if(., is.numeric))) %>% 
-             filter(total < supportive.reads) %>% 
-             nrow() != 0 ) {
-          paste0(project.id, " - There are split reads with less than the number of supportive reads indicated by parameter!") %>% print
-        }
+        # if ( split_read_counts_local %>%
+        #      mutate(total=rowSums(select_if(., is.numeric))) %>% 
+        #      filter(total < supportive.reads) %>% 
+        #      nrow() != 0 ) {
+        #   paste0(project.id, " - There are split reads with less than the number of supportive reads indicated by parameter!") %>% print
+        # }
         
         split_read_counts_local <- split_read_counts_local %>%
           dplyr::select(c("junID", any_of(samples)))
@@ -87,7 +86,7 @@ age_stratification_annotate <- function (age.groups,
         ## Only split reads with at least 2 supportive reads after filtering using the local cluster of samples
         split_read_counts_local <- split_read_counts_local %>%
           mutate(total = rowSums(select_if(., is.numeric))) %>% 
-          filter(total >= supportive.reads) %>%
+          #filter(total >= supportive.reads) %>%
           dplyr::select(-total)
         
         

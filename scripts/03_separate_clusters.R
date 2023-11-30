@@ -54,7 +54,11 @@ separate_clusters <- function(project.metadata,
     
   } else if (data.source == "data_sources/sra") {
     
+    
+    
+    
     project_metadata_tidy <- project.metadata %>%
+      as_tibble() %>%
       dplyr::select(external_id, 
                     sra.experiment_title, 
                     sra.sample_attributes, 
@@ -67,10 +71,32 @@ separate_clusters <- function(project.metadata,
       as.data.frame() %>%
       mutate(cluster = ifelse(test = str_detect(sra.experiment_title, pattern="AD"),
                               yes = "AD",
-                              no = "control"),
+                              no = ifelse( test = str_detect(sra.experiment_title, pattern="P"),
+                                           yes = "PD",
+                                           no = "control")),
              cluster = cluster %>%as.factor(),
-             rin_score = rin_score %>% as.double()) 
-  } else {
+             #rin_score = rin_score %>% as.double(),
+             avg_read_length = project.metadata$recount_seq_qc.avg_len,
+             SRA_project = project.metadata$recount_project.project) 
+    
+    project_metadata_tidy <- project_metadata_tidy %>%
+      mutate(rin_score = if (exists('rin_score', where = project_metadata_tidy)) rin_score else NA) %>%
+      mutate_at(vars(one_of('rin_score')), as.double) %>%
+      dplyr::rename(age = "age at death",
+                    rin = "rin_score",
+                    gender = if (exists('Sex', where = project_metadata_tidy)) "Sex" else "gender") %>%
+      mutate(age = age %>% as.integer()) %>%
+      as_tibble()
+    
+    
+    if ( !all(is.na(project_metadata_tidy$rin)) ) {
+      project_metadata_tidy <- project_metadata_tidy %>%
+        filter(rin >= 6.0) ## Only fresh-frozen preserved tissues
+    }
+  
+    project_metadata_tidy
+  
+    } else {
     ## TODO "data_sources/tcga"
   }
   

@@ -4,7 +4,6 @@ library(DESeq2)
 library(SummarizedExperiment)
 library(biomaRt)
 library(DBI)
-library(ggforce)
 library(doParallel)
 library(ggridges)
 
@@ -18,9 +17,7 @@ library(ggridges)
 
 ## CONNECT TO THE DATABASE ------------------------------
 
-setwd(normalizePath("."))
 gtf_version <- 105
-supporting_reads <- 2
 main_project <- paste0("splicing_",supporting_reads,"read")
 
 database_path <- paste0(getwd(), "/database/", main_project, "/", gtf_version, "/", 
@@ -31,8 +28,11 @@ con <- dbConnect(RSQLite::SQLite(), database_path)
 dbListTables(con)
 
 
-results_folder <- file.path(getwd(), "results", main_project, gtf_version, "_paper_review/results")
-figures_folder <- file.path(getwd(), "results", main_project, gtf_version, "_paper_review/figures")
+base_folder <- here::here()
+dependencies_folder <- paste0(base_folder, "/dependencies/")
+
+results_folder <- file.path(base_folder, "results", main_project, gtf_version, "_paper_review/results")
+figures_folder <- file.path(base_folder, "results", main_project, gtf_version, "_paper_review/figures")
 
 ## GET FROM MASTER TABLE
 query = paste0("SELECT * FROM 'metadata'")
@@ -48,29 +48,20 @@ get_mode <- function(data) {
 }
 
 
-custom_ggtheme <-  theme(text = element_text(size = 7,# family="Arial", 
-                                             colour = "black"),
-                         
+custom_ggtheme <-  theme(text = element_text(size = 7, colour = "black"),
                          axis.ticks = element_line(colour = "black", linewidth = 2),
-                         axis.text = element_text(size = 7, #family="Arial", 
-                                                  colour = "black"),
+                         axis.text = element_text(size = 7, colour = "black"),
                          axis.line = element_line(colour = "black"),
-                         axis.title = element_text(size = 7, #family="Arial", 
-                                                   colour = "black"),
-                         axis.text.y = element_text(size = 7, #family="Arial", 
-                                                    colour = "black"),
-                         axis.text.x = element_text(size = 7, #family="Arial", 
-                                                    colour = "black", 
-                                                    hjust = 0.5, vjust = 0.5),
-                         strip.text = element_text(size = 7, #family="Arial", 
-                                                   colour = "black"),
-                         legend.text = element_text(size = "7", #family="Arial", 
-                                                    colour = "black"),
-                         legend.title = element_blank(),
-                         legend.position = "top",
-                         legend.box = "vertical")
+                         axis.title = element_text(size = 7,  colour = "black"),
+                         axis.text.y = element_text(size = 7, colour = "black"),
+                         axis.text.x = element_text(size = 7, colour = "black", hjust = 0.5, vjust = 0.5),
+                         strip.text = element_text(size = 7, colour = "black"))#,
+                         #legend.text = element_text(size = "7", colour = "black"),
+                         #legend.title = element_blank(),
+                         #legend.position = "top")
 
-
+#query <- paste0("SELECT * from 'Adipose - Subcutaneous_ADIPOSE_TISSUE_nevermisspliced'")
+#dbGetQuery(con, query) %>% as_tibble()
 
 ########################################
 ## FUNCTIONS - produce figures for the
@@ -87,27 +78,26 @@ get_database_stats <- function() {
   
   
   tables <- dbListTables(con)
-  query <- paste0("SELECT * from 'metadata'")
-  db_metadata <- dbGetQuery(con, query) %>% as_tibble()
+  
   
   
   ## Methods: number of samples by RIN number
-  db_metadata %>% nrow() 
+  df_metadata %>% nrow() 
   
-  db_metadata %>%
+  df_metadata %>%
     filter(rin >= 8) %>% nrow()
-  db_metadata %>%
+  df_metadata %>%
     filter(rin >= 7) %>% nrow()
-  db_metadata %>%
+  df_metadata %>%
     filter(rin >= 6) %>% nrow()
   
-  if ( db_metadata %>% filter(rin < 6) %>% nrow() > 1 ) {
+  if ( df_metadata %>% filter(rin < 6) %>% nrow() > 1 ) {
     print("ERROR! Some of the samples considered present a RIN number lower than 6!")
     break;
   }
   
   
-  db_metadata %>%
+  df_metadata %>%
     dplyr::count(cluster) %>%
     print(n = 50)
   
@@ -119,6 +109,10 @@ get_database_stats <- function() {
   db_introns %>% distinct(ref_junID) %>% nrow()
   db_introns %>%
     dplyr::count(misspliced)
+  
+  
+  
+  
   
   
   ## Collectively, we detected 3,865,268 unique novel junctions, equating to 14 novel junctions per annotated intron. 
@@ -159,7 +153,7 @@ get_database_stats <- function() {
   ## After accounting for sample number, we found that the highest numbers of unique 
   ## novel junctions were identified in X tissue with the lowest numbers in Y tissue, 
   
-  db_metadata_tidy <- db_metadata %>%
+  db_metadata_tidy <- df_metadata %>%
     dplyr::group_by(cluster) %>%
     mutate(n=n()) %>%
     dplyr::select(SRA_project,cluster,n) %>%
@@ -342,6 +336,167 @@ get_junc_length <- function() {
   
 }
 
+get_intron_data_summary <- function() {
+  
+  
+  project_id <- "BRAIN"
+  cluster_id <- "Brain - Frontal Cortex (BA9)"
+  
+  #######################################
+  ## GET DATA FROM THE DATABASE
+  
+  query <- paste0("SELECT * 
+                  FROM '", cluster_id, "_", project_id, "_nevermisspliced' " )
+  introns <- dbGetQuery(con, query) %>% as_tibble()
+  query <- paste0("SELECT * 
+                  FROM '", cluster_id, "_", project_id, "_misspliced'")
+  introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
+  introns %>% nrow()
+  
+  query <- paste0("SELECT ref_junID, ref_length, ref_mes5ss, ref_mes3ss, 
+                  mean_phastCons20way5ss_35, mean_phastCons20way3ss_35, 
+                  mean_phastCons4way5ss_35, mean_phastCons4way3ss_35, 
+                  mean_phastCons7way5ss_35, mean_phastCons7way3ss_35, 
+                  mean_CDTS5ss_35, mean_CDTS3ss_35,
+                  
+                  mean_phastCons20way5ss_100, mean_phastCons20way3ss_100, 
+                  mean_phastCons4way5ss_100, mean_phastCons4way3ss_100, 
+                  mean_phastCons7way5ss_100, mean_phastCons7way3ss_100, 
+                  mean_CDTS5ss_100, mean_CDTS3ss_100,
+                  
+                  mean_phastCons20way5ss_70, mean_phastCons20way3ss_70,  
+                  mean_phastCons4way5ss_70, mean_phastCons4way3ss_70, 
+                  mean_phastCons7way5ss_70, mean_phastCons7way3ss_70, 
+                  mean_CDTS5ss_70, mean_CDTS3ss_70,
+                  
+                  protein_coding
+                  FROM 'intron' 
+                  WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),")")
+  introns <- introns %>%
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+               by = "ref_junID") %>% 
+    as_tibble() 
+  introns %>% nrow()
+  
+  ## JOIN WITH TRANSCRIPT DATA
+  query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
+  introns <- introns %>%
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+               by = c("transcript_id" = "id")) %>% 
+    as_tibble() 
+  introns %>% nrow()
+  
+  
+  ## JOIN WITH GENE DATA
+  query <- paste0("SELECT *
+                  FROM 'gene' WHERE id IN (",
+                  base::paste(introns$gene_id, collapse = ","),")")
+  introns <- introns %>%
+    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+               by = c("gene_id" = "id")) %>% 
+    as_tibble() 
+  introns %>% nrow()
+  
+  introns <- introns %>%
+    distinct(ref_junID, .keep_all = T)
+  
+  introns %>% nrow()
+  
+  ###########################
+  
+  #########################
+  ## TIDY DATA
+  #########################
+  
+  idb <- introns %>%
+    dplyr::select(ref_junID,
+                  intron_length = ref_length,
+                  intron_5ss_score = ref_mes5ss,
+                  intron_3ss_score = ref_mes3ss,
+                  gene_length = gene_width,
+                  gene_tpm = gene_tpm,
+                  gene_num_transcripts = n_transcripts,
+                  CDTS_5ss = mean_CDTS5ss_35,
+                  CDTS_3ss = mean_CDTS3ss_35,
+                  protein_coding = protein_coding,
+                  
+                  mean_phastCons4way_5ss_35 = mean_phastCons4way5ss_35,
+                  mean_phastCons4way_3ss_35 = mean_phastCons4way3ss_35,
+                  mean_phastCons4way_5ss_70 = mean_phastCons4way5ss_70,
+                  mean_phastCons4way_3ss_70 = mean_phastCons4way3ss_70,
+                  mean_phastCons4way_5ss_100 = mean_phastCons4way5ss_100,
+                  mean_phastCons4way_3ss_100 = mean_phastCons4way3ss_100,
+                  
+                  mean_phastCons20way_5ss_35 = mean_phastCons20way5ss_35,
+                  mean_phastCons20way_3ss_35 = mean_phastCons20way3ss_35,
+                  mean_phastCons20way_5ss_70 = mean_phastCons20way5ss_70,
+                  mean_phastCons20way_3ss_70 = mean_phastCons20way3ss_70,
+                  mean_phastCons20way_5ss_100 = mean_phastCons20way5ss_100,
+                  mean_phastCons20way_3ss_100 = mean_phastCons20way3ss_100,
+                  
+                  MSR_D,
+                  MSR_A) 
+  
+  #########################################################
+  
+  
+  idb$gene_length %>% summary()
+  idb$gene_tpm %>% summary()
+  idb$protein_coding %>% summary()
+  idb$gene_num_transcripts %>% summary()
+
+  idb$intron_length %>% summary()
+  idb$intron_5ss_score %>% summary()
+  idb$intron_3ss_score %>% summary()
+  idb$CDTS_5ss %>% summary()
+  idb$CDTS_3ss %>% summary()
+  
+  
+  ## Conservation - phastCons4
+  
+  idb$mean_phastCons4way_5ss_35 %>% summary()
+  idb$mean_phastCons4way_3ss_35 %>% summary()
+  
+  idb$mean_phastCons4way_5ss_70 %>% summary()
+  idb$mean_phastCons4way_3ss_70 %>% summary()
+  
+  idb$mean_phastCons4way_5ss_100 %>% summary()
+  idb$mean_phastCons4way_3ss_100 %>% summary()
+
+  
+  ## Conservation - phastCons20
+  
+  idb$mean_phastCons20way_5ss_35 %>% summary()
+  idb$mean_phastCons20way_3ss_35 %>% summary()
+  
+  idb$mean_phastCons20way_5ss_70 %>% summary()
+  idb$mean_phastCons20way_3ss_70 %>% summary()
+  
+  idb$mean_phastCons20way_5ss_100 %>% summary()
+  idb$mean_phastCons20way_3ss_100 %>% summary()
+
+  
+  
+  ## MSR
+  
+  idb$MSR_D %>% summary()
+  idb$MSR_A %>% summary()
+
+  idb %>%
+    filter(MSR_D == 0) %>% nrow
+  idb %>%
+    filter(MSR_D > 0) %>% nrow
+  idb %>%  nrow
+
+  idb %>% nrow()
+
+
+  plot(idb$MSR_A,
+       idb$CDTS_5ss, pch = 16, cex = 1.3, col = "blue")
+  abline(glm(MSR_A ~ CDTS_5ss, data = idb))
+  #########################################################
+  
+}
 
 
 
@@ -745,8 +900,6 @@ get_unique_donor_acceptor_jxn <- function() {
   ## Proportion of each type of unique junctions per GTEx tissue.
   ##################################################################################################
   
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
@@ -956,7 +1109,7 @@ get_unique_donor_acceptor_jxn <- function() {
 get_unique_donor_acceptor_reads <- function() {
   
   
-  query <- paste0("SELECT * FROM 'master'")
+  query <- paste0("SELECT * FROM 'metadata'")
   df_metadata <- dbGetQuery(con, query) 
   all_projects <- df_metadata$SRA_project %>% unique()
   
@@ -1228,12 +1381,8 @@ get_maxentscan_score <- function() {
   ## CONNECT TO THE DATABASE
   ############################
   
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
+  
   all_projects <- df_metadata$SRA_project %>% unique()
-  
-  
-  
   file_name <- paste0(results_folder, "/df_mes.rds")
   
   if ( !file.exists(file_name) )  {
@@ -1245,14 +1394,14 @@ get_maxentscan_score <- function() {
     
     
     ## Get the MES scores corresponding to the mis-spliced introns
-    query <- paste0("SELECT ref_junID, ref_ss5score, ref_ss3score 
+    query <- paste0("SELECT ref_junID, ref_mes5ss, ref_mes3ss 
                     FROM 'intron' 
                     WHERE  misspliced = 1 ")
     introns <- dbGetQuery(con, query) %>% as_tibble()
     
     
     ## Get the novel junctions
-    query <- paste0("SELECT ref_junID, novel_junID, novel_type, novel_ss5score, novel_ss3score 
+    query <- paste0("SELECT ref_junID, novel_junID, novel_type, novel_mes5ss, novel_mes3ss 
                     FROM 'novel'")
     novel_junctions <- dbGetQuery(con, query) %>% as_tibble() 
     
@@ -1263,8 +1412,8 @@ get_maxentscan_score <- function() {
     df_mes <- novel_junctions %>% 
       left_join(y = introns,
                 by = "ref_junID")  %>%
-      mutate(diff_ss5score = ref_ss5score - novel_ss5score,
-             diff_ss3score = ref_ss3score - novel_ss3score)
+      mutate(diff_ss5score = ref_mes5ss - novel_mes5ss,
+             diff_ss3score = ref_mes3ss - novel_mes3ss)
     
     saveRDS(object = df_mes %>% as_tibble(), file = file_name)
     
@@ -1290,7 +1439,7 @@ get_maxentscan_score <- function() {
     
   df_5ss <- df_mes %>% 
     filter(novel_type == "novel_donor") %>%
-    dplyr::select(intron = ref_ss5score, novel_donor = novel_ss5score) %>%
+    dplyr::select(intron = ref_mes5ss, novel_donor = novel_mes5ss) %>%
     gather(key = "junction_type", value = "ss5score")
   
   ss5plot <- ggplot(df_5ss, aes(ss5score, fill = junction_type)) +
@@ -1316,7 +1465,7 @@ get_maxentscan_score <- function() {
   
   df_3ss <- df_mes %>% 
     filter(novel_type == "novel_acceptor") %>%
-    dplyr::select(intron = ref_ss3score, novel_acceptor = novel_ss3score) %>%
+    dplyr::select(intron = ref_mes3ss, novel_acceptor = novel_mes3ss) %>%
     gather(key = "junction_type", value = "ss3score")
   
   ss3plot <- ggplot(df_3ss, aes(ss3score, fill = junction_type)) +
@@ -1346,7 +1495,6 @@ get_maxentscan_score <- function() {
                      nrow = 1)
   
   file_name <- paste0(figures_folder, "/supplementary_fig3")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 80, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 80, units = "mm", dpi = 300)
   
   
@@ -1414,10 +1562,8 @@ get_maxentscan_score <- function() {
                      nrow = 1)
   
   file_name <- paste0(figures_folder, "/panel3ab")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   file_name <- paste0(figures_folder, "/panel3ab_large")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   ##############
@@ -1580,7 +1726,7 @@ get_distances <- function() {
                    position = "stack"
     ) +
     ggplot2::facet_grid(vars(novel_type)) +
-    ggtitle(paste0("All biotypes\n")) +
+    #ggtitle(paste0("All biotypes\n")) +
     #ylim(y_axes) +
     xlab("Distance (in bp)") +
     ylab("Unique novel junctions") +
@@ -1645,7 +1791,7 @@ get_distances <- function() {
   ## PROTEIN CODING
   ###############################
   
-  query <- paste0("SELECT ref_junID, protein_coding 
+  query <- paste0("SELECT intron.ref_junID, intron.protein_coding
                   FROM 'intron'")
   df_master_introns <- dbGetQuery(con, query) %>% as_tibble()
   
@@ -1666,6 +1812,10 @@ get_distances <- function() {
                                  levels = c("protein coding (PC)", "non PC"))
   
   
+  df_novel_tidy <- df_novel_tidy %>%
+    filter(ref_junID %in% subsample$ref_junID)
+  df_novel_tidy %>%
+    dplyr::count(type_PC)
   
   ## GENERATE PLOT
   
@@ -1727,7 +1877,7 @@ get_distances <- function() {
                       breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
     custom_ggtheme +
-    theme(legend.position = "none") +
+    theme(legend.position = "none") 
     
     # #########
     # geom_segment(data = data.frame(x = 5.8, xend = 9.1, linewidth = 1,
@@ -1763,74 +1913,74 @@ get_distances <- function() {
     #                                novel_type="Novel Acceptor"),
     #              aes(x=x,y=y,yend=yend,xend=xend) ) +
     #########
-    geom_segment(data = data.frame(x = 11.8, xend = 15.1, linewidth =1,
-                                 y = 200, yend = 200,
-                                 colour = "#333333",
-                                 novel_type="Novel Acceptor"),
-               aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 11.9, xend = 11.9, linewidth =1, 
-                                   y = 170, yend = 200,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 15.0, xend = 15.0, linewidth =1,
-                                   y = 170, yend = 200,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) ) +
-    
-
-    #########
-    geom_segment(data = data.frame(x = 14.8, xend = 18.1, linewidth =1,
-                                 y = 160, yend = 160,
-                                 colour = "#333333",
-                                 novel_type="Novel Acceptor"),
-               aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 14.9, xend = 14.9, linewidth =1, 
-                                   y = 140, yend = 160,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 18.0, xend = 18.0, linewidth =1,
-                                   y = 140, yend = 160,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) ) +
-    #########
-    geom_segment(data = data.frame(x = 17.6, xend = 20.7, linewidth =1,
-                                 y = 130, yend = 130,
-                                 colour = "#333333",
-                                 novel_type="Novel Acceptor"),
-               aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 17.7, xend = 17.7, linewidth =1, 
-                                   y = 110, yend = 130,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 20.7, xend = 20.7, linewidth =1,
-                                   y = 110, yend = 130,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) ) +
-    #########
-    geom_segment(data = data.frame(x = 21, xend = 24.3, 
-                                   linewidth = 1,
-                                   y = 128, yend = 128,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 21.1, xend = 21.1, 
-                                   linewidth =1, 
-                                   y = 108, yend = 128,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend)) +
-    geom_segment(data = data.frame(x = 24.3, xend = 24.3, 
-                                   linewidth =1,
-                                   y = 108, yend =128,
-                                   colour = "#333333",
-                                   novel_type="Novel Acceptor"),
-                 aes(x=x,y=y,yend=yend,xend=xend) )
+    # geom_segment(data = data.frame(x = 11.8, xend = 15.1, linewidth =1,
+    #                              y = 200, yend = 200,
+    #                              colour = "#333333",
+    #                              novel_type="Novel Acceptor"),
+    #            aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 11.9, xend = 11.9, linewidth =1, 
+    #                                y = 170, yend = 200,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 15.0, xend = 15.0, linewidth =1,
+    #                                y = 170, yend = 200,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend) ) +
+    # 
+    # 
+    # #########
+    # geom_segment(data = data.frame(x = 14.8, xend = 18.1, linewidth =1,
+    #                              y = 160, yend = 160,
+    #                              colour = "#333333",
+    #                              novel_type="Novel Acceptor"),
+    #            aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 14.9, xend = 14.9, linewidth =1, 
+    #                                y = 140, yend = 160,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 18.0, xend = 18.0, linewidth =1,
+    #                                y = 140, yend = 160,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend) ) +
+    # #########
+    # geom_segment(data = data.frame(x = 17.6, xend = 20.7, linewidth =1,
+    #                              y = 130, yend = 130,
+    #                              colour = "#333333",
+    #                              novel_type="Novel Acceptor"),
+    #            aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 17.7, xend = 17.7, linewidth =1, 
+    #                                y = 110, yend = 130,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 20.7, xend = 20.7, linewidth =1,
+    #                                y = 110, yend = 130,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend) ) +
+    # #########
+    # geom_segment(data = data.frame(x = 21, xend = 24.3, 
+    #                                linewidth = 1,
+    #                                y = 128, yend = 128,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 21.1, xend = 21.1, 
+    #                                linewidth =1, 
+    #                                y = 108, yend = 128,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend)) +
+    # geom_segment(data = data.frame(x = 24.3, xend = 24.3, 
+    #                                linewidth =1,
+    #                                y = 108, yend =128,
+    #                                colour = "#333333",
+    #                                novel_type="Novel Acceptor"),
+    #              aes(x=x,y=y,yend=yend,xend=xend) )
   
   
   
@@ -1958,7 +2108,7 @@ get_distances <- function() {
   plot
   
   
-  file_name <- paste0(figures_folder, "FCTX_distances_biotype")
+  file_name <- paste0(figures_folder, "/FCTX_distances_biotype")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
   
@@ -1979,7 +2129,6 @@ get_distances <- function() {
   
   plot
   file_name <- paste0(figures_folder, "/panel3cd_large")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 140, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 140, units = "mm", dpi = 300)
   
   
@@ -2125,8 +2274,7 @@ get_modulo <- function() {
   ## CONNECT TO THE DATABASE
   ############################
   
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
+
   all_projects <- df_metadata$SRA_project %>% unique()
   
   
@@ -2231,12 +2379,10 @@ get_modulo <- function() {
   
   
   file_name <- paste0(figures_folder, "/panel3e")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   
   
   file_name <- paste0(figures_folder, "/panel3e_large")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 70, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 70, units = "mm", dpi = 300)
   
   ##############################
@@ -2298,9 +2444,9 @@ get_MSR_FCTX <- function()  {
                   FROM '", cluster_id, "_", project_id, "_misspliced' ")
   introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
   
-  query <- paste0("SELECT DISTINCT ref_junID, protein_coding, lncRNA 
+  query <- paste0("SELECT DISTINCT intron.ref_junID, intron.protein_coding
                   FROM 'intron' 
-                  WHERE ref_junID IN (",
+                  WHERE intron.ref_junID IN (",
                   paste(introns$ref_junID, collapse = ","),")")
   introns <- introns %>%
     left_join(y = dbGetQuery(con, query) %>% as_tibble(),
@@ -2384,7 +2530,6 @@ get_MSR_FCTX <- function()  {
   
   
   file_name <- paste0(figures_folder, "/panel4a_large")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 110, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 110, units = "mm", dpi = 300)
   
   
@@ -2412,7 +2557,7 @@ get_MSR_FCTX <- function()  {
   plot_BS <- ggplot(data = df_biotype_result_tidy %>% distinct(ref_junID,.keep_all = T)) +
     geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.9) +
     ggtitle("Before subsampling") +
-    xlab("log10 mean read coverage") +
+    xlab("log10 mean expression level") +
     theme_light() +
     custom_ggtheme +
     ggsci::scale_fill_d3(name = "Transcript biotype: ")
@@ -2456,7 +2601,7 @@ get_MSR_FCTX <- function()  {
     ggtitle("After subsampling") +
     theme_light() +
     custom_ggtheme +
-    xlab("log10 mean read coverage")+
+    xlab("log10 mean expresion level")+
     ggsci::scale_fill_d3(name = "Transcript biotype: ")
   
   
@@ -2465,13 +2610,11 @@ get_MSR_FCTX <- function()  {
                     labels = c("a", "b"),
                     common.legend = T)
   
-  file_name <- paste0(figures_folder, "/MSR_FCTX_subsampling")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
+  file_name <- paste0(figures_folder, "/MSR_FCTX_subsampling_thesis")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
   file_name <- paste0(figures_folder, "/MSR_FCTX_subsampling_large")
-  ggplot2::ggsave(filename = paste0(file_name, ".svg"), width = 180, height = 120, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 120, units = "mm", dpi = 300)
   
   
@@ -2566,13 +2709,13 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Donor") +
     xlab("Mis-splicing ratio value group") +
     ylab("Number of annotated introns") +
-    ylim(c(0,23000))+
-    theme_light() +
+    ylim(c(0,40000))+
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
-                      labels = c("Protein-coding","Non-protein-coding")) +
+                      labels = c("Protein-coding   ","Non-protein-coding ")) +
+    theme_light() +
     custom_ggtheme +
-    guides(fill = guide_legend(title = NULL,
+    guides(fill = guide_legend(title = "",
                                ncol = 2, nrow = 1))
   plotMSR_donor
   
@@ -2585,14 +2728,14 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Acceptor") +
     xlab("Mis-splicing ratio value group") +
     ylab("Number of annotated introns") +
-    ylim(c(0,23000))+
-    theme_light() +
+    ylim(c(0,40000))+
+    
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
-                      labels = c("Protein-coding","Non-protein-coding")) +
+                      labels = c("Protein-coding ","Non-protein-coding ")) +
+    theme_light() +
     custom_ggtheme +
-    guides(fill = guide_legend(title = NULL,
-                               ncol = 2, nrow = 1))
+    guides(fill = guide_legend(ncol = 2, nrow = 1))
   
   
   ggpubr::ggarrange(plotMSR_donor,
@@ -2607,7 +2750,6 @@ get_MSR_FCTX <- function()  {
   
   print(paste0(Sys.time(), " - saving plot..."))
   file_name <- paste0(figures_folder, "/panel4bc")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   ####################################
@@ -2621,14 +2763,15 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Donor") +
     xlab("Mis-splicing ratio value group") +
     ylab("") +
-    scale_y_continuous(limits =c(0,750), position = "right") +
-    theme_light() +
+    scale_y_continuous(limits =c(0,500), position = "right") +
+    
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
                       labels = c("Protein-coding","Non-protein-coding")) +
     custom_ggtheme +
-    guides(fill = guide_legend(title = NULL, 
-                               ncol = 2, nrow = 1))
+    theme_light() +
+    guides(fill = guide_legend(title = NULL,  
+                               ncol = 2, nrow = 1)) 
   plotMSR_donor_zoomed
   
   
@@ -2640,11 +2783,12 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Acceptor") +
     xlab("Mis-splicing ratio value group") +
     ylab("") +
-    scale_y_continuous(limits =c(0,750), position = "right") +
-    theme_light() +
+    scale_y_continuous(limits =c(0,500), position = "right") +
+    
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
                       labels = c("Protein-coding","Non-protein-coding")) +
+    theme_light() +
     custom_ggtheme +
     guides(fill = guide_legend(title = NULL, 
                                ncol = 2, nrow = 1))
@@ -2660,8 +2804,8 @@ get_MSR_FCTX <- function()  {
   
   print(paste0(Sys.time(), " - saving plot..."))
   file_name <- paste0(figures_folder, "/panel4bc-zoomed")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 90, units = "mm", dpi = 300)
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300,bg = "transparent")
+  ggplot2::ggsave(paste0(file_name, ".png"), 
+                  width = 180, height = 90, units = "mm", dpi = 300)
   
   
   ####################################
@@ -2779,7 +2923,7 @@ get_MSR_tissues <- function()  {
 
       
       all_clusters <- df_metadata %>%
-        filter(SRA_project == "BRAIN") %>%
+        filter(SRA_project == project_id) %>%
         distinct(cluster) %>%
         pull()
       
@@ -2795,7 +2939,7 @@ get_MSR_tissues <- function()  {
                         FROM '", cluster_id, "_", project_id, "_misspliced'")
         introns <- rbind(introns, dbGetQuery(con, query) %>% as_tibble())
         
-        query <- paste0("SELECT DISTINCT ref_junID, protein_coding, lncRNA FROM 'intron' WHERE ref_junID IN (",
+        query <- paste0("SELECT DISTINCT ref_junID, protein_coding FROM 'intron' WHERE ref_junID IN (",
                         paste(introns$ref_junID, collapse = ","),")")
         introns <- introns %>%
           left_join(y = dbGetQuery(con, query) %>% as_tibble(),
@@ -2964,27 +3108,11 @@ get_lm_single_tissue <- function() {
   ## GET DATA FOR FRONTAL CORTEX
   ###############################
   
+  
   project_id <- "BRAIN"
   cluster_id <- "Brain - Frontal Cortex (BA9)"
   
-  
-  ###################################
-  ## GET TPM
-  
-  # base_folder <- paste0(getwd(),"/results/", project_id, "/v", gtf_version, "/", main_project, "/")
-  # samples_used <- readRDS(file = paste0(getwd(), "/results/", project_id, "/v", gtf_version, 
-  #                                       "/", main_project, "/base_data/", project_id, "_", cluster_id, "_samples_used.rds"))
-  # 
-  # 
-  # tpm <- readRDS(file = paste0(base_folder, "results/tpm/",
-  #                              "/", project_id, "_", cluster_id, "_tpm.rds")) %>% 
-  #   dplyr::select(gene_id = gene, all_of(samples_used))
-  # 
-  # 
-  # tpm <- tpm  %>%
-  #   dplyr::mutate(tpm_median = matrixStats::rowMedians(x = as.matrix(.[2:(ncol(tpm))]))) %>%
-  #   dplyr::select(gene_id, tpm_median) 
-  # 
+
   #######################################
   ## GET DATA FROM THE DATABASE
   
@@ -2996,35 +3124,42 @@ get_lm_single_tissue <- function() {
   introns <- plyr::rbind.fill(introns, dbGetQuery(con, query) %>% as_tibble())
   introns %>% nrow()
   
-  query <- paste0("SELECT ref_junID, ref_length, ref_mes5ss, ref_mes3ss, 
-                  mean_phastCons20way5ss_35, mean_phastCons20way3ss_35, 
-mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
+  query <- paste0("SELECT intron.ref_junID, intron.ref_length, intron.ref_mes5ss, intron.ref_mes3ss, 
+                  intron.mean_phastCons17way5ss_35, intron.mean_phastCons17way3ss_35, 
+                  intron.mean_phastCons17way5ss_50, intron.mean_phastCons17way3ss_50, 
+                  intron.mean_phastCons17way5ss_100, intron.mean_phastCons17way3ss_100, 
+                  intron.mean_CDTS5ss_35, intron.mean_CDTS3ss_35,
+                  intron.mean_CDTS5ss_50, intron.mean_CDTS3ss_50,
+                  intron.mean_CDTS5ss_100, intron.mean_CDTS3ss_100, 
+                  intron.protein_coding, gene.gene_width, gene.n_transcripts
                   FROM 'intron' 
-                  WHERE ref_junID IN (", paste(introns$ref_junID, collapse = ","),")")
+                  INNER JOIN 'transcript' ON transcript.id = intron.transcript_id
+                  INNER JOIN 'gene' ON gene.id = transcript.gene_id
+                  WHERE intron.ref_junID IN (", paste(introns$ref_junID, collapse = ","),")")
   introns <- introns %>%
     inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
               by = "ref_junID") %>% 
     as_tibble() 
   introns %>% nrow()
   
-  ## JOIN WITH TRANSCRIPT DATA
-  query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
-  introns <- introns %>%
-    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-              by = c("transcript_id" = "id")) %>% 
-    as_tibble() 
-  introns %>% nrow()
-  
-  
-  ## JOIN WITH GENE DATA
-  query <- paste0("SELECT *
-                  FROM 'gene' WHERE id IN (",
-                  base::paste(introns$gene_id, collapse = ","),")")
-  introns <- introns %>%
-    inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
-              by = c("gene_id" = "id")) %>% 
-    as_tibble() 
-  introns %>% nrow()
+  # ## JOIN WITH TRANSCRIPT DATA
+  # query <- paste0("SELECT * FROM 'transcript' WHERE id IN (", paste(introns$transcript_id, collapse = ","),")")
+  # introns <- introns %>%
+  #   inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+  #             by = c("transcript_id" = "id")) %>% 
+  #   as_tibble() 
+  # introns %>% nrow()
+  # 
+  # 
+  # ## JOIN WITH GENE DATA
+  # query <- paste0("SELECT *
+  #                 FROM 'gene' WHERE id IN (",
+  #                 base::paste(introns$gene_id, collapse = ","),")")
+  # introns <- introns %>%
+  #   inner_join(y = dbGetQuery(con, query) %>% as_tibble(),
+  #             by = c("gene_id" = "id")) %>% 
+  #   as_tibble() 
+  # introns %>% nrow()
   
   introns <- introns %>%
     distinct(ref_junID, .keep_all = T)
@@ -3048,91 +3183,14 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                   CDTS_5ss = mean_CDTS5ss_35,
                   CDTS_3ss = mean_CDTS3ss_35,
                   protein_coding = protein_coding,
-                  mean_phastCons20way_5ss = mean_phastCons20way5ss_35,
-                  mean_phastCons20way_3ss = mean_phastCons20way3ss_35,
+                  
+                  mean_phastCons17way_5ss = mean_phastCons17way5ss_35,
+                  mean_phastCons17way_3ss = mean_phastCons17way3ss_35,
+                  
                   MSR_D,
                   MSR_A) 
   
-  
-  idb %>% nrow()
-  
-  
-  #########################
-  ## CONVERT TO Z-SCORES
-  #########################
-  # idb[is.na(idb)] <- 0
-  # idb <- idb %>%
-  #   dplyr::mutate(ref_junID,
-  #                 intron_length = (intron_length - mean(idb$intron_length)) / sd(idb$intron_length),
-  #                 intron_5ss_score = (intron_5ss_score - mean(idb$intron_5ss_score)) / sd(idb$intron_5ss_score),
-  #                 intron_3ss_score = (intron_3ss_score - mean(idb$intron_3ss_score)) / sd(idb$intron_3ss_score),
-  #                 gene_length = (gene_length - mean(idb$gene_length)) / sd(idb$gene_length),
-  #                 gene_tpm = (gene_tpm - mean(idb$gene_tpm)) / sd(idb$gene_tpm),
-  #                 gene_num_transcripts = (gene_num_transcripts - mean(idb$gene_num_transcripts)) / sd(idb$gene_num_transcripts),
-  #                 CDTS_5ss = (CDTS_5ss - mean(idb$CDTS_5ss)) / sd(idb$CDTS_5ss),
-  #                 CDTS_3ss = (CDTS_3ss - mean(idb$CDTS_3ss)) / sd(idb$CDTS_3ss),
-  #                 protein_coding = (protein_coding - mean(idb$protein_coding)) / sd(idb$protein_coding),
-  #                 mean_phastCons20way_5ss = (mean_phastCons20way_5ss - mean(idb$mean_phastCons20way_5ss)) / sd(idb$mean_phastCons20way_5ss),
-  #                 mean_phastCons20way_3ss = (mean_phastCons20way_3ss - mean(idb$mean_phastCons20way_3ss)) / sd(idb$mean_phastCons20way_3ss),
-  #                 MSR_D = (MSR_D - mean(idb$MSR_D)) / sd(idb$MSR_D),
-  #                 MSR_A = (MSR_A - mean(idb$MSR_A)) / sd(idb$MSR_A))
-  # 
-  # idb[is.na(idb)] <- 0
-  # #########################
-  # ## QUASI-BINOMIAL MODELS
-  # #########################
-  # 
-  # fit_donor_glm <- glm(MSR_D ~
-  #                            gene_length +
-  #                            gene_tpm +
-  #                            gene_num_transcripts +
-  #                            protein_coding +
-  #                            intron_length +
-  #                            intron_5ss_score +
-  #                            intron_3ss_score +
-  #                            CDTS_5ss +
-  #                            CDTS_3ss +
-  #                            mean_phastCons20way_5ss +
-  #                            mean_phastCons20way_3ss,
-  #                          data = idb,
-  #                          family = quasibinomial(logit))
-  # summary(fit_donor_glm)
-  # 
-  # fit_acceptor <- glm(MSR_A ~
-  #                    gene_length +
-  #                    gene_tpm +
-  #                    gene_num_transcripts +
-  #                    protein_coding +
-  #                    intron_length +
-  #                    intron_5ss_score +
-  #                    intron_3ss_score +
-  #                    CDTS_5ss +
-  #                    CDTS_3ss +
-  #                    mean_phastCons20way_5ss +
-  #                    mean_phastCons20way_3ss,
-  #                  data = idb,
-  #                  family = quasibinomial(logit))
-  # summary(fit_acceptor)
-  # 
-  # #########################
-  # ## BETA MODELS
-  # #########################
-  # 
-  # gy <- betareg::betareg(MSR_D ~ 
-  #                          gene_length +
-  #                          gene_tpm +
-  #                          gene_num_transcripts +
-  #                          protein_coding +
-  #                          intron_length +
-  #                          intron_5ss_score + 
-  #                          intron_3ss_score +
-  #                          CDTS_5ss +
-  #                          CDTS_3ss +
-  #                          mean_phastCons20way_5ss +
-  #                          mean_phastCons20way_3ss, 
-  #                        data = idb)
-  # summary(gy)
-  
+
   
 
   #########################
@@ -3144,36 +3202,37 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
   fit_donor <- lm(MSR_D ~ 
                     gene_length +
                     gene_num_transcripts +
+                    gene_tpm +
                     protein_coding +
                     intron_length +
                     intron_5ss_score + 
                     intron_3ss_score +
                     CDTS_5ss +
                     CDTS_3ss +
-                    mean_phastCons20way_5ss +
-                    mean_phastCons20way_3ss, 
+                    mean_phastCons17way_5ss +
+                    mean_phastCons17way_3ss, 
                   data = idb)
-  
-  fit_donor_tpm <- lm(MSR_D ~ 
-                      gene_length +
-                      gene_num_transcripts +
-                      protein_coding +
-                      intron_length +
-                      intron_5ss_score + 
-                      intron_3ss_score +
-                      CDTS_5ss +
-                      CDTS_3ss +
-                      mean_phastCons20way_5ss +
-                      mean_phastCons20way_3ss+
-                      gene_tpm , 
-                  data = idb)
-  
-  anova(fit_donor)
-  anova(fit_donor_tpm)
-  
-  anova(fit_donor,fit_donor_tpm)
-  
   fit_donor %>% summary()
+  car::vif(fit_donor)
+
+  
+  # fit_donor_cdts <- lm(MSR_D ~ 
+  #                        gene_length +
+  #                        gene_num_transcripts +
+  #                        gene_tpm +
+  #                        protein_coding +
+  #                        intron_length +
+  #                        intron_5ss_score + 
+  #                        intron_3ss_score +
+  #                        CDTS_5ss +
+  #                        CDTS_3ss +
+  #                        mean_phastCons20way_5ss +
+  #                        mean_phastCons20way_3ss, 
+  #                      data = idb)
+  # 
+  # anova(fit_donor,fit_donor_cdts)
+  # 
+  # fit_donor %>% summary()
   
   # fit_donor$coefficients[names(fit_donor$coefficients)[summary(fit_donor)$coefficients[,4] < 0.05]]  
     
@@ -3187,11 +3246,12 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                        intron_3ss_score +
                        CDTS_5ss +
                        CDTS_3ss +
-                       mean_phastCons20way_5ss +
-                       mean_phastCons20way_3ss, 
+                       mean_phastCons17way_5ss +
+                       mean_phastCons17way_3ss, 
                      data = idb)
   fit_acceptor %>% summary()
   
+
   model_names <- c("MSR Donor", "MSR Acceptor")
   
   coef_names <- c("Gene Length" = "gene_length",
@@ -3203,8 +3263,8 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                   "Intron 3'ss MES score" = "intron_3ss_score",
                   "CDTS 5'ss" = "CDTS_5ss",
                   "CDTS 3'ss" = "CDTS_3ss",
-                  "PhastCons20 5'ss" = "mean_phastCons20way_5ss",
-                  "PhastCons20 3'ss" = "mean_phastCons20way_3ss")
+                  "PhastCons17 5'ss" = "mean_phastCons17way_5ss",
+                  "PhastCons17 3'ss" = "mean_phastCons17way_3ss")
   
   
   #confint(fit_donor, level=0.95)
@@ -3218,7 +3278,7 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                                fit_acceptor,
                                scale = F, 
                                robust = T,
-                               #n.sd = 2,
+                               n.sd = 2,
                                #pvals = TRUE,
                                legend.title = "",
                                #plot.distributions = TRUE,
@@ -3234,8 +3294,8 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                                                                  "Intron 3'ss MES score",
                                                                  "CDTS 5'ss",
                                                                  "CDTS 3'ss",
-                                                                 "PhastCons20 5'ss",
-                                                                 "PhastCons20 3'ss")),
+                                                                 "PhastCons17 5'ss",
+                                                                 "PhastCons17 3'ss")),
                                #facet.cols = 2,
                                facet.label.pos = "left",
                                model.names = model_names,
@@ -3244,10 +3304,11 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                                point.shape = T) +
     guides(colour = guide_legend(ncol = 2, nrow = 1)) +
     theme_light()  +
-    facet_col(~group, 
-              space = "free", 
-              scales = "free_y",
-              strip.position = "left") + 
+    ggforce::facet_col(~group, 
+                       space = "free", 
+                       scales = "free_y",
+                       strip.position = "left") + 
+    
     custom_ggtheme +
     ylab("Covariates") +
     geom_hline(yintercept = seq(from = 0,
@@ -3274,7 +3335,7 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                         dplyr::rename("pval"= `Pr(>|t|)`) %>%
                         mutate(q = p.adjust(pval,method = "fdr")) %>%
                         mutate(q = ifelse(q == 0, 2.2e-16, q)) %>%
-                        mutate(q = ifelse(q > 0.05, NA, q)) %>%
+                        mutate(q = ifelse(q > 0.01, NA, q)) %>%
                         mutate(names = names(summary(fit_acceptor)$coefficients[,4] ),
                                type = "MSR Acceptor") %>%
                         filter(names != "(Intercept)") %>%
@@ -3284,10 +3345,10 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
   tiles_data <- tiles_data %>%
     inner_join(y = data.frame(col_name = c("gene_length","gene_tpm","gene_num_transcripts","protein_coding",
                                            "intron_length","intron_5ss_score","intron_3ss_score",
-                                           "CDTS_5ss","CDTS_3ss","mean_phastCons20way_5ss","mean_phastCons20way_3ss"),
+                                           "CDTS_5ss","CDTS_3ss","mean_phastCons17way_5ss","mean_phastCons17way_3ss"),
                               col_label = c("Gene Length","Gene TPM","Gene num. transcripts","Protein coding",
                                             "Intron Length","Intron 5'ss MES score","Intron 3'ss MES score","CDTS 5'ss","CDTS 3'ss",
-                                            "PhastCons20 5'ss","PhastCons20 3'ss"),
+                                            "PhastCons17 5'ss","PhastCons17 3'ss"),
                               group_label = c("Gene Level","Gene Level","Gene Level","Gene Level",
                                               "Intron Level","Intron Level","Intron Level","Intron Level","Intron Level",
                                               "Intron Level","Intron Level")) %>% as_tibble(),
@@ -3295,7 +3356,7 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
   
   tiles_data$col_label <- factor(tiles_data$col_label, levels= c("Gene Length","Gene TPM","Gene num. transcripts","Protein coding",
                                                          "Intron Length","Intron 5'ss MES score","Intron 3'ss MES score","CDTS 5'ss","CDTS 3'ss",
-                                                         "PhastCons20 5'ss","PhastCons20 3'ss") %>% rev())
+                                                         "PhastCons17 5'ss","PhastCons17 3'ss") %>% rev())
   tiles_data$type <- factor(tiles_data$type, levels= c("MSR Donor",
                                                          "MSR Acceptor"))
 
@@ -3309,10 +3370,10 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
                       scale_colour_manual(values = c( "q>=0.05" = "#cccccc")) +
                       xlab(" ") + 
                       ylab("") + 
-                      facet_col(~group_label,
-                                space = "free",
-                                scales = "free_y",
-                                strip.position = "left") +
+                      ggforce::facet_col(~group_label,
+                                         space = "free",
+                                         scales = "free_y",
+                                         strip.position = "left") +
                       theme_light() +
                       custom_ggtheme  + 
                       theme(legend.box = "horizontal",
@@ -3326,7 +3387,6 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
 
   
   file_name <- paste0(figures_folder, "/panel4c_effsize_unstandardized")
-  ggplot2::ggsave(paste0(file_name, ".svg"), width = 180, height = 70, units = "mm", dpi = 300)
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
@@ -3340,9 +3400,7 @@ mean_CDTS5ss_35, mean_CDTS3ss_35, protein_coding
 
 get_common_introns_across_tissues <- function () {
   
-  
-  query <- paste0("SELECT * FROM 'master'")
-  df_metadata <- dbGetQuery(con, query) 
+
   all_projects <- df_metadata$SRA_project %>% unique()
   
   ################################
@@ -3995,10 +4053,10 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                                               project_id2 = "SKIN",
                                               cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)",
                                               stats = F) {
-  # project_id1 = "SKIN"
-  # cluster_id1 = "Skin - Sun Exposed (Lower leg)"
-  # project_id2 = "SKIN"
-  # cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)"
+  project_id1 = "SKIN"
+  cluster_id1 = "Skin - Sun Exposed (Lower leg)"
+  project_id2 = "SKIN"
+  cluster_id2 = "Skin - Not Sun Exposed (Suprapubic)"
   # 
   # project_id1 = "BRAIN"
   # cluster_id1 = "Brain - Nucleus accumbens (basal ganglia)"
@@ -4019,6 +4077,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     
     database_introns <- map_df(tables, function(table) {
       
+      message(Sys.time(), " - ", table)
       # table <- tables[1]
       query <- paste0("SELECT DISTINCT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals, transcript_id 
                       FROM '", table, "_nevermisspliced'")
@@ -4028,9 +4087,8 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                       FROM '", table, "_misspliced'")
       df_introns <- rbind(df_introns, dbGetQuery(con, query) %>% as_tibble())
       
-      query <- paste0("SELECT DISTINCT ref_junID, ref_length, ref_ss5score, ref_ss3score, 
-                  ref_cons5score, ref_cons3score, ref_CDTS5score, ref_CDTS3score, 
-                  protein_coding, lncRNA FROM 'intron' WHERE ref_junID IN (",
+      query <- paste0("SELECT DISTINCT ref_junID, ref_length, ref_mes5ss, ref_mes3ss, 
+                  protein_coding FROM 'intron' WHERE ref_junID IN (",
                       paste(df_introns$ref_junID, collapse = ","),")")
       df_introns <- df_introns %>%
         left_join(y = dbGetQuery(con, query) %>% as_tibble(),
@@ -4115,11 +4173,20 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     saveRDS(object = subsample,
             file = paste0(results_folder, "/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
     
+    
+    df_database_introns <- df_database_introns_tidy
+    subsample_introns <- subsample
+    
+    rm(subsample)
+    rm(df_database_introns_tidy)
+    gc()
+    
     print(paste0(Sys.time(), " - subsampling finished!"))
+    
   } else {
     
-    df_database_introns_tidy <- readRDS(file = paste0(results_folder, "/introns_", project_id1, "_", project_id2, ".rds"))
-    subsample <- readRDS(paste0(results_folder, "/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
+    df_database_introns <- readRDS(file = paste0(results_folder, "/introns_", project_id1, "_", project_id2, ".rds"))
+    subsample_introns <- readRDS(paste0(results_folder, "/somatic_mutations_subsampled_", project_id1, "_", project_id2, ".rds"))
     
   }
   
@@ -4127,34 +4194,34 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
   ## PLOT - COVERAGE
   ##########################
   
-  df_database_introns_tidy <- df_database_introns_tidy %>%
-    mutate(tissue = str_remove(string = tissue, pattern = "_SKIN"))
+  df_database_introns_tidy <- df_database_introns %>%
+    mutate(tissue = str_remove(string = tissue, pattern = "_SKIN"))%>%
+    mutate(tissue = ifelse(tissue == "Skin - Sun Exposed (Lower leg)", "Skin - Sun Exposed", "Skin - Not Sun Exposed"))
+  
+  subsample_introns_tidy <- subsample_introns %>%
+    mutate(tissue = str_remove(string = tissue, pattern = "_SKIN"))%>%
+    mutate(tissue = ifelse(tissue == "Skin - Sun Exposed (Lower leg)", "Skin - Sun Exposed", "Skin - Not Sun Exposed"))
   
   ## VISUALISE MEAN READ COVERAGE BEFORE SUBSAMPLING
   plot_coverage_bf <- ggplot(data = df_database_introns_tidy %>% distinct(ref_junID,.keep_all = T)) +
     geom_density(mapping = aes(x = mean_coverage, fill = tissue), alpha = 0.8) +
     ggtitle("Before subsampling") +
-    theme(legend.position = "top",
-          legend.text = element_text(size = 11),
-          text = element_text(size = 12)) +
-    scale_fill_discrete(name = "") +
-    xlab("log10 mean read coverage") +
+    #scale_fill_discrete(name = "") +
+    xlab("log10 mean expression level") +
     ggsci::scale_fill_npg() +
     theme_light() +
-    custom_ggtheme
+    custom_ggtheme  +
+    theme(legend.position = 'top', 
+          legend.spacing.x  = unit(0.3, 'cm'))
   plot_coverage_bf
   
   ## VISUALISE MEAN READ COVERAGE AFTER SUBSAMPLING
-  plot_coverage_af <- ggplot(data = subsample) +
+  plot_coverage_af <- ggplot(data = subsample_introns_tidy) +
     geom_density(mapping = aes(x = mean_coverage, fill = tissue), alpha = 0.8) +
     ggtitle("After subsampling") +
     #ggtitle("Mean read coverage per annotated intron across all samples\nfrom 54 GTEx v8 tissues - Subsampling performed.") +
-    scale_fill_discrete(name = "") +
-    theme(legend.position = "top",
-          legend.text = element_text(size = 11),
-          text = element_text(size = 12)) +
-    xlab("log10 mean read coverage") +
-    ggsci::scale_fill_igv() +
+    xlab("log10 mean expression level") +
+    ggsci::scale_fill_npg() +
     theme_light() +
     custom_ggtheme
   plot_coverage_af
@@ -4164,7 +4231,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
                     labels = c("a", "b"),
                     common.legend = T)
   
-  file_name <- paste0(figures_folder, "/", project_id1, "_", project_id2, "_somatic_mutations_coverage")
+  file_name <- paste0(figures_folder, "/", project_id1, "_", project_id2, "_somatic_mutations_coverage_thesis")
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   ################################
@@ -4174,14 +4241,14 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
   ## TIDY THE DATA
   ## ONLY CHECK COMMON INTRONS
   
-  common_introns <- subsample %>%
+  common_introns <- subsample_introns %>%
     group_by(tissue) %>%
     distinct(ref_junID) %>%
     ungroup() %>%
     dplyr::count(ref_junID) %>%
     filter(n == 2) 
   
-  df_coverage <- subsample %>%
+  df_coverage <- subsample_introns %>%
     filter(ref_junID %in% common_introns$ref_junID)
   
   df_coverage$tissue = factor(df_coverage$tissue, 
@@ -4216,6 +4283,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     ggtitle(paste0(cluster_id1)) +
     xlab("Mis-splicing ratio") +
     ylab("Intron count") +
+    ylim(c(0,150000)) +
     theme_light() +
     scale_fill_manual(values = c("#35B779FF","#440154FF"),
                       breaks = c("MSR_D","MSR_A"),
@@ -4246,7 +4314,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     ggtitle(cluster_id2) +
     xlab("Mis-splicing ratio") +
     ylab("Intron count") +
-    ylim(c(0,25000)) +
+    ylim(c(0,150000)) +
     theme_light() +
     scale_fill_manual(values = c("#35B779FF","#440154FF"),
                       breaks = c("MSR_D","MSR_A"),
@@ -4295,8 +4363,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     rstatix::wilcox_effsize(data = df_coverage %>% 
                               filter(MSR_type == "MSR_D")%>%
                               mutate(tissue = tissue %>% as.factor()),
-                            formula = MSR ~ tissue,
-                            paired = T)
+                            formula = MSR ~ tissue)
     
     
     
@@ -4313,8 +4380,7 @@ compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
     rstatix::wilcox_effsize(data = df_coverage %>% 
                               filter(MSR_type == "MSR_A")%>%
                               mutate(tissue = tissue %>% as.factor()),
-                            formula = MSR ~ tissue,
-                            paired = T)
+                            formula = MSR ~ tissue)
     
     
 
@@ -4985,367 +5051,7 @@ plot_data_AQR_U2AF2 <- function() {
   
 }
 
-plot_NMD_scatter_plot <- function () {
-  
-  overwrite = T
-  num_cores = 10 
-  source(paste0(getwd(), "/database_SQL_generation.R"))
-  source(paste0(getwd(), "/database_SQL_helper.R"))
-  source(paste0(getwd(), "/code/helper_functions.R"))
-  
-  global_common_introns_path = paste0(getwd(), "/code/variables/global_common_introns_filtered_w_scores.rds")
-  global_common_novel_path = paste0(getwd(), "/code/variables/global_common_novel_filtered_w_scores.rds")
-  
-  RBPs_path <- path.expand("/home/grocamora/Core_Projects/ENCODE_Splicing_Analysis/RBPs/")
-  
-  ## READ THE METADATA
-  encode_metadata <- readr::read_delim("/home/grocamora/Core_Projects/ENCODE_Metadata_Extraction/Metadata_Results/metadata_combined.tsv", 
-                                       show_col_types = F)
-  encode_metadata %>% head()
-  
-  ## LOAD RBP
-  target_RBPs <- encode_metadata %>%
-    dplyr::filter(if_any(c(Splicing_regulation, Spliceosome, Exon_junction_complex, NMD), ~ . != 0)) %>%
-    dplyr::pull(target_gene) %>%
-    unique() %>%
-    sort
-  
-  metadata_RBPs <- encode_metadata %>% 
-    filter(target_gene %in% target_RBPs) %>%
-    pivot_longer(c("Splicing_regulation", "Spliceosome", "Exon_junction_complex", "NMD"), names_to = "Category") %>%
-    filter(value == 1) %>%
-    dplyr::select(-value) %>%
-    distinct(target_gene, sample_id, .keep_all = T)
-  
-  required_clusters <- metadata_RBPs %>% pull(experiment_type) %>% unique
-  metadata_RBPs$target_gene %>% unique %>% sort
-  
-  ################################################
-  ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
-  ################################################
-  
-  # Load global common introns
-  if ( ! file.exists(global_common_introns_path) ){
-    
-    print(paste0("ERROR! Dependency file '", global_common_introns_path, "' does not exist!"))
-    global_common_introns <- generateCommonIntronsParallel(studied_RBPs = target_RBPs,
-                                                           RBP_path = RBPs_path,
-                                                           metadata = metadata_RBPs,
-                                                           required_clusters = required_clusters,
-                                                           file_output = global_common_introns_path,
-                                                           overwrite = T,
-                                                           num_cores = num_cores)
-    
-    ## ADD CONSERVATION AND CDTS FOR THE INTRONS
-    
-    message(Sys.time(), " - adding CDTS and Conservation scores...")
-    global_common_introns_scores <- add_cdts_cons_scores(db_introns = global_common_introns %>% # head() %>%
-                                                           dplyr::select(ref_junID, seqnames, start, end, strand) %>%
-                                                           distinct(ref_junID, .keep_all = T) %>%
-                                                           as_tibble()) %>% 
-      as_tibble() %>% 
-      drop_na() %>%
-      dplyr::rename(cons_ss5score = phastCons20way_5ss_mean, 
-                    cons_ss3score = phastCons20way_3ss_mean)
-    
-    global_common_introns_scores <- global_common_introns %>%
-      left_join(y = global_common_introns_scores %>% 
-                  dplyr::select(ref_junID, cons_ss5score, cons_ss3score),
-                by = "ref_junID")
-    
-    saveRDS(object = global_common_introns_scores,file = global_common_introns_path)
-    
-  } else {
-    
-    global_common_introns_scores <- readRDS(global_common_introns_path) %>% drop_na()
-  }
-  
-  
-  # Load global common novel
-  if( !file.exists(global_common_novel_path) ){
-    
-    
-    
-    print(paste0("ERROR! Dependency file 'novel junctions' does not exist!"))
-    common_ref_coordinates <- global_common_introns_scores %>% pull(ref_coordinates) %>% unique
-    global_common_novel <- generateCommonNovelParallel(studied_RBPs = target_RBPs, 
-                                                       common_ref_coordinates = common_ref_coordinates, 
-                                                       RBP_path = RBPs_path, 
-                                                       metadata = metadata_RBPs, 
-                                                       required_clusters = required_clusters, 
-                                                       file_output = global_common_novel_path, 
-                                                       overwrite = T, 
-                                                       num_cores)
-    
-    ## ADD CONSERVATION AND CDTS FOR THE NOVEL JUNCTIONS
-    message(Sys.time(), " - adding CDTS and Conservation scores...")
-    global_common_novel_scores <- add_cdts_cons_scores(db_introns = global_common_novel %>% #                                                      head %>%
-                                                          dplyr::select(novel_coordinates, seqnames, start, end, strand) %>%
-                                                          distinct(novel_coordinates, .keep_all = T) %>%
-                                                          as_tibble()) %>% 
-      as_tibble() %>% 
-      drop_na() %>%
-      dplyr::rename(cons_ss5score = phastCons20way_5ss_mean,
-                    cons_ss3score = phastCons20way_3ss_mean) 
-    
-    global_common_novel_scores <- global_common_novel %>%
-      left_join(y = global_common_novel_scores %>% 
-                  dplyr::select(novel_coordinates, cons_ss5score, cons_ss3score),
-                by = "novel_coordinates")
-    
-    saveRDS(object = global_common_novel_scores, file = global_common_novel_path)
-    
-  } else {
-    
-    global_common_novel_scores <- readRDS(global_common_novel_path)
-    
-  }
-  
-  # scales::show_col(colours = viridis::viridis_pal(option = "A")(n = 20))
-  # scales::show_col(colours = viridis::viridis_pal(option = "B")(n = 20))
-  # scales::show_col(colours = viridis::viridis_pal(option = "C")(n = 20))
-  # scales::show_col(colours = viridis::viridis_pal(option = "D")(n = 20))
-  # scales::show_col(colours = viridis::viridis_pal(option = "E")(n = 20))
-  # scales::show_col(colours = viridis::viridis_pal(option = "F")(n = 20))
-  
-  
-  
-  
-  
-  #################################################
-  ## PLOT COMBINED SCATTER PLOTS FOR "UPF1" 
-  #################################################
-  
-  target_genes = c("UPF1","UPF2")
-  global_common_novel_scores %>% dplyr::count(target_gene, cluster) %>% as.data.frame()
-   
-  NMD_novel <- global_common_novel_scores %>% filter(target_gene %in% target_genes)
-  NMD_novel %>% dplyr::count(target_gene, cluster)
-   
-  ## 1. COMBINED SCATTER PLOT 5'
 
-  plot_5ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[1],
-                              novel_type == "novel_donor"), 
-                     aes(x=cons_ss5score, y=mes_ss3score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 5'ss") +
-    xlab("Conservation (PhastCons20) 5'ss") +
-    ylim(c(-40, 20))
-  
-  
-  ## 2. COMBINED SCATTER PLOT 3'
-  
-  plot_3ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[1],
-                              novel_type == "novel_acceptor"), 
-                     aes(x=cons_ss3score, y=mes_ss3score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 3'ss") +
-    xlab("Conservation (PhastCons20) 3'ss")  +
-    ylim(c(-40, 20)) 
-  
-  
-  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
-                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
-                    labels = c("A", "B"))
-  
-  ggsave(file = paste0(getwd(), "/code/images/UPF1_knockdown_scatter_plot.png"), 
-         width = 180, height = 90, dpi = 300, units = "mm")
-  
-  #################################################
-  ## PLOT COMBINED SCATTER PLOTS FOR "UPF2"
-  #################################################
-  
-  ## 1. COMBINED SCATTER PLOT 5'
-  
-  plot_5ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[2],
-                              novel_type == "novel_donor"), 
-                     aes(x=cons_ss5score, y=mes_ss5score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 5'ss") +
-    xlab("Conservation (PhastCons20) 5'ss") +
-    ylim(c(-40, 20))
-  
-  ## 2. COMBINED SCATTER PLOT 3'
-  
-  plot_3ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[2],
-                              novel_type == "novel_acceptor"), 
-                     aes(x=cons_ss3score, y=mes_ss3score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 3'ss") +
-    xlab("Conservation (PhastCons20) 3'ss") +
-    ylim(c(-40, 20))
-  
-  
-  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
-                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
-                    labels = c("A", "B"))
-  
-  ggsave(file = paste0(getwd(), "/results/_paper/figures/UPF2_knockdown_scatter_plot.png"), 
-         width = 180, height = 90, dpi = 300, units = "mm")
-  
-  
-  ##########################################
-  ## WILCOXON TESTS
-  ##########################################
-  
-  ## Donor - MES
-  wilcox.test(x = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_donor",
-                       cluster == "case") %>%
-                pull(mes_ss5score),
-              y = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_donor",
-                       cluster == "control") %>%
-                pull(mes_ss5score),
-              alternative = "less")
-  
-  ## Donor - conservation
-  wilcox.test(x = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_donor",
-                       cluster == "case") %>%
-                pull(cons_ss5score),
-              y = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_donor",
-                       cluster == "control") %>%
-                pull(cons_ss5score),
-              alternative = "less")
-  
-  ## Acceptor - MES
-  wilcox.test(x = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_acceptor",
-                       cluster == "case") %>%
-                pull(mes_ss3score),
-              y = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_acceptor",
-                       cluster == "control") %>%
-                pull(mes_ss3score),
-              alternative = "less")
-  
-  ## Acceptor - Conservation
-  wilcox.test(x = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_acceptor",
-                       cluster == "case") %>%
-                pull(cons_ss3score),
-              y = NMD_novel %>%
-                filter(target_gene == target_genes[2],
-                       novel_type == "novel_acceptor",
-                       cluster == "control") %>%
-                pull(cons_ss3score),
-              alternative = "less")
-  
-  
-  
-  #################################################
-  ## PLOT COMBINED SCATTER PLOTS FOR "UPF1" 
-  #################################################
-  
-  target_genes = c("UPF1","UPF2")
-  
-  NMD_novel <- global_common_introns_scores %>% filter(target_gene %in% target_genes)
-  NMD_novel %>% dplyr::count(target_gene, cluster)
-  
-  
-  ## 1. COMBINED SCATTER PLOT 5'
-  
-  
-  plot_5ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[1]), 
-                     aes(x=ss5score, y=novel_ss5score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 5'ss") +
-    xlab("Conservation (PhastCons20) 5'ss") +
-    ylim(c(-40, 20))
-  
-  
-  ## 2. COMBINED SCATTER PLOT 3'
-  
-  plot_3ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[1],
-                              novel_type == "novel_acceptor"), 
-                     aes(x=ss3score, y=novel_ss3score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 3'ss") +
-    xlab("Conservation (PhastCons20) 3'ss")  +
-    ylim(c(-40, 20)) 
-  
-  
-  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
-                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
-                    labels = c("A", "B"))
-  
-  ggsave(file = paste0(getwd(), "/code/images/UPF1_knockdown_scatter_plot.png"), 
-         width = 180, height = 90, dpi = 300, units = "mm")
-  
-  #################################################
-  ## PLOT COMBINED SCATTER PLOTS FOR "UPF2"
-  #################################################
-  
-  ## 1. COMBINED SCATTER PLOT 5'
-  
-  plot_5ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[2],
-                              novel_type == "novel_donor"), 
-                     aes(x=ss5score, y=novel_ss5score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 5'ss") +
-    xlab("Conservation (PhastCons20) 5'ss") +
-    ylim(c(-40, 20))
-  
-  ## 2. COMBINED SCATTER PLOT 3'
-  
-  plot_3ss <- ggplot(NMD_novel %>%
-                       filter(target_gene == target_genes[2],
-                              novel_type == "novel_acceptor"), 
-                     aes(x=ss3score, y=novel_ss3score, colour=cluster)) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    ylab("MaxEntScan 3'ss") +
-    xlab("Conservation (PhastCons20) 3'ss") +
-    ylim(c(-40, 20))
-  
-  
-  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
-                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
-                    labels = c("A", "B"))
-  
-  ggsave(file = paste0(getwd(), "/results/_paper/figures/UPF2_knockdown_scatter_plot.png"), 
-         width = 180, height = 90, dpi = 300, units = "mm")
-
-  }
 
 
 

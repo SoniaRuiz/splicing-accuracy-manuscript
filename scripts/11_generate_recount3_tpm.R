@@ -43,10 +43,11 @@ generate_recount3_tpm <- function(recount3.project.IDs,
     results_folder_local <- paste0(results.folder, "/", project_id, "/")
     results_folder_local_tpm <- paste0(results_folder_local, "/tpm/")
     dir.create(file.path(results_folder_local_tpm), recursive = TRUE, showWarnings = T)
+    dir.create(file.path(tpm.folder), recursive = TRUE, showWarnings = T)
     
     if ( !file.exists(paste0(tpm.folder, "/", project_id, "_tpm.rds")) ) {
     
-      message("Downloading raw counts from ", project_id, "...")
+      message("Downloading raw counts from ", project_id, "...") 
       
       ## 1. Get expression data from recount3, transform raw counts and calculate TPM
       rse <- recount3::create_rse_manual(
@@ -153,9 +154,9 @@ generate_recount3_tpm <- function(recount3.project.IDs,
       }
     }
 
-    message(Sys.time(), " - ", project_id, " finished!")
+    message(Sys.time(), " - ", project_id, " finished!") %>% print()
     
-    rm(folder_root)
+
     rm(clusters_ID)
     rm(recount_tpm)
     gc()
@@ -163,29 +164,42 @@ generate_recount3_tpm <- function(recount3.project.IDs,
   }
 }
 
+# PD/control --------------------------------------------------------------------------------------------------------
 
-# --------------------------------------------------------------------------------------------------------------
+# recount3.project.IDs <- "SRP058181"
+# data.source <- "data_sources/sra"
+# tpm.folder <- "/mnt/PROJECTS/recount3-database-project/results/tpm/"
+# results.folder <- "/mnt/PROJECTS/recount3-database-project/results/SRP058181_1read/110/"
+
+# AD/control --------------------------------------------------------------------------------------------------------
+
+# recount3.project.IDs <- "SRP100948"
+# data.source <- "data_sources/sra"
+# tpm.folder <- "/mnt/PROJECTS/recount3-database-project/results/tpm/"
+# results.folder <- "/mnt/PROJECTS/recount3-database-project/results/SRP100948_1read/110/"
+
+# GTEx --------------------------------------------------------------------------------------------------------------
 # source("/mnt/PROJECTS/splicing-accuracy-manuscript/scripts/11_generate_recount3_tpm.R")
 
 
-
-recount3_project_IDs <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND",    "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
-                           "BRAIN",           "COLON",           "ESOPHAGUS",       "HEART",           "KIDNEY",
-                           "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",
-                           "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",
-                           "STOMACH",         "THYROID" )
-
-## This is the name of the project producing the database
-dependencies_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript/dependencies/")
-project_name <- "splicing_1read"
-data_source <- "data_sources/gtex"
-gtf_version <- 105
-tpm_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results/tpm")
-results_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results", paste0(project_name, "/", gtf_version, "/"))
-#file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/"))
-
-generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
-                      data.source = data_source,
-                      tpm.folder = tpm_folder,
-                      results.folder = results_folder)
+# 
+# recount3_project_IDs <- c( "ADIPOSE_TISSUE", "ADRENAL_GLAND",    "BLOOD",           "BLOOD_VESSEL",    "BONE_MARROW",
+#                            "BRAIN",           "COLON",           "ESOPHAGUS",       "HEART",           "KIDNEY",
+#                            "LIVER",           "LUNG",            "MUSCLE",          "NERVE",           "PANCREAS",
+#                            "PITUITARY",       "SALIVARY_GLAND",  "SKIN",            "SMALL_INTESTINE", "SPLEEN",
+#                            "STOMACH",         "THYROID" )
+# 
+# ## This is the name of the project producing the database
+# dependencies_folder <- paste0("/mnt/PROJECTS/splicing-accuracy-manuscript/dependencies/")
+# project_name <- "splicing_1read"
+# data_source <- "data_sources/gtex"
+# gtf_version <- 105
+# tpm_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results/tpm")
+# results_folder <- file.path("/mnt/PROJECTS/splicing-accuracy-manuscript/results", paste0(project_name, "/", gtf_version, "/"))
+# #file.path(here::here("results"), paste0(project_name, "/", gtf_version, "/"))
+# 
+# generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,
+#                       data.source = data_source,
+#                       tpm.folder = tpm_folder,
+#                       results.folder = results_folder)
 

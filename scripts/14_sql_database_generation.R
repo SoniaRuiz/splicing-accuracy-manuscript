@@ -18,7 +18,7 @@ sql_database_generation <- function(database.path,
                                     remove.all = NULL,
                                     database.folder,
                                     results.folder,
-                                    supportive.reads) {
+                                    gtf.version) {
   
   
   print(paste0(Sys.time(), " --> ", database.path, "..."))
@@ -30,7 +30,8 @@ sql_database_generation <- function(database.path,
   tables %>% print()
   
   if ( !is.null(remove.all) ) {
-    sql_remove_tables(database.path = database.path, all = remove.all)
+    sql_remove_tables(database.path, 
+                      all = remove.all)
   }
   
   tables <- DBI::dbListTables(conn = con)
@@ -40,13 +41,16 @@ sql_database_generation <- function(database.path,
     sql_create_master_table_metadata(database.path = database.path,
                                      recount3.project.IDs = recount3.project.IDs,
                                      results.folder = results.folder)
+  } else {
+    message(Sys.time(), " - table 'metadata' exists!")
   }
   
   
   if ( !any(tables %in% c('intron', 'novel', 'gene', 'transcript')) ) {
     sql_create_master_tables(database.path = database.path,
-                             database.folder,
-                             results.folder)
+                             gtf.version = gtf.version,
+                             database.folder = database.folder,
+                             results.folder = results.folder)
   }
   
   
@@ -55,10 +59,9 @@ sql_database_generation <- function(database.path,
   
   print(paste0(Sys.time(), " - creating cluster tables ..."))
   
-  sql_create_child_tables(database.path = database.path,
-                          recount3.project.IDs = recount3.project.IDs,
+  sql_create_child_tables(database.path,
+                          recount3.project.IDs,
                           database.folder,
-                          results.folder,
-                          supportive.reads = supportive.reads)
+                          results.folder)
   
 }

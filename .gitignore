@@ -60,6 +60,7 @@ database
 dependencies
 natcomms_review
 ENCODE_LR
+SAI-10k-calc
 
 #############################
 ## FILES TO EXCLUDE
