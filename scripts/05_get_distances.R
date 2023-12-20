@@ -62,7 +62,7 @@ get_distances <- function(cluster,
         
         ## Do some QC
         index <- runif(n = 1, 1, split_reads_details_sample %>% nrow()) %>% as.integer()
-        data <- split_reads_details_sample[index, c(1, split_reads_details_sample %>% ncol())]
+        data <- split_reads_details_sample[index, c("junID", "counts")]
         data_col <- split_read_counts_sample %>%
           dplyr::filter(junID == data$junID)
         if (data_col[, colnames(data_col) == sample] != data$counts) {
@@ -86,7 +86,7 @@ get_distances <- function(cluster,
         ###################################################
         all_donor <- split_reads_details_sample %>%
           dplyr::filter(type == "novel_donor") %>% 
-          GRanges()
+          GenomicRanges::GRanges()
         
         all_donor_forward <- all_donor[all_donor@strand == "+"]
         all_donor_reverse <- all_donor[all_donor@strand == "-"]
@@ -97,7 +97,7 @@ get_distances <- function(cluster,
         ###################################################
         all_acceptor <- split_reads_details_sample %>%
           dplyr::filter(type == "novel_acceptor") %>% 
-          GRanges()
+          GenomicRanges::GRanges()
         
         all_acceptor_forward <- all_acceptor[all_acceptor@strand == "+"]
         all_acceptor_reverse <- all_acceptor[all_acceptor@strand == "-"]

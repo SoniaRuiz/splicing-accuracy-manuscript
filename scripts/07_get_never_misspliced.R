@@ -65,7 +65,7 @@ get_never_misspliced <- function(cluster,
     ## QC - 2: this should be zero
     ind <- which(str_detect(string = split_read_counts_tidy$junID, pattern = "\\*"))
     if (ind %>% length() > 0) {
-      print("ERROR")
+      print("ERROR - 'split_read_counts' file still contains '*' in the strand")
       break;
     }
     
@@ -136,7 +136,7 @@ get_never_misspliced <- function(cluster,
         
         ## Do some QC
         index <- runif(n = 1, 1, split_reads_details_sample %>% nrow()) %>% as.integer()
-        data <- split_reads_details_sample[index, c(1, split_reads_details_sample %>% ncol())]
+        data <- split_reads_details_sample[index, c("junID", "counts")]
         data_col <- split_read_counts_sample %>%
           dplyr::filter(junID == data$junID)
         if (data_col[[2]] != data$counts) {
@@ -175,7 +175,7 @@ get_never_misspliced <- function(cluster,
         ###################################################
         all_acceptor <- split_reads_details_sample%>%
           dplyr::filter(type == "novel_acceptor") %>% 
-          GRanges()
+          GenomicRanges::GRanges()
         
         all_acceptor_forward <- all_acceptor[all_acceptor@strand == "+"]
         all_acceptor_reverse <- all_acceptor[all_acceptor@strand == "-"]

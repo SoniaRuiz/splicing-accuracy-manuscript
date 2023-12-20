@@ -31,10 +31,10 @@ setwd(file.path(base_folder))
 #####################################
 
 ## This is the Ensembl gtf transcriptome version 
-gtf_versions <- c(105)
+gtf_versions <- c(110)
 
 ## This is the name of the project producing the database
-supportive_reads <- 1
+supportive_reads <- 2
 project_name <- paste0("splicing_", supportive_reads, "read")
 data_source <- "data_sources/gtex"
 
@@ -109,11 +109,11 @@ for (gtf_version in gtf_versions) {
   #                    results.folder = results_folder)
 
 
-  # if ( !file.exists(paste0(results_folder, "/all_junID_PC_biotype.rds")) ) {
-  #   generate_transcript_biotype_percentage(gtf.version = gtf_version,
-  #                                          database.folder = database_folder,
-  #                                          results.folder = results_folder)
-  # }
+  #if ( !file.exists(paste0(results_folder, "/all_junID_PC_biotype.rds")) ) {
+    generate_transcript_biotype_percentage(gtf.version = gtf_version,
+                                           database.folder = database_folder,
+                                           results.folder = results_folder)
+  #}
 
 
   # generate_recount3_tpm(recount3.project.IDs = recount3_project_IDs,

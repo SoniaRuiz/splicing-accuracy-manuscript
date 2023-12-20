@@ -47,6 +47,8 @@ sql_create_child_tables <- function(database.path,
     dplyr::count(novel_type) %>%
     print()
   
+ 
+  
   ## GET FROM GENE TABLE
   query = paste0("SELECT * FROM 'gene'")
   df_gene <- dbGetQuery(con, query) %>% as_tibble()
@@ -69,9 +71,10 @@ sql_create_child_tables <- function(database.path,
   #   
   #   project_id <- recount3.project.IDs[i]
   
-  for (project_id in recount3.project.IDs) { 
+  for ( project_id in recount3.project.IDs ) { 
     
     # project_id <- recount3.project.IDs[1]
+    # project_id <- recount3.project.IDs[2]
     
     message(Sys.time(), " --> Working with '", project_id, "' ...")
     results_folder_local <- paste0(results.folder, "/", project_id, "/")
@@ -84,9 +87,9 @@ sql_create_child_tables <- function(database.path,
     for (cluster_id in clusters) { 
       
       # cluster_id <- clusters[1]
-      # cluster_id <- "Brain - Frontal Cortex (BA9)"
+      # cluster_id <- clusters[2]
       
-      message(Sys.time(), " --> ", cluster_id)
+      message(Sys.time(), " - ", project_id, " --> ", cluster_id)
       
       ###############################
       ## PREPARE DATA
@@ -104,15 +107,7 @@ sql_create_child_tables <- function(database.path,
         split_read_counts <- readRDS(file = paste0(results_folder_local, "/base_data/", 
                                                    project_id, "_", cluster_id, "_split_read_counts.rds")) 
         
-        print(paste0(Sys.time(), " --> ", cluster_id, " split read counts loaded!"))
-        
-        # stopifnot(
-        #   "Still there are split reads with less than N number of supportive reads" =
-        #     split_read_counts %>% 
-        #     mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
-        #     filter(sumCounts < supportive.reads) %>% 
-        #     nrow() == 0
-        # )
+        print(paste0(Sys.time(), " --> ", split_read_counts %>% nrow(), " split read counts loaded from '", cluster_id, "' cluster!"))
         
         
         if ( is.null(names(split_read_counts)) ) {
@@ -125,6 +120,12 @@ sql_create_child_tables <- function(database.path,
                                          project_id, "_", cluster_id, "_samples_used.rds"))
         
         
+        if ( !identical(names(split_read_counts)[-1] %>% sort(), samples %>% sort()) ) {
+          message(Sys.time(), " - The number of samples used does not correspond to the number of columns in the 'split_read_counts' object!")
+          break;
+        }
+        
+        
         ## LOAD INTRONS AND NOVEL JUNCTIONS ------------------------------------
         df_cluster_distances <- readRDS(file = paste0(results_folder_local, "/junction_pairing/", cluster_id, "/", 
                                                       cluster_id, "_raw_distances_tidy.rds")) %>% as_tibble()
@@ -134,8 +135,11 @@ sql_create_child_tables <- function(database.path,
         ## INTRONS ---------------------------------------------------
         df_introns_gr <- df_cluster_distances %>%
           distinct(ref_junID, .keep_all = T) %>%
-          dplyr::select(ref_junID, seqnames = ref_seq, start = ref_start,
-                        end = ref_end, strand = ref_strand)
+          dplyr::select(ref_junID, 
+                        seqnames = ref_seq, 
+                        start = ref_start,
+                        end = ref_end, 
+                        strand = ref_strand)
         
         
         
@@ -161,10 +165,15 @@ sql_create_child_tables <- function(database.path,
         
         
         ## NOVEL JUNCTIONS -----------------------------------------------------
+        
         df_novel_gr <- df_cluster_distances %>%
           distinct(novel_junID, .keep_all = T) %>%
-          dplyr::select(novel_junID, ref_junID, seqnames = novel_seq, 
-                        start = novel_start, end = novel_end, strand = novel_strand)
+          dplyr::select(novel_junID, 
+                        ref_junID, 
+                        seqnames = novel_seq, 
+                        start = novel_start, 
+                        end = novel_end, 
+                        strand = novel_strand)
         
         
         split_read_counts_novel <- generate_coverage(split_read_counts = split_read_counts,
@@ -531,6 +540,8 @@ sql_create_child_tables <- function(database.path,
             mutate(MSR_D = 0, MSR_A = 0) %>%
             mutate(ref_type = "never")
           df_never_merged <- df_never_merged %>% as_tibble()
+          
+          
           
           if ( any(df_never_merged$ref_n_individuals %>% is.na()) ) {
             print("ERROR! some never mis-spliced junctions without the number of individuals")

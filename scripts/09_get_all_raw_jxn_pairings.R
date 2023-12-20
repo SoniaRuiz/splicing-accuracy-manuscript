@@ -26,95 +26,87 @@ get_all_raw_jxn_pairings <- function(recount3.project.IDs,
     print(paste0(Sys.time(), " --> Working with '", project_id, "' DataBase..."))
     folder_results_root <- paste0(results.folder, "/", project_id, "/")
     
+    if ( is.null(all.clusters) && 
+         file.exists(paste0(folder_results_root, "/base_data/", 
+                            project_id, "_clusters_used.rds")) ) {
+      all.clusters <-  readRDS(file = paste0(folder_results_root, "/base_data/", 
+                                             project_id, "_clusters_used.rds"))
+    }
     
-    if ( file.exists(paste0(folder_results_root, "/base_data/", 
-                            project_id, "_samples_metadata.rds")) ) {
-      ## Read all clusters considered from the current tissue
-      metadata.info <- readRDS(file = paste0(folder_results_root, "/base_data/", 
-                                             project_id, "_samples_metadata.rds"))
+    if ( ! is.null(all.clusters) ) {
       
-      
-      if ( is.null(all.clusters) && 
-           file.exists(paste0(folder_results_root, "/base_data/", 
-                              project_id, "_clusters_used.rds")) ) {
-        all.clusters <-  readRDS(file = paste0(folder_results_root, "/base_data/", 
-                                               project_id, "_clusters_used.rds"))
-      }
-      
-      if ( ! is.null(all.clusters) ) {
+      map_df(all.clusters, function(cluster) {
         
-        map_df(all.clusters, function(cluster) {
+        # cluster <- all.clusters[1]
+        
+        print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
+        
+        ## Load samples
+        if ( file.exists(paste0(folder_results_root, "/base_data/", project_id, "_", cluster, "_samples_used.rds")) ) {
           
-          # cluster <- all.clusters[1]
+          samples <- readRDS(file = paste0(folder_results_root, "/base_data/", project_id, "_", cluster,  "_samples_used.rds"))
           
-          print(paste0(Sys.time(), " - ", project_id, " loading '", cluster, "'  data ..."))
-          
-          ## Load samples
-          if ( file.exists(paste0(folder_results_root, "/base_data/", project_id, "_", cluster, "_samples_used.rds")) ) {
+          if ( samples %>% length() > 0 ) {
             
-            samples <- readRDS(file = paste0(folder_results_root, "/base_data/", project_id, "_", cluster,  "_samples_used.rds"))
+            folder_cluster_pairings <- paste0(folder_results_root, "/junction_pairing/", cluster, "/")
             
-            if ( samples %>% length() > 0 ) {
+            if ( !file.exists(paste0(folder_cluster_pairings, "/", cluster, "_raw_distances_tidy.rds")) ) {
               
-              folder_cluster_pairings <- paste0(folder_results_root, "/junction_pairing/", cluster, "/")
-              
-              if ( !file.exists(paste0(folder_cluster_pairings, "/", cluster, "_raw_distances_tidy.rds")) ) {
+              ## Obtain the distances across all samples
+              df_all <- map_df(samples, function(sample) { 
                 
-                ## Obtain the distances across all samples
-                df_all <- map_df(samples, function(sample) { 
-                  
-                  # sample <- samples[1]
-                  
-                  file_name <- paste0(folder_cluster_pairings, "/", cluster, "_", sample, "_distances.rds")
-                  
-                  
-                  if ( file.exists(file_name) ) {
-                    print(paste0(cluster, " - ", sample))
-                    df <- readRDS(file = file_name)
-                    
-                    return(df)
-                  } else {
-                    return(NULL)
-                  }
-                  
-                })
+                # sample <- samples[1]
                 
-                if ( nrow(df_all) > 0 ) {
-                  saveRDS(object = df_all %>%
-                            distinct(novel_junID, ref_junID, .keep_all = T) %>%
-                            mutate(tissue = cluster),
-                          file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+                file_name <- paste0(folder_cluster_pairings, "/", cluster, "_", sample, "_distances.rds")
+                
+                
+                if ( file.exists(file_name) ) {
+                  print(paste0(cluster, " - ", sample))
+                  df <- readRDS(file = file_name)
+                  
+                  return(df)
+                } else {
+                  return(NULL)
                 }
                 
-              } else {
-                print(paste0("File '", cluster, "_raw_distances_tidy.rds' already exists!"))
-                df_all <- readRDS( file = paste0(folder_cluster_pairings, "/", cluster, "_raw_distances_tidy.rds") )
-              }
-              
+              })
               
               if ( nrow(df_all) > 0 ) {
-                
-                df_all %>%
-                  distinct(novel_junID, ref_junID, .keep_all = T) %>%
-                  mutate(project = project_id) %>%
-                  return()
-                
-              } else {
-                return(NULL)
-              }          
-              # df_all2 <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+                saveRDS(object = df_all %>%
+                          distinct(novel_junID, ref_junID, .keep_all = T) %>%
+                          mutate(tissue = cluster),
+                        file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+              }
               
             } else {
-              print(paste0("ERROR: no samples available for the tissue: ", project_id))
-              return(NULL)
+              print(paste0("File '", cluster, "_raw_distances_tidy.rds' already exists!"))
+              df_all <- readRDS( file = paste0(folder_cluster_pairings, "/", cluster, "_raw_distances_tidy.rds") )
             }
             
+            
+            if ( nrow(df_all) > 0 ) {
+              
+              df_all %>%
+                distinct(novel_junID, ref_junID, .keep_all = T) %>%
+                mutate(project = project_id) %>%
+                return()
+              
+            } else {
+              return(NULL)
+            }          
+            # df_all2 <- readRDS(file = paste0(folder_name, "/", cluster, "_raw_distances_tidy.rds"))
+            
           } else {
+            print(paste0("ERROR: no samples available for the tissue: ", project_id))
             return(NULL)
           }
-        })  
-      }
+          
+        } else {
+          return(NULL)
+        }
+      })  
     }
+    
   }
   
   

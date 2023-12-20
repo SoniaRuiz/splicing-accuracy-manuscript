@@ -16,8 +16,8 @@ library(ggridges)
 
 
 ## CONNECT TO THE DATABASE ------------------------------
-
-gtf_version <- 105
+supporting_reads <-2
+gtf_version <- 110
 main_project <- paste0("splicing_",supporting_reads,"read")
 
 database_path <- paste0(getwd(), "/database/", main_project, "/", gtf_version, "/", 
@@ -1580,7 +1580,7 @@ get_maxentscan_score <- function() {
  
   ((df_mes %>% 
     filter(novel_type == "novel_donor") %>%
-    dplyr::select(intron_MES = ref_ss5score, novel_donor_MES = novel_ss5score) %>%
+    dplyr::select(intron_MES = ref_mes5ss, novel_donor_MES = novel_mes5ss) %>%
     mutate(MES_diff = intron_MES - novel_donor_MES) %>%
     pull(MES_diff) %>% 
     sign() %>% 
@@ -1600,7 +1600,7 @@ get_maxentscan_score <- function() {
   
   ((df_mes %>% 
       filter(novel_type == "novel_acceptor") %>%
-      dplyr::select(intron_MES = ref_ss5score, novel_acceptor_MES = novel_ss3score) %>%
+      dplyr::select(intron_MES = ref_mes5ss, novel_acceptor_MES = novel_mes3ss) %>%
       mutate(MES_diff = intron_MES - novel_acceptor_MES) %>%
       pull(MES_diff) %>% 
       sign() %>% 
@@ -2363,8 +2363,8 @@ get_modulo <- function() {
   ## DENSITY PLOT
   ################
   
-  df_modulo_tissues <- df_modulo_tissues %>%
-    mutate(freq = freq * 100)
+  # df_modulo_tissues <- df_modulo_tissues %>%
+  #   mutate(freq = freq * 100)
   
   ggplot(df_modulo_tissues, aes(x = freq, y = modulo)) +
     ggridges::geom_density_ridges_gradient() +
@@ -2586,15 +2586,25 @@ get_MSR_FCTX <- function()  {
     print("ERROR!")
   }
   
-  ## Subsampling introns to control by similarity in mean read coverage
-  m.out <- MatchIt::matchit(biotype ~ mean_coverage, 
-                            data = data_combined, 
-                            distance = data_combined$mean_coverage,
-                            method = "nearest", 
-                            caliper = c(mean_coverage = 0.005), 
-                            std.caliper = FALSE)
-  subsample <- MatchIt::match.data(m.out)
-  subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(biotype)
+  
+  if ( !file.exists(paste0(results_folder, "/MSR_subsample.rds")) ) {
+    ## Subsampling introns to control by similarity in mean read coverage
+    m.out <- MatchIt::matchit(biotype ~ mean_coverage, 
+                              data = data_combined, 
+                              distance = data_combined$mean_coverage,
+                              method = "nearest", 
+                              caliper = c(mean_coverage = 0.005), 
+                              std.caliper = FALSE)
+    subsample <- MatchIt::match.data(m.out)
+    subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(biotype)
+    
+    
+    saveRDS(object = subsample,
+            file = paste0(results_folder, "/MSR_subsample.rds"))
+  } else {
+    subsample <- readRDS(file = paste0(results_folder, "/MSR_subsample.rds"))
+  }
+
   
   plot_AS <- ggplot(data = subsample) +
     geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.9) +
@@ -2763,13 +2773,13 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Donor") +
     xlab("Mis-splicing ratio value group") +
     ylab("") +
-    scale_y_continuous(limits =c(0,500), position = "right") +
+    scale_y_continuous(limits =c(0,600), position = "right") +
     
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
                       labels = c("Protein-coding","Non-protein-coding")) +
-    custom_ggtheme +
     theme_light() +
+    custom_ggtheme +
     guides(fill = guide_legend(title = NULL,  
                                ncol = 2, nrow = 1)) 
   plotMSR_donor_zoomed
@@ -2783,7 +2793,7 @@ get_MSR_FCTX <- function()  {
     ggtitle("MSR Acceptor") +
     xlab("Mis-splicing ratio value group") +
     ylab("") +
-    scale_y_continuous(limits =c(0,500), position = "right") +
+    scale_y_continuous(limits =c(0,600), position = "right") +
     
     scale_fill_manual(values = c("#333333","#999999"),
                       breaks = c("PC","non PC"),
@@ -5164,5 +5174,5 @@ prepare_gtex_samples <- function() {
 
 #plot_NMD_scatter_plot()
 
-compare_tissues_somatic_mutations()
+get_MSR_FCTX()
   

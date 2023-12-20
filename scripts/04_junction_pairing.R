@@ -23,7 +23,7 @@ junction_pairing <- function(recount3.project.IDs,
     project_id <- recount3.project.IDs[i]
     
     # project_id <- recount3.project.IDs[1]
-    # project_id <- "BRAIN"
+    # project_id <- recount3.project.IDs[2]
     
     folder_root <- paste0(results.folder, "/", project_id)
     folder_base_data <- paste0(folder_root, "/base_data/")
@@ -32,16 +32,13 @@ junction_pairing <- function(recount3.project.IDs,
     
     ## Load clusters
     
-    if ( file.exists(paste0(folder_base_data, "/", project_id, "_samples_metadata.rds")) && 
-         file.exists(paste0(folder_base_data, "/", project_id, "_clusters_used.rds")) ) {
+    if ( file.exists(paste0(folder_base_data, "/", project_id, "_clusters_used.rds")) ) {
       
-      metadata.info <- readRDS(file = paste0(folder_base_data, "/", project_id, "_samples_metadata.rds"))
       clusters_ID <- readRDS(file = paste0(folder_base_data, "/", project_id, "_clusters_used.rds"))
       
       for (cluster_id in clusters_ID) {
         
         # cluster_id <- clusters_ID[1]
-        # cluster_id <- "Brain - Amygdala"
         
         print(paste0(Sys.time(), " - loading '", cluster_id, "' source data ..."))
         
@@ -51,22 +48,38 @@ junction_pairing <- function(recount3.project.IDs,
         
         ## Load samples
         samples_used <- readRDS(file = paste0(folder_base_data, "/", 
-                                              project_id, "_", cluster_id, "_samples_used.rds"))
+                                              project_id, "_", cluster_id, "_samples_used.rds")) %>% 
+          unique
+      
         
         ## Load split read data
         all_split_reads_details <- readRDS(file = paste0(folder_base_data, "/", project_id, "_", cluster_id, 
                                                          "_all_split_reads.rds")) %>% as_tibble()
         
+        
         ## Load split read counts
         split_read_counts <- readRDS(file = paste0(folder_base_data, "/", project_id, "_", cluster_id, "_",
                                                    "split_read_counts.rds")) %>% as_tibble()
+        split_read_counts %>% names()
         
-        # stopifnot(
-        #     split_read_counts %>% 
-        #     mutate(sumCounts = rowSums(dplyr::select(., !contains("junID")))) %>%
-        #     filter(sumCounts < supporting.reads) %>% 
-        #     nrow() == 0
-        # )
+        
+        ind <- which(str_detect(string = split_read_counts$junID, pattern = "\\*"))
+        if (ind %>% length() > 0) {
+          print("ERROR - 'split_read_counts' file still contains '*' in the strand")
+          break;
+        }
+        
+        ind <- which(str_detect(string = all_split_reads_details$junID, pattern = "\\*"))
+        if (ind %>% length() > 0) {
+          print("ERROR - 'all_split_reads_details' file still contains '*' in the strand")
+          break;
+        }
+        
+        if ( !identical((split_read_counts %>% names())[-1] %>% sort(),
+                        samples_used %>% sort()) ) {
+          print("ERROR! different number of samples used!")
+          break;
+        }
         
         
         if ( !identical(all_split_reads_details$junID, split_read_counts$junID) ) {
@@ -74,13 +87,14 @@ junction_pairing <- function(recount3.project.IDs,
           break;
         }
         
+        
         ############################################
         ## DISTANCES SUITE OF FUNCTIONS
         ############################################
-        
+
         folder_pairing_results <- paste0(folder_root, "/junction_pairing/", cluster_id, "/")
         dir.create(file.path(folder_pairing_results), recursive = TRUE, showWarnings = T)
-        
+
         get_distances(cluster = cluster_id,
                       samples = samples_used,
                       split_read_counts = split_read_counts,
@@ -88,22 +102,22 @@ junction_pairing <- function(recount3.project.IDs,
                       folder_name = folder_pairing_results,
                       replace = replace)
         gc()
-        
-        
+
+
         extract_distances(cluster = cluster_id,
                           samples = samples_used,
                           folder_name = folder_pairing_results,
                           replace = replace)
         gc()
-        
-        
+
+
         get_never_misspliced(cluster = cluster_id,
                              samples = samples_used,
                              split_read_counts = split_read_counts,
                              all_split_reads_details = all_split_reads_details,
                              folder_name = folder_pairing_results,
                              replace = replace)
-        
+
         rm(all_split_reads_details)
         rm(split_read_counts)
         gc()

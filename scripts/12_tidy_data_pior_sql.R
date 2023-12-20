@@ -22,10 +22,17 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   
   all_split_reads_details_qc_level1 %>% nrow()
   
+  
+  ind <- which(str_detect(string = all_split_reads_details_qc_level1$junID, pattern = "\\*"))
+  if (ind %>% length() > 0) {
+    print("ERROR - 'all_split_reads_qc_level1.rds' file still contains '*' within the strand information!")
+    break;
+  }
+  
+  
   ############################################
-  ## Discard all junctions from 
-  ## 'EXCLUDE ME' samples, tissues with < 70 samples
-  ## samples RIN < 6
+  ## Discard all junctions that did not pass 
+  ## the 2nd filter threshold
   ############################################
   
   message("Loading split reads QC level 2 ...")
@@ -35,6 +42,12 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   
   all_split_reads_details_qc_level2 %>% nrow()
   all_split_reads_details_qc_level2 %>% head()
+  
+  ind <- which(str_detect(string = all_split_reads_details_qc_level2$junID, pattern = "\\*"))
+  if (ind %>% length() > 0) {
+    print("ERROR - 'all_split_reads_qc_level2.rds' file still contains '*' within the strand information!")
+    break;
+  }
   
   ## This should be zero
   if ( setdiff(all_split_reads_details_qc_level2$junID, 
@@ -87,6 +100,7 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   
   df_all_jxn_pairings <- readRDS(file = paste0(database.folder, "/all_raw_jxn_pairings.rds"))
   
+ 
   ## QC
   ## Remove potential * in the junID of the reference introns
   ind <- which(str_detect(string = df_all_jxn_pairings$ref_junID, pattern = "\\*"))
@@ -136,11 +150,14 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   df_never_misspliced_tidy %>% distinct(ref_junID) %>% as_tibble()
   
   
+  
+  message("Never mis-spliced junctions obntained!")
+  
   ############################################
   ## GET ALL JUNCTIONS THAT HAVE NOT BEEN PAIRED
   ############################################ 
   
-  message("Obtained all split reads that have not been paired ...")
+  message("Obtaining all split reads that have not been paired ...")
   
   ## These are all the non-paired junctions, including the never mis-spliced 
   df_not_paired <- all_split_reads_details_qc_level2 %>%
@@ -182,6 +199,8 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   df_not_paired_tidy %>% distinct(junID)
   
   
+  
+  
   ## Hence, this should be zero
   if ( intersect(df_not_paired_tidy$junID, 
                  df_all_jxn_pairings$novel_junID) %>% length() > 0 ) {
@@ -192,6 +211,8 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   df_all_jxn_pairings %>% distinct(novel_junID) %>% nrow() +
     df_all_jxn_pairings %>% distinct(ref_junID) %>% nrow() +
     df_never_misspliced_tidy %>% distinct(ref_junID) %>% nrow()
+  
+  message("Split reads that have not been paired obtained!")
   
   ##########################################
   ## Remove ambiguous junctions
@@ -291,6 +312,9 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
   saveRDS(object = df_all_jxn_pairings_tidy,
           file = paste0(database.folder, "/all_jxn_correct_pairings.rds"))
   
+
+
+  
   
   ## 2. NEVER MIS-SPLICED
   
@@ -305,12 +329,17 @@ tidy_data_pior_sql <- function (recount3.project.IDs,
           file = paste0(database.folder, "/all_jxn_never_misspliced.rds"))
   
   
+  
   ## 3. AMBIGUOUS JUNCTIONS
   
   if (any(str_detect(string = df_ambiguous_novel$ref_junID, pattern = "\\*")) |
       any(str_detect(string = df_ambiguous_novel$novel_junID, pattern = "\\*")) ) {
     print("ERROR! Some junctions still have a * in their IDs!")
   }
+  
+  
+
+  
   saveRDS(df_ambiguous_novel,
           file = paste0(database.folder, "/all_jxn_ambiguous_pairings.rds"))
 }

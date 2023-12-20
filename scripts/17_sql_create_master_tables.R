@@ -45,6 +45,8 @@ sql_create_master_tables <- function(database.path,
     
   }
   
+  
+ 
   ####################################
   ## A) GET ALL INTRONS
   ####################################
@@ -160,7 +162,6 @@ sql_create_master_tables <- function(database.path,
   ## TX_JUNCTION - CREATE TX TABLE
   ######################################
   
-  
   sql_create_master_table_transcript(database.path = database.path,
                                      gene_ids = df_introns_introverse_tidy %>% unnest(gene_id) %>% distinct(gene_id),
                                      hg38 = hg38,
@@ -176,7 +177,6 @@ sql_create_master_tables <- function(database.path,
   query <- paste0("SELECT id, transcript_id FROM 'transcript'")
   df_transcripts <- dbGetQuery(con, query) %>% as_tibble()
   
-  
   ## Add the GENE ID for the foreign key
   df_introns_introverse_tidy <- df_introns_introverse_tidy %>%
     unnest(tx_id_junction) %>%
@@ -185,10 +185,8 @@ sql_create_master_tables <- function(database.path,
     dplyr::select(-gene_id, -tx_id_junction) %>%
     dplyr::rename(transcript_id = id) 
   
-  
   message(df_introns_introverse_tidy %>%
             distinct(ref_junID) %>% nrow(), " introns to store")
-  
   
   ######################################
   ## INTRONS - ADD MAXENTSCAN INFO 
@@ -255,7 +253,7 @@ sql_create_master_tables <- function(database.path,
   df_all_introns <- generate_cdts_phastcons_scores(db_introns = df_all_introns %>% 
                                                      distinct(ref_junID, .keep_all = T) %>%
                                                      as_tibble(),
-                                                   intron_size = c(35,50,100),
+                                                   intron_size = c(100),
                                                    phastcons_type = 17) %>%
     as_tibble()
   
@@ -313,7 +311,7 @@ sql_create_master_tables <- function(database.path,
             nrow(), " introns containing ClinVar variants")
   df_all_introns_tidy %>% head()
   
-  
+ 
   ######################################
   ## INTRONS - ADD THE INTRON TYPE
   ## This intron type corresponds to whether the intron is 
@@ -344,10 +342,15 @@ sql_create_master_tables <- function(database.path,
   message(queryHits(overlaps) %>% length(), " introns spliced by the minor spliceosome!")
   df_all_introns_tidy[subjectHits(overlaps),]$u2_intron <- F
   
+  if ( which(df_all_introns_tidy$u2_intron == F) %>% length() != 
+       df_all_introns_tidy[subjectHits(overlaps),] %>% nrow() ) {
+    message(Sys.time(), " - ERROR! Minor spliceosomal introns have not been added adequately!")
+    break;
+  }
   
-  df_all_introns_tidy <- df_all_introns_tidy %>%
-    filter(u2_intron == T) %>%
-    dplyr::select(-u2_intron)
+  # df_all_introns_tidy <- df_all_introns_tidy %>%
+  #   filter(u2_intron == T) %>%
+  #   dplyr::select(-u2_intron)
   
   
   message(df_all_introns_tidy$ref_junID %>% unique %>% length(), " introns to be stored!")
@@ -408,17 +411,9 @@ sql_create_master_tables <- function(database.path,
 
                   mean_phastCons17way5ss_100 DOUBLE NOT NULL, 
                   mean_phastCons17way3ss_100 DOUBLE NOT NULL, 
-                  mean_phastCons17way5ss_50 DOUBLE NOT NULL, 
-                  mean_phastCons17way3ss_50 DOUBLE NOT NULL, 
-                  mean_phastCons17way5ss_35 DOUBLE NOT NULL, 
-                  mean_phastCons17way3ss_35 DOUBLE NOT NULL, 
                   
                   mean_CDTS5ss_100 DOUBLE NOT NULL, 
                   mean_CDTS3ss_100 DOUBLE NOT NULL, 
-                  mean_CDTS5ss_50 DOUBLE NOT NULL, 
-                  mean_CDTS3ss_50 DOUBLE NOT NULL, 
-                  mean_CDTS5ss_35 DOUBLE NOT NULL, 
-                  mean_CDTS3ss_35 DOUBLE NOT NULL, 
                   
                   ref_donor_sequence TEXT NOT NULL,
                   ref_acceptor_sequence TEXT NOT NULL,
@@ -610,6 +605,9 @@ sql_create_master_tables <- function(database.path,
     print("ERROR! some novel junctions are duplicated")
     break;
   }
+  
+  df_all_novels_tidy_final %>%
+    dplyr::count(novel_type)
   
   DBI::dbAppendTable(conn = con,
                      name = "novel", 

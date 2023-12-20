@@ -86,99 +86,129 @@ if (gene_type == "nmd") {
 
 ## 1. GET RECOUNT 3 EXPRESSION DATA AND METADATA FOR THE INDICATED TISSUE
 
-gene_age_lm <- map_df(recount3_project_IDs, function(project_id) {
+if ( !file.exists(file.path(results_folder, paste0(gene_type, "_genes_age_lm.rds")))) {
   
-  # project_id <- recount3_project_IDs[5]
-
-  message(Sys.time(), " - ", project_id)
-  local_results_folder <- file.path(results_folder, project_id)
+  gene_age_lm <- map_df(recount3_project_IDs, function(project_id) {
+    
+    # project_id <- recount3_project_IDs[5]
+    
+    message(Sys.time(), " - ", project_id)
+    local_results_folder <- file.path(results_folder, project_id)
+    
+    
+    if ( file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds")) &&
+         file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_covariates.rds")) ) {
+      
+      message(Sys.time(), " - loading data for ", project_id, "...")
+      
+      dds_tpm <- readRDS(file = paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds"))
+      sample_metadata <- readRDS(file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
+      
+      
+    } else {
+      
+      dir.create(file.path(local_results_folder, paste0(gene_type, "_expression")), recursive = TRUE, showWarnings = T)
+      
+      ## Get metadata for local tissue
+      metadata <- readRDS(file = paste0(local_results_folder, "/base_data/", project_id, "_samples_raw_metadata.rds"))
+      
+      metadata$gtex.smafrze %>% unique
+      metadata$gtex.smrin %>% unique %>% min
+      
+      
+      ## Get base TPM for local tissue
+      recount_tpm <- readRDS(file = file.path(here::here("results/tpm/"), paste0(project_id, "_tpm.rds"))) %>%
+        as_tibble(rownames = "gene")
+      
+      
+      recount_tpm %>% head
+      recount_tpm %>% nrow()
+      recount_tpm %>% ncol()
+      
+      
+      ## Tidy the object
+      
+      ## Filter by the samples of the current cluster
+      dds_tpm <- recount_tpm %>% 
+        dplyr::select(gene, all_of(metadata$external_id)) %>%
+        mutate(gene = gsub(pattern = "\\..*", replacement = "", x = gene)) %>%
+        filter(gene %in% gene_list$id)
+      
+      
+      saveRDS(object = dds_tpm,
+              file = paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds"))
+      
+      
+      # 2. Get the covariates to correct for
+      sample_metadata <- tidy_sample_metadata(sample.metadata = metadata, 
+                                              samples = metadata$external_id) %>% 
+        as_tibble(rownames = "covariates")
+      
+      saveRDS(object = sample_metadata, 
+              file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
+      
+      
+      rm(recount_tpm)
+      #gc()
+      
+    }
+    
+    
+    ##########################################
+    # 2. ANALYSIS
+    # Test if TPM values are significantly affected by age
+    ##########################################
+    
+    message(Sys.time(), " - getting linear models for ", project_id, "...")
+    
+    
+    lm_output <- age_effect_uncorrected_TPM_lm(project.id = project_id,
+                                               tpm.uncorrected = dds_tpm,
+                                               sample.metadata = sample_metadata,
+                                               gene.list = gene_list,
+                                               results.folder = local_results_folder)
+    
+    return(lm_output %>%
+             mutate(project = project_id))
+    
+    
+  })
   
   
-  if ( file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds")) &&
-       file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_covariates.rds")) ) {
-
-    message(Sys.time(), " - loading data for ", project_id, "...")
-
-    dds_tpm <- readRDS(file = paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds"))
-    sample_metadata <- readRDS(file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
-
-
-  } else {
-    
-    dir.create(file.path(local_results_folder, paste0(gene_type, "_expression")), recursive = TRUE, showWarnings = T)
-    
-    ## Get metadata for local tissue
-    metadata <- readRDS(file = paste0(local_results_folder, "/base_data/", project_id, "_samples_raw_metadata.rds"))
-    
-    metadata$gtex.smafrze %>% unique
-    metadata$gtex.smrin %>% unique %>% min
-    
-    
-    ## Get base TPM for local tissue
-    recount_tpm <- readRDS(file = file.path(here::here("results/tpm/"), paste0(project_id, "_tpm.rds"))) %>%
-      as_tibble(rownames = "gene")
-    
-    
-    recount_tpm %>% head
-    recount_tpm %>% nrow()
-    recount_tpm %>% ncol()
-    
-    
-    ## Tidy the object
-    
-    ## Filter by the samples of the current cluster
-    dds_tpm <- recount_tpm %>% 
-      dplyr::select(gene, all_of(metadata$external_id)) %>%
-      mutate(gene = gsub(pattern = "\\..*", replacement = "", x = gene)) %>%
-      filter(gene %in% gene_list$id)
-    
-    
-    saveRDS(object = dds_tpm,
-            file = paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds"))
-    
-    
-    # 2. Get the covariates to correct for
-    sample_metadata <- tidy_sample_metadata(sample.metadata = metadata, 
-                                            samples = metadata$external_id) %>% 
-      as_tibble(rownames = "covariates")
-    
-    saveRDS(object = sample_metadata, 
-            file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
-    
-    
-    rm(recount_tpm)
-    #gc()
-    
-  }
   
-  
-  ##########################################
-  # 2. ANALYSIS
-  # Test if TPM values are significantly affected by age
-  ##########################################
-  
-  message(Sys.time(), " - getting linear models for ", project_id, "...")
-  
-  
-  lm_output <- age_effect_uncorrected_TPM_lm(project.id = project_id,
-                                             tpm.uncorrected = dds_tpm,
-                                             sample.metadata = sample_metadata,
-                                             gene.list = gene_list,
-                                             results.folder = local_results_folder)
-  
-  return(lm_output %>%
-           mutate(project = project_id))
-  
-  
-})
+  saveRDS(object = gene_age_lm %>% as_tibble(),
+          file = file.path(results_folder, paste0(gene_type, "_genes_age_lm.rds")) ) 
+} else {
+  gene_age_lm <- readRDS(file = file.path(results_folder, paste0(gene_type, "_genes_age_lm.rds")) ) 
+}
 
 
 
-saveRDS(object = gene_age_lm %>% as_tibble(),
-        file = file.path(results_folder, paste0(gene_type, "_genes_age_lm.rds")) ) 
+##################################
+## GET STATS FOR TISSUES
+##################################
 
+tissues_data_tidy <- gene_age_lm %>%
+  filter(covariate == "gtex.age") 
 
+tissues_data_tidy %>%
+  filter(q <= 0.05, Estimate < 0) %>%
+  group_by(project) %>%
+  dplyr::count()
 
+tissues_data_tidy %>%
+  filter(q <= 0.05, Estimate < 0) %>%
+  pull(q) %>%
+  summary()
+  
+((tissues_data_tidy %>%
+    filter(q <= 0.05) %>%
+    nrow) * 100) / (tissues_data_tidy %>% nrow)
+
+tissues_data_tidy %>%
+  filter(q <= 0.05) %>%
+  pull(q) %>%
+  summary()
 
 ##################################
 ## GET STATS FOR BRAIN

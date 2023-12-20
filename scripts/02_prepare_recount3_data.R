@@ -31,8 +31,6 @@ prepare_recount3_data <- function(recount3.project.IDs,
     
   } else {
     
-    ## Only consider those junctions that are found in at least N recount3 projects
-    
     message(Sys.time(), "Loading the file with the split reads passing LEVEL 1 of filtering criteria...")
     
     all_split_reads_qc_level1 <- 

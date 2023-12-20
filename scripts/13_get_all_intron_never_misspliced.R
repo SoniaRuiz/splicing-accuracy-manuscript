@@ -23,10 +23,8 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
     base_folder <- paste0(results.folder, "/", project_id)
     
     if ( is.null(all.clusters) && 
-         file.exists(paste0(base_folder, "/base_data/", project_id, "_samples_metadata.rds")) && 
          file.exists(paste0(base_folder, "/base_data/", project_id, "_clusters_used.rds"))) {
-      metadata.info <- readRDS(file = paste0(base_folder, "/base_data/", 
-                                             project_id, "_samples_metadata.rds"))
+      
       all.clusters <-  readRDS(file = paste0(base_folder, "/base_data/", 
                                              project_id, "_clusters_used.rds"))
       
@@ -38,9 +36,10 @@ get_all_intron_never_misspliced <- function (recount3.project.IDs,
         
         # cluster <- all.clusters[1]
         
-        print(paste0(Sys.time(), " --> ", cluster))
+        
         if ( file.exists(paste0(base_folder, "/junction_pairing/", cluster, 
                                 "/not-misspliced/", cluster, "_all_notmisspliced.rds")) ) {
+          print(paste0(Sys.time(), " --> ", cluster))
           df_introns_never <- readRDS(file = paste0(base_folder, "/junction_pairing/", cluster, 
                                                     "/not-misspliced/",cluster, "_all_notmisspliced.rds")) %>% as_tibble()
           return(data.frame(ref_junID = df_introns_never$value))

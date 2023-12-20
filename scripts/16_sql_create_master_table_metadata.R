@@ -21,30 +21,44 @@ sql_create_master_table_metadata <- function(database.path,
     # project_id <- recount3.project.IDs[2]
     # project_id <- recount3.project.IDs[6]
     
-    if ( str_detect(database.path, pattern = "age") ) {
-      metadata_file <- paste0(results.folder, "/", project_id, 
-                              "/base_data/", project_id, "_age_samples_metadata.rds")
-    } else {
-      metadata_file <- paste0(results.folder, "/", project_id, 
-                              "/base_data/", project_id, "_samples_metadata.rds")  
-    }
+    clusters_ID <- readRDS(file = paste0(results.folder, "/", project_id, 
+                                         "/base_data/", project_id, "_clusters_used.rds"))
     
-    
-    if ( file.exists(metadata_file) ) {
+    map_df(clusters_ID, function(cluster_id) { 
       
-      metadata <- readRDS(file = metadata_file)
+      if ( str_detect(database.path, pattern = "age") ) {
+        metadata_file <- paste0(results.folder, "/", project_id, 
+                                "/base_data/", project_id, "_", cluster_id,"_age_samples_metadata.rds")
+      } else {
+        metadata_file <- paste0(results.folder, "/", project_id, 
+                                "/base_data/", project_id, "_", cluster_id,"_samples_metadata.rds")  
+      }
       
-      return(metadata %>%
-               mutate(SRA_project = project_id))
-    } else {
+      if ( file.exists(metadata_file) ) {
+        
+        metadata <- readRDS(file = metadata_file)
+        
+        if ( !any(names(metadata) == "cluster") ) {
+          return(metadata %>%
+                   mutate(SRA_project = project_id,
+                          cluster = cluster_id))
+        } else {
+          return(metadata %>%
+                   mutate(SRA_project = project_id))
+        }
+        
+      } else {
+        
+        return(NULL)
+      }
       
-      return(NULL)
-    }
+    })
     
   })
   
   
-  df_metadata %>% as_tibble() %>% dplyr::count(cluster)
+  df_metadata %>% as_tibble() %>% dplyr::count(SRA_project, cluster)
+  df_metadata %>% as_tibble() %>% dplyr::group_by(SRA_project, cluster) %>% distinct(RNum, .keep_all = T) %>% dplyr::count(SRA_project, cluster)
   
   con <- dbConnect(RSQLite::SQLite(), database.path)
   DBI::dbWriteTable(conn = con,
