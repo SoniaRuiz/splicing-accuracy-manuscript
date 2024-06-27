@@ -61,6 +61,8 @@ dependencies
 natcomms_review
 ENCODE_LR
 SAI-10k-calc
+ENCODE_SR
+logs
 
 #############################
 ## FILES TO EXCLUDE
