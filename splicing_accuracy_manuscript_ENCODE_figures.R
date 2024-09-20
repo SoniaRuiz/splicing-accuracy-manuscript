@@ -15,7 +15,7 @@ library(ggridges)
 
 ## CONNECT TO THE DATABASE ------------------------------
 supportive_reads <- 1
-gtf_version <- 111
+gtf_version <- 105
 analysis_type = "shRNA"
 project_name <- paste0("ENCODE_SR_", supportive_reads, "read_", analysis_type)
 
