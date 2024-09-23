@@ -32,14 +32,22 @@ tables <- dbListTables(con)
 
 ## SET PATHS TO FOLDERS
 
+
+
 base_folder <- here::here()
-dependencies_folder <- paste0(base_folder, "/dependencies/")
 
-results_folder <- file.path(base_folder, "results", project_name, gtf_version, "_paper_review/results")
-dir.create(file.path(results_folder), recursive = TRUE, showWarnings = F)
+args <-
+  list(
+    dependencies_folder = file.path(here::here(), "dependencies"),
+    results_folder = file.path(here::here(), "results", project_name, gtf_version, "_paper_review", "results"),
+    figures_folder = file.path(here::here(), "results", project_name, gtf_version, "_paper_review", "figures"),
+    data_folder = file.path(here::here(), "results", project_name, gtf_version, "_paper_review", "data")
+  )
 
-figures_folder <- file.path(base_folder, "results", project_name, gtf_version, "_paper_review/figures")
-dir.create(file.path(figures_folder), recursive = TRUE, showWarnings = F)
+
+dir.create(file.path(args$results_folder), recursive = TRUE, showWarnings = F)
+dir.create(file.path(args$figures_folder), recursive = TRUE, showWarnings = F)
+dir.create(file.path(args$data_folder), recursive = TRUE, showWarnings = F)
 
 
 ## QUERY MASTER TABLES 
@@ -230,7 +238,7 @@ get_database_stats <- function() {
     custom_ggtheme +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
   
-  file_name <- paste0(figures_folder, "/avg_novel_jnx_per_tissue")
+  file_name <- paste0(args$figures_folder, "/avg_novel_jnx_per_tissue")
   ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
 }
@@ -351,7 +359,7 @@ get_common_introns_across_experiments <- function (RBPs = NULL,
     ungroup()%>%
     print
   
-  file_name <- paste0(results_folder, "/common_introns_details_",
+  file_name <- paste0(args$results_folder, "/common_introns_details_",
                       paste(RBPs,collapse = "_"), "_experiments_", 
                       paste(required_clusters,collapse = "_"), ".rds")
   saveRDS(object = common_introns_all_experiments, file = file_name)
@@ -366,7 +374,7 @@ get_anchor_effect_control_knockdown <- function() {
   required_clusters <- "control"
   target_genes = "all"
   
-  common_introns_path <- paste0(results_folder, "/common_introns_details_",
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_",
                                 paste(target_genes, collapse = "_"), "_experiments_", 
                                 paste(required_clusters,collapse = "_"), ".rds")
   
@@ -527,7 +535,7 @@ get_anchor_effect_control_knockdown <- function() {
            legend.box.margin=margin(b = -10))
   
   
-  ggsave(file = paste0(figures_folder , "/anchor_RBP_unique_jxn_reads.png"),
+  ggsave(file = paste0(args$figures_folder , "/anchor_RBP_unique_jxn_reads.png"),
          width = 130, height = 50, dpi = 300, units = "mm")
   
   #################################################
@@ -564,7 +572,7 @@ get_anchor_effect_control_knockdown <- function() {
     scale_y_discrete(expand = c(0,0.5,1,0))
   
   
-  ggsave(file = paste0(figures_folder , "/anchor_RBP_modulo.png"),
+  ggsave(file = paste0(args$figures_folder , "/anchor_RBP_modulo.png"),
          width = 50, height = 60, dpi = 300, units = "mm")
   
   
@@ -627,7 +635,7 @@ get_anchor_effect_control_knockdown <- function() {
   plot_distances_PC / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
   
   
-  ggsave(file = paste0(figures_folder , "/anchor_RBP_distances.png"),
+  ggsave(file = paste0(args$figures_folder , "/anchor_RBP_distances.png"),
          width = 125, height = 60, dpi = 300, units = "mm")
   
   
@@ -678,7 +686,7 @@ get_anchor_effect_control_knockdown <- function() {
     theme( legend.position = "none")
   
   delta_mes
-  ggsave(file = paste0(figures_folder, "/anchor_RBP_deltaMES.png"),
+  ggsave(file = paste0(args$figures_folder, "/anchor_RBP_deltaMES.png"),
          width = 45, height = 50, dpi = 300, units = "mm")
   
   
@@ -759,7 +767,7 @@ get_anchor_effect_control_knockdown <- function() {
                     heights = c(1,1.5),
                     common.legend = T)
   
-  ggsave(file = paste0(figures_folder,"/anchor_RBP_MSR.png"),
+  ggsave(file = paste0(args$figures_folder,"/anchor_RBP_MSR.png"),
          width = 135, height = 70, dpi = 300, units = "mm")
   
   
@@ -818,7 +826,7 @@ get_anchor_effect_control_knockdown <- function() {
   }
   
   
-  if ( !file.exists(paste0(results_folder, "/MSR_subsample.rds")) ) {
+  if ( !file.exists(paste0(args$results_folder, "/MSR_subsample.rds")) ) {
     ## Subsampling introns to control by similarity in mean read coverage
     m.out <- MatchIt::matchit(biotype ~ mean_coverage, 
                               data = data_combined, 
@@ -833,9 +841,9 @@ get_anchor_effect_control_knockdown <- function() {
     
     
     saveRDS(object = subsample,
-            file = paste0(results_folder, "/anchor_MSR_subsample.rds"))
+            file = paste0(args$results_folder, "/anchor_MSR_subsample.rds"))
   } else {
-    subsample <- readRDS(file = paste0(results_folder, "/anchor_MSR_subsample.rds"))
+    subsample <- readRDS(file = paste0(args$results_folder, "/anchor_MSR_subsample.rds"))
   }
   
   
@@ -853,7 +861,7 @@ get_anchor_effect_control_knockdown <- function() {
                     labels = c("a", "b"),
                     common.legend = T)
   
-  file_name <- paste0(figures_folder, "/anchor_MSR_subsampling")
+  file_name <- paste0(args$figures_folder, "/anchor_MSR_subsampling")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
   
   
@@ -950,7 +958,7 @@ get_anchor_effect_control_knockdown <- function() {
           panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
   
 
-  file_name <- paste0(figures_folder, "/anchor_MSR_biotype")
+  file_name <- paste0(args$figures_folder, "/anchor_MSR_biotype")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), 
                   width = 70, height = 60, units = "mm", dpi = 300)
   
@@ -974,7 +982,7 @@ get_anchor_effect_control_knockdown <- function() {
     guides(fill = guide_legend(title = NULL,  
                                ncol = 2, nrow = 1)) 
   plotMSR_donor_zoomed
-  file_name <- paste0(figures_folder, "/anchor_MSR_biotype_zoomed")
+  file_name <- paste0(args$figures_folder, "/anchor_MSR_biotype_zoomed")
   ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 70, height = 60, units = "mm", dpi = 300)
   
 }
@@ -1012,7 +1020,7 @@ get_effect_size_data_all_RBPs <- function() {
   target_genes = "all"
   required_clusters <- c("case", "control")
   
-  common_introns_path <- paste0(results_folder, "/common_introns_details_", 
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_", 
                                 paste(target_genes, collapse = "_"), "_experiments_", 
                                 paste(required_clusters, collapse = "_"), ".rds")
   
@@ -1036,7 +1044,7 @@ get_effect_size_data_all_RBPs <- function() {
   
   ## Run the wilcox test on MSR_D --------------------------
   
-  if ( !file.exists(paste0(results_folder, "/ENCODE_effectsize_MSRD.rds")) ) {
+  if ( !file.exists(paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds")) ) {
     
     source(paste0(base_folder, "/knockdown_analysis/helper_functions.R"))
     
@@ -1055,7 +1063,7 @@ get_effect_size_data_all_RBPs <- function() {
     
     MSR_D_tests <- generateMSRtests(target_RBPs = all_projects, 
                                     MSR_Table = MSR_D, 
-                                    file_output = paste0(results_folder, "/ENCODE_effectsize_MSRD.rds"), 
+                                    file_output = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"), 
                                     overwrite = T,
                                     num_cores = 8)
     
@@ -1071,23 +1079,23 @@ get_effect_size_data_all_RBPs <- function() {
     MSR_D_tests$FDR <- p.adjust(MSR_D_tests$p.value, method = "fdr")
     
     ## Save results
-    saveRDS(object = MSR_D_tests, file = paste0(results_folder, "/ENCODE_effectsize_MSRD.rds"))
+    saveRDS(object = MSR_D_tests, file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"))
     write_csv(x = MSR_D_tests %>%
                 distinct(target_gene, .keep_all=T) %>%
                 mutate(statistical_test = "Wilcoxon Rank text: rstatix::wilcox_test(data, formula, paired = TRUE, correct = TRUE, alternative = 'greater')",
                        H0 = "The MSR_D observations in case and control samples are symmetric about their median value.",
                        H1 = "The MSR_D observations in case samples are greater at their median value than the MSR_D observations in control samples."),
-              file = paste0(results_folder, "/ENCODE_effectsize_MSRD.csv"), col_names = T)
+              file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.csv"), col_names = T)
     
   } else {
     
     message("Loading 'ENCODE_effectsize_MSRD.rds' file ...")
-    MSR_D_tests <- readRDS(file = paste0(results_folder, "/ENCODE_effectsize_MSRD.rds"))
+    MSR_D_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"))
   }
   
   
   
-  if ( !file.exists(paste0(results_folder, "/ENCODE_effectsize_MSRA.rds")) ) {
+  if ( !file.exists(paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds")) ) {
     
     source(paste0(base_folder, "/knockdown_analysis/helper_functions.R"))
     
@@ -1105,7 +1113,7 @@ get_effect_size_data_all_RBPs <- function() {
     
     MSR_A_tests <- generateMSRtests(target_RBPs = all_projects, 
                                     MSR_Table = MSR_A, 
-                                    file_output = paste0(results_folder, "/ENCODE_effectsize_MSRA.rds"),  
+                                    file_output = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"),  
                                     overwrite = T, 
                                     num_cores = 8)
     
@@ -1121,16 +1129,16 @@ get_effect_size_data_all_RBPs <- function() {
     MSR_A_tests$FDR <- p.adjust(MSR_A_tests$p.value, method = "fdr")
     
     ## Save results
-    saveRDS(object = MSR_A_tests, file = paste0(results_folder, "/ENCODE_effectsize_MSRA.rds"))
+    saveRDS(object = MSR_A_tests, file = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"))
     write_csv(x = MSR_A_tests %>%
                 distinct(target_gene, .keep_all=T) %>%
                 mutate(statistical_test = "Wilcoxon Rank text: rstatix::wilcox_test(data, formula, paired = TRUE, correct = TRUE, alternative = 'greater')",
                        H0 = "The observations MSR_A in case samples vs control samples are symmetric about their median value.",
                        H1 = "The observations MSR_A in case samples are greater at their median value than the observations MSR_A in control samples."),
-              file = paste0(results_folder, "/ENCODE_effectsize_MSRA.csv"))
+              file = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.csv"))
   } else {
     message("Loading 'ENCODE_effectsize_MSRA.rds' file ...")
-    MSR_A_tests <- readRDS(file = paste0(results_folder, "/ENCODE_effectsize_MSRA.rds"))
+    MSR_A_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"))
   }
   
   
@@ -1255,10 +1263,10 @@ plot_effect_size_data_all_RBPs <- function() {
   
   
   message("Loading 'ENCODE_effectsize_MSRD.rds' file ...")
-  MSR_D_tests <- readRDS(file = paste0(results_folder, "/ENCODE_effectsize_MSRD.rds"))
+  MSR_D_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"))
   
   message("Loading 'ENCODE_effectsize_MSRA.rds' file ...")
-  MSR_A_tests <- readRDS(file = paste0(results_folder, "/ENCODE_effectsize_MSRA.rds"))
+  MSR_A_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"))
   
   
   ##########################
@@ -1306,8 +1314,8 @@ plot_effect_size_data_all_RBPs <- function() {
   ## METADATA KEFF
   ##########################
   
-  project_path <- "./ENCODE_SR/ENCODE_Metadata_Extraction/Metadata_results_experiments/"
-  metadata_kEff_path <- paste0(project_path, "metadata_WB_kEff.tsv")
+  
+  metadata_kEff_path <- file.path("ENCODE_SR/ENCODE_Splicing_Analysis/metadata/metadata_WB_kEff.tsv")
   metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
     mutate(kEff_text = ifelse(is.na(kEff_avg), kEff_avg, paste0(round(kEff_avg), "%"))) %>%
     mutate(kEff_text = kEff_text %>% as.factor())
@@ -1315,9 +1323,16 @@ plot_effect_size_data_all_RBPs <- function() {
 
   MSR_graph_data <- MSR_graph_data %>%
     left_join(y = metadata_kEff,
-              by = "target_gene")
+              by = "target_gene") %>% 
+    dplyr::select(-c(statistical_test, H0,H1)) %>% 
+    distinct(target_gene,Category,MSR_type, .keep_all = T)
+  
   MSR_graph_data %>% head()
   
+  ## Save data
+  
+  write.csv(x = MSR_graph_data,
+            file = file.path(args$data_folder,"figure5_c.csv"), row.names = T)
   
   ##########################
   ## PLOT
@@ -1341,27 +1356,19 @@ plot_effect_size_data_all_RBPs <- function() {
                       labels = c("MSR_A" = "MSR Acceptor", "MSR_D" = "MSR Donor"),
                       breaks = c("MSR_D", "MSR_A"))  +
     guides(fill = guide_legend(title = NULL, order = 2, ncol = 2,  nrow = 1 )) +
-    theme_light() 
-  
-
-  if (analysis_type == "shRNA") {
-    plot_effectsize <- plot_effectsize +
+    theme_light()  +
       ggforce::facet_row(facets = vars(Category), 
                        scales = "free_x", space = "free",
                        #labeller = labeller(Category = category_labels),
                        drop = T,
-                       shrink = T) 
-  }
-  plot_effectsize +
-  custom_ggtheme +
+                       shrink = T)+
+    custom_ggtheme +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
           legend.box = "horizontal") +
     guides(colour = guide_legend(override.aes = list(fill = '#999999'),
                                  title = NULL,
                                  label.position = "bottom",
-                                 order = 1))
-  
-   plot_effectsize +
+                                 order = 1)) +
    ggnewscale::new_scale_fill() +
    geom_tile(stat = "identity",
              aes(y = 0.68, fill = kEff_avg, color = "No data\navailable"),
@@ -1393,7 +1400,7 @@ plot_effect_size_data_all_RBPs <- function() {
                                   order = 1))
   
   # Save the graph
-  ggsave(file = paste0(figures_folder, "/Effect_size_combined_top", max_genes, ".png"), 
+  ggsave(file = paste0(args$figures_folder, "/Effect_size_combined_top", max_genes, ".png"), 
          width = 180, height = 90, units = "mm", dpi = 300)
   
   
@@ -1401,7 +1408,13 @@ plot_effect_size_data_all_RBPs <- function() {
 }
 
 
-plot_AQR_U2AF2_acceptor <- function() {
+##################################
+## MAIN FIGURE 6
+##################################
+
+main_figure6_a <- function() {
+  
+  
   
   
   ###########################################
@@ -1410,176 +1423,730 @@ plot_AQR_U2AF2_acceptor <- function() {
   ###########################################
   
   target_RBPs <- c("AQR", "U2AF2")
-  
   required_clusters <- c("case", "control")
-  
-  common_introns_path <- paste0(results_folder, "/common_introns_details_", 
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_", 
                                 paste(target_RBPs, collapse = "_"), "_experiments_", 
                                 paste(required_clusters, collapse = "_"), ".rds")
   
   ## LOAD COMMON INTRONS
-  
-  if( file.exists(common_introns_path) ) {
-    
-    common_introns <- readRDS(file = common_introns_path)
-    
+  common_introns <- if (file.exists(common_introns_path)) {
+    readRDS(file = common_introns_path) %>% as_tibble()
   } else {
-    ## Load common introns
-    common_introns <- get_common_introns_across_experiments(RBPs = target_RBPs,
-                                                            required_clusters = c("case", "control"))
+    get_common_introns_across_experiments(RBPs = target_RBPs,
+                                          required_clusters = required_clusters)
   }
   
-  RBP_intron <- common_introns  %>%
-    mutate(cluster = ifelse(cluster == "case", "gene knockdown", "control")) %>%
-    mutate(cluster = factor(cluster, levels = c("control", "gene knockdown"))) %>%
-    as_tibble() %>%
+  limit_bp = 30
+  
+  RBP_novel <- common_introns %>%
     filter(RBP %in% target_RBPs) %>%
-    inner_join(y = master_introns %>% dplyr::select(ref_junID, ref_mes5ss, ref_mes3ss),
-               by = "ref_junID")
+    mutate(cluster = factor(ifelse(cluster == "case", "gene knockdown", "control"), 
+                            levels = c("control", "gene knockdown"))) %>%
+    inner_join(master_introns %>% dplyr::select(ref_junID), by = "ref_junID") %>%
+    left_join(master_novel_junctions %>% 
+                dplyr::select(novel_junID, novel_type, distance), 
+              by = "novel_junID") %>%
+    group_by(RBP, cluster) %>%
+    distinct(novel_junID, .keep_all = TRUE) %>%
+    ungroup() %>%
+    mutate(novel_type = str_replace(string = novel_type, pattern = "_", replacement = " ")) %>%
+    filter(abs(distance) < limit_bp) %>%
+    mutate(RBP = factor(x = RBP, levels = target_RBPs)) %>%
+    dplyr::select(distance, cluster, novel_type, RBP)
+  
+  ## Save source data
+  
+  write_csv(x = RBP_novel, file = file.path(args$data_folder, "figure6_a.csv"), col_names = T)
+  
+  #################################################
+  ## PLOT AQR AND U2AF1 DISTANCES
+  #################################################
+  
+  distances_plot <- ggplot( data = RBP_novel  ) + 
+    geom_histogram(aes(x = distance, fill = fct_rev(cluster)), bins = 60,  binwidth = 1,  position = "identity", alpha = 1,  color = "black",  linewidth = 0.1) +
+    scale_x_continuous(breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
+    scale_fill_manual(values = c("#8d03b0", "#666666"),
+                      breaks = c("gene knockdown", "control"),
+                      labels = c("gene knockdown  ", "control")) +
+    labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
+    facet_grid(fct_rev(novel_type)~RBP) +
+    guides(fill = guide_legend(title = "Sample type: ", ncol = 2, nrow = 1 )) +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "none") 
   
   
-  RBP_intron %>%
+  distance_rectangle <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
+    geom_text(aes(x = 15, y = 33),  size = 3, label = "exon") +
+    geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = -15, y = 48),  size = 3, label = "intron") +
+    theme_void()
+  
+  distances_plot <- distances_plot / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
+  distances_plot
+  
+  ggsave(file = file.path(args$figures_folder, "figure6a.png"), 
+         width = 183, height = 110, dpi = 300, units = "mm")
+  
+  
+}
+
+main_figure6_b <- function() {
+  
+  
+  
+  ###########################################
+  ## LOAD COMMON INTRONS AND NOVEL FOR AQR 
+  ## AND U2AF2
+  ###########################################
+  
+  target_RBPs <- c("AQR", "U2AF2")
+  required_clusters <- c("case", "control")
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_", 
+                                paste(target_RBPs, collapse = "_"), "_experiments_", 
+                                paste(required_clusters, collapse = "_"), ".rds")
+  
+  ## LOAD COMMON INTRONS
+  common_introns <- if (file.exists(common_introns_path)) {
+    readRDS(file = common_introns_path) %>% as_tibble()
+  } else {
+    get_common_introns_across_experiments(RBPs = target_RBPs,
+                                          required_clusters = required_clusters)
+  }
+  
+  ## Add MES 5' and 3' info to the common introns and join with novel junctions
+  RBP_novel <- common_introns %>%
+    filter(RBP %in% target_RBPs) %>%
+    mutate(cluster = factor(ifelse(cluster == "case", "gene knockdown", "control"), 
+                            levels = c("control", "gene knockdown"))) %>%
+    inner_join(master_introns %>% dplyr::select(ref_junID, ref_mes5ss, ref_mes3ss), by = "ref_junID") %>%
+    left_join(master_novel_junctions %>% 
+                dplyr::select(novel_junID, novel_type, distance, novel_mes5ss, novel_mes3ss), 
+              by = "novel_junID") %>%
+    group_by(RBP, cluster) %>%
+    distinct(novel_junID, .keep_all = TRUE) %>%
+    ungroup() %>%
+    mutate(delta_ss5score = ref_mes5ss - novel_mes5ss, 
+           delta_ss3score = ref_mes3ss - novel_mes3ss)
+  
+  
+  ## Statistical Tests
+  run_wilcox_test <- function(data, RBP) {
+    wilcox.test(x = data %>% filter(RBP == RBP, cluster == "gene knockdown") %>% pull(delta_ss3score),
+                y = data %>% filter(RBP == RBP, cluster == "control") %>% pull(delta_ss3score),
+                paired = FALSE,
+                alternative = "greater")
+  }
+  RBP_stats <- map(target_RBPs, ~run_wilcox_test(RBP_novel, .))
+  
+  
+  #################################################
+  ## PREPARE DATA TO PLOT 
+  #################################################
+  RBP_novel_acceptor_delta <- RBP_novel %>%
+    filter(novel_type == "novel_acceptor") %>%
     dplyr::group_by(RBP, cluster) %>%
+    mutate(medianMSR = median(delta_ss3score)) %>%
+    ungroup() %>%
+    dplyr::group_by(RBP) %>%
+    mutate(p.value = format(wilcox.test(delta_ss3score ~ cluster)$p.value, digits = 2, scientific = TRUE)) %>%
+    mutate(p.value = ifelse(as.numeric(p.value) < 0.001, "0.001", p.value)) %>%
+    mutate(RBP = factor(RBP, levels = target_RBPs)) %>%
+    dplyr::select(delta_ss3score, cluster, medianMSR, RBP, p.value)
+  
+  write.csv(RBP_novel_acceptor_delta, file = file.path(args$data_folder, "figure6_b.csv"), row.names = FALSE)
+  
+  
+  #################################################
+  ## PLOT DELTA MES ONLY ACCEPTOR - AQR and U2AF2
+  #################################################
+  delta_mes_acceptor <- ggplot(data = RBP_novel_acceptor_delta)  +
+    geom_density(aes(x = delta_ss3score, fill = cluster), alpha = 0.8, linewidth = 0.3, color = "black") +
+    geom_vline(xintercept = 0) +
+    geom_vline(aes(xintercept = medianMSR, color = cluster), linetype = "dashed", linewidth = 0.9) +
+    facet_wrap(vars(RBP)) +
+    geom_text(data = distinct(RBP_novel_acceptor_delta, RBP, p.value), 
+              aes(label = paste0("P<", p.value)), x = 25, y = 0.08, size = 3.5, color = "#333333") +
+    scale_fill_manual(values = c("#64037d", "#999999"), breaks = c("gene knockdown", "control"), labels = c("KD", "Wild Type")) + 
+    scale_colour_manual(values = c("#64037d", "#333333"), breaks = c("gene knockdown", "control"), labels = c("KD", "Wild Type")) + 
+    labs(x = "Delta MES Acceptor", y = "Density") +
+    theme_light() +
+    custom_ggtheme
+  
+  
+  ggsave(file = paste0(args$figures_folder,"/", target_RBPs[1], "_", target_RBPs[2], "_acceptor_deltaMES.png"), 
+         width = 180, height = 60, dpi = 300, units = "mm")
+  
+  
+  ## Supplementary Figure for AQR distances
+  supplementary_figure14(RBP_novel)
+
+}
+
+main_figure6_c <- function() {
+  
+
+  ################################
+  ## LOAD METADATA & RBPs
+  ################################
+  
+  all_projects <- unique(master_metadata$SRA_project)
+  target_genes <- "all"
+  required_clusters <- c("case", "control")
+  
+  file_name <- paste0(args$results_folder, "/common_introns_details_", target_genes, "_experiments_", 
+                      paste(required_clusters, collapse = "_"), ".rds")
+  
+  common_introns_all_experiments <- if (file.exists(file_name)) {
+    message("Loading common introns across all experiments...")
+    readRDS(file = file_name)
+  } else {
+    get_common_introns_across_experiments(RBPs = target_genes, required_clusters = required_clusters)
+  }
+  
+  # Summary of introns across experiments
+  common_introns_summary <- common_introns_all_experiments %>%
+    group_by(RBP, cluster) %>%
     distinct(ref_junID) %>%
     dplyr::count() %>%
     ungroup()
   
+  ####################################
+  ## LOAD MSR VALUES
+  ####################################
   
-  ## LOAD NOVEL JUNC FROM COMMON INTRONS
-  
-  RBP_novel <- RBP_intron %>%
-    left_join(y = master_novel_junctions %>% 
-                dplyr::select(novel_junID, novel_type, distance, novel_mes5ss, novel_mes3ss),
-              by = "novel_junID")
-  
-  
-  RBP_novel %>%
-    dplyr::group_by(RBP, cluster) %>%
-    distinct(novel_junID) %>%
-    dplyr::count() %>%
+  MSR_RBPs <- common_introns_all_experiments %>%
+    inner_join(master_introns %>% dplyr::select(ref_junID, seqnames, start, end, strand), by = "ref_junID") %>%
+    dplyr::select(ref_junID, MSR_D, MSR_A, RBP, cluster, seqnames, start, end, strand) %>%
+    group_by(RBP, cluster) %>%
+    distinct(ref_junID, .keep_all = TRUE) %>%
     ungroup()
   
+  ####################################
+  ## MERGE ENCODE and iCLIP DATA
+  ####################################
+  
+  iclip_results_path <- file.path(args$results_folder, "/iCLIP_ENCODE_all_introns_chisq.csv")
+  
+  if (!file.exists(iclip_results_path)) {
+    
+    process_iCLIP_data <- function(target_RBP) {
+      message("Processing RBP: ", target_RBP)
+      
+      # Load iCLIP data for HepG2 and K562
+      iclip_RBP <- map_df(c("HepG2", "K562"), function(celltype) {
+        file_path <- file.path(args$dependencies_folder, "ENCORI", 
+                               paste0("ENCORI_hg38_RBPTarget_", target_RBP, "_", celltype, ".txt"))
+        
+        if (file.exists(file_path)) {
+          readr::read_delim(file_path, delim = "\t", col_names = TRUE, skip = 3, show_col_types = FALSE)
+        } else {
+          NULL
+        }
+      })
+      
+      if (nrow(iclip_RBP) > 1) {
+        
+        process_MSR <- function(MSR_type) {
+          MSR_RBP <- MSR_RBPs %>%
+            filter(RBP == target_RBP) %>%
+            pivot_wider(id_cols = ref_junID, names_from = cluster, values_from = all_of(MSR_type)) %>%
+            inner_join(MSR_RBPs %>% filter(RBP == target_RBP) %>% dplyr::select(ref_junID, seqnames, start, end, strand), by = "ref_junID") %>%
+            mutate(start = start - 100, end = end + 100)
+          
+          MSR_RBP_inc <- MSR_RBP %>%
+            filter(case > control) %>%
+            distinct(ref_junID, .keep_all = TRUE) %>%
+            GRanges()
+          
+          MSR_RBP_notinc <- MSR_RBP %>%
+            filter(case <= control) %>%
+            distinct(ref_junID, .keep_all = TRUE) %>%
+            GRanges()
+          
+          iclip_RBP_gr <- iclip_RBP %>%
+            dplyr::select(seqnames = "chromosome", start = "broadStart", end = "broadEnd", strand) %>%
+            GRanges()
+          
+          # Find overlaps with iCLIP
+          MSR_RBP_inc_overlaps <- findOverlaps(query = MSR_RBP_inc, subject = iclip_RBP_gr, type = "any")
+          MSR_RBP_notinc_overlaps <- findOverlaps(query = MSR_RBP_notinc, subject = iclip_RBP_gr, type = "any")
+          
+          list(MSR_RBP_inc_overlaps = MSR_RBP_inc_overlaps, MSR_RBP_notinc_overlaps = MSR_RBP_notinc_overlaps)
+        }
+        
+        # Run the process_MSR function for both MSR_D and MSR_A
+        result_MSR_D <- process_MSR("MSR_D")
+        result_MSR_A <- process_MSR("MSR_A")
+        
+        return(list(result_MSR_D = result_MSR_D, result_MSR_A = result_MSR_A))
+      } else {
+        message("No iCLIP HepG2|K562 data for ", target_RBP)
+        return(NULL)
+      }
+    }
+    
+    iCLIP_binding_MSR_results <- map_df(all_projects, process_iCLIP_data)
+    write.csv(iCLIP_binding_MSR_results, file = iclip_results_path, row.names = FALSE)
+    
+  } else {
+    message("Loading existing iCLIP results...")
+    iCLIP_binding_MSR_results <- read.csv(iclip_results_path)
+  }
   
   
-  RBP_novel_delta <- RBP_novel %>%
-    dplyr::group_by(RBP, cluster) %>%
-    distinct(novel_junID, .keep_all = T) %>%
-    ungroup() %>%
-    mutate(delta_ss5score = ref_mes5ss - novel_mes5ss) %>%
-    mutate(delta_ss3score = ref_mes3ss - novel_mes3ss) 
+  ########################################
+  ## PAPER STATS & CALCULATE FOLD-CHANGES
+  ########################################
   
+  
+  # Filter out SAFB2 and summarize p-values
+  summary_stats <- function(msr_type) {
+    iCLIP_binding_MSR_results %>%
+      filter(MSR_tested == msr_type, RBP != "SAFB2") %>%
+      pull(chisq_pvalue) %>%
+      summary()
+  }
+  
+  summary_D <- summary_stats("MSR_D")
+  summary_A <- summary_stats("MSR_A")
+  
+  # Calculate fold-changes
+  fold_changes <- iCLIP_binding_MSR_results %>%
+    rowwise() %>%
+    mutate(MSR_increasing_w_motif = MSR_increasing_w_RBP_motif / (MSR_increasing_w_RBP_motif + MSR_increasing_N_RBP_motif),
+           MSR_increasing_n_motif = MSR_increasing_N_RBP_motif / (MSR_increasing_w_RBP_motif + MSR_increasing_N_RBP_motif),
+           
+           MSR_not_increasing_w_motif = MSR_not_increasing_w_RBP_motif / (MSR_not_increasing_w_RBP_motif + MSR_not_increasing_N_RBP_motif),
+           MSR_not_increasing_n_motif = MSR_not_increasing_N_RBP_motif / (MSR_not_increasing_w_RBP_motif + MSR_not_increasing_N_RBP_motif)) %>%
+    
+    mutate(fold_change_w_motif = log2(MSR_increasing_w_motif) - log2(MSR_not_increasing_w_motif)) %>% 
+    mutate(fold_change_not_motif = log2(MSR_increasing_n_motif) - log2(MSR_not_increasing_n_motif)) %>%
+    
+    dplyr::select(RBP, 
+                  MSR_tested, 
+                  "Introns with RBP binding sites from CLIP-seq data" = fold_change_w_motif,
+                  "Introns without RBP binding sites" = fold_change_not_motif) %>%
+    
+    gather(type,  "2fold", -MSR_tested, -RBP) %>% 
+    arrange( MSR_tested,  desc("2fold"))  %>%
+    ungroup
+  
+  
+  ########################################################
+  ## ADD KNOCKDOWN EFFICIENCY
+  ########################################################
+  
+  metadata_kEff_path <- file.path("ENCODE_SR/ENCODE_Splicing_Analysis/metadata/metadata_WB_kEff.tsv")
+  metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
+    mutate(kEff_text = ifelse(is.na(kEff_avg), kEff_avg, paste0(round(kEff_avg), "%"))) %>%
+    mutate(kEff_text = kEff_text %>% as.factor())
+  
+  iCLIP_binding_MSR_results_prop <- fold_changes %>%
+    left_join(y = metadata_kEff,
+              by = c("RBP" = "target_gene")) %>%
+    filter(RBP != "SAFB2")
+  
+  # Export data
+  write.csv(x = iCLIP_binding_MSR_results_prop, file = file.path(args$data_folder, "/figure6_c.csv"),
+            row.names = F)
+  
+  
+  ####################################
+  ## PLOT RESULTS
+  ####################################
+  
+  iCLIP_binding_MSR_results_prop <- iCLIP_binding_MSR_results_prop %>%
+    mutate(MSR_tested = factor(MSR_tested, levels = c("MSR_D", "MSR_A"), labels = c("MSR Donor", "MSR Acceptor")))
+  
+  
+  
+  iCLIP_plot <-  ggplot(data = iCLIP_binding_MSR_results_prop,
+                        aes(x = RBP, y = `2fold`, group = factor(MSR_tested)) ) +
+    geom_bar(
+      stat = "identity",
+      aes(x = tidytext::reorder_within(x = RBP, by = -`2fold`, within = type), y = `2fold`,
+          fill = factor(MSR_tested)), position = position_dodge(width = 0.9) ) +
+    ylab("Log2 Fold Change of introns\nwith increasing MSR in KD vs wild-type") +
+    xlab("") +
+    theme_light() +
+    ggforce::facet_row(~ type, scales = "free_x") +
+    tidytext::scale_x_reordered() +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = NULL, ncol = 2,  nrow = 1 ))  +
+    theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1)) +
+    scale_fill_manual(values = c("#35B779FF","#64037d"), #8d03b0
+                      breaks = c("MSR Donor","MSR Acceptor")) +
+    theme( plot.margin = margin(t = 5, r = 5, b = -5, l = 5),
+           legend.box.margin = margin(l = -10, b = -10, t = -5 )) +
+    ggnewscale::new_scale_fill() +
+    geom_tile(stat = "identity", 
+              aes(y = 1.4, x = tidytext::reorder_within(x = RBP, by = -`2fold`,
+                                               within = type),
+                  fill = kEff_avg, color = "No data\navailable"), 
+              linewidth = 0.5, width = 1, height = 0.1) + 
+    viridis::scale_fill_viridis(option = "inferno", 
+                                # na.value = "#999999",
+                                name = "Knockdown\nEfficiency", 
+                                limits = c(0, 100), 
+                                breaks = c(NA, seq(0, 100, 25)),
+                                labels = c("none", paste0(seq(0, 100, 25), "%")),
+                                guide = guide_colourbar(frame.colour = "black", 
+                                                        frame.linewidth = 0.4,
+                                                        order = 1, 
+                                                        ticks.colour = "black", 
+                                                        barwidth = 10, 
+                                                        barheight = 1.5)) +
+    scale_colour_manual(values = c( "No data\navailable" = "black")) +
+    guides(colour = guide_legend(override.aes = list(fill = '#999999'),
+                                 title = NULL,
+                                 label.position = "bottom",
+                                 order = 1))
+  
+  print(iCLIP_plot)
+  
+  ggsave(file = paste0(args$figures_folder, "/main_figure6c.png"), 
+         width = 180, height = 75, units = "mm", dpi = 300)
+  
+  
+}
+
+
+
+##################################
+## SUPPLEMENTARY FIGURES
+##################################
+
+supplementary_figure14 <- function () {
+  
+  
+  #################################################
+  ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
+  ## FROM UPF1 and UPF2
+  ## ADD BIOTYPE INFORMATION
+  #################################################
+  
+  ## As we are only comparing UPF1 and UPF2, we get the common introns between the two genes
+  
+  target_genes = c("UPF1","UPF2")
+  required_clusters <- c("case", "control")
+  
+  ## Get annotated common introns -------
+  
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_", 
+                                paste(target_genes, collapse = "_"), "_experiments_", 
+                                paste(required_clusters, collapse = "_"), ".rds")
+  
+  NMD_intron <- if( file.exists(common_introns_path) ) {
+     readRDS(file = common_introns_path)
+  } else {
+    get_common_introns_across_experiments(RBPs = target_genes,
+                                          required_clusters = c("case", "control"))
+  }
+  
+  ## Add information from the master INTRON table -----------------------------------
+  ## Given that we are studying the NMD action, we only subset introns 
+  ## from protein-coding transcripts
+  
+  
+  NMD_intron_w_protein_coding <- NMD_intron %>%
+    left_join(y = master_introns %>% dplyr::select(ref_junID, protein_coding,mean_phastCons17way5ss_100,mean_phastCons17way3ss_100,ref_mes5ss, ref_mes3ss),
+              by = "ref_junID") %>%
+    filter(protein_coding == 100)
+  
+  
+  
+  ## ONLY 37615 annotated introns from protein-coding transcripts overlap the two NMD datasets
+  NMD_intron_w_protein_coding %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
+  
+  
+  #################################################
+  ## GET COMMON INTRONS THAT ARE MIS-SPLICED &
+  ## ACCURATELY SPLICED IN CONTROL AND CASE EXPERIMENTS
+  #################################################
+  
+  ## 1. CONTROL EXPERIMENTS
+
+  
+  ## Get annotated introns with accurate splicing from CONTROL NMD experiments
+  control_accurate_splicing <- aux_get_annotated_introns_accurate_splicing(data = NMD_intron_w_protein_coding,
+                                                                           cluster_type = "control") 
+  control_accurate_splicing %>% unique %>% length()
+  
+  ## Get introns with INACCURATE splicing across CONTROL NMD experiments
+  control_mis_splicing <- aux_get_annotated_introns_inaccurate_splicing( data = NMD_intron_w_protein_coding,
+                                                                         accurate_splicing_data = control_accurate_splicing, 
+                                                                         cluster_type = "control", p_coding = 100) 
+  control_mis_splicing %>% unique %>% length()
+  
+  
+  
+  
+  ## 2. CASE EXPERIMENTS
+  
+  ## Get annotated introns with accurate splicing across CASE NMD experiments
+  case_accurate_splicing <- aux_get_annotated_introns_accurate_splicing(data = NMD_intron_w_protein_coding,
+                                                                        cluster_type = "case") 
+  
+  case_accurate_splicing%>% unique %>% length()
+  
+  ## Get annotated introns with INACCURATE splicing across CASE NMD experiments
+  case_mis_splicing <- aux_get_annotated_introns_inaccurate_splicing( data = NMD_intron_w_protein_coding,
+                                                                      accurate_splicing_data = case_accurate_splicing, 
+                                                                      cluster_type = "case", p_coding = 100) 
+  case_mis_splicing %>% unique %>% length()
+  
+  
+  
+  #################################################
+  ## DEFINE NMD-RESISTANT AND NMD-SENSITIVE
+  ## INTRONS
+  #################################################
+  
+  ## 1. NMD RESISTANT INTRONS ---------------------------------------------------------------------------
+  NMD_resistant_introns <- setdiff(control_accurate_splicing, case_mis_splicing) 
+  
+  
+  ## Add master intron table info to calculate expression levels
+  NMD_resistant <- NMD_intron_w_protein_coding %>%
+    filter(ref_junID %in% NMD_resistant_introns) %>%
+    mutate(NMD_type = "NMD Resistant",
+           mean_expression = (ref_sum_counts/ref_n_individuals) %>% log10)  %>% 
+    filter(cluster == "control")
+  
+  # NMD_resistant_introns %>% length()
+  # NMD_resistant %>% dplyr::count(RBP, cluster)
+  # NMD_resistant %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
+  
+  
+  
+  ## 2. NMD SENSITIVE INTRONS ---------------------------------------------------------------------------
+  NMD_sensitive_introns <- intersect(control_accurate_splicing, case_mis_splicing)
+  
+  
+  ## Add master intron table info to calculate expression levels
+  NMD_sensitive <- NMD_intron_w_protein_coding %>%
+    filter(ref_junID %in% NMD_sensitive_introns)  %>%
+    mutate(NMD_type = "NMD Sensitive",
+           mean_expression = (ref_sum_counts/ref_n_individuals) %>% log10) %>% 
+    filter(cluster == "control")
+  
+  # NMD_sensitive_introns %>% length()
+  # NMD_sensitive %>% dplyr::count(RBP,cluster)
+  # NMD_sensitive %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
+  
+  
+  
+  
+  #################################################
+  ## SUBSAMPLE TO GET ANNOTATED INTRONS WITH 
+  ## SIMILAR EXPRESSION LEVELS
+  #################################################
+  
+  data_combined <- rbind(NMD_resistant, NMD_sensitive) %>%
+    distinct(ref_junID, .keep_all = T)
+  
+  ## Subsampling introns to control by similarity in mean read coverage
+  m.out <- MatchIt::matchit(NMD_type ~ mean_expression, 
+                            data = data_combined, 
+                            distance = data_combined$mean_expression,
+                            method = "nearest", 
+                            caliper = c(mean_expression = 0.005), 
+                            std.caliper = FALSE)
+  subsample <- MatchIt::match.data(m.out) %>% mutate(NMD_type = NMD_type %>% as.factor())
+  
+  # data_combined %>% dplyr::count(NMD_type)
+  # subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(NMD_type)
+  # subsample %>% dplyr::count(NMD_type)
   
   
   #################################################
   ## STATS FOR THE PAPER
   #################################################
-
   
-  ## Delta 3 MES scores of novel acceptor junctions were significantly lower indicating that weaker acceptor splice sites were being used 
-  
-  ## AQR
-  wilcox.test(x = RBP_novel_delta %>% filter(RBP == "AQR", cluster == "gene knockdown") %>% distinct(novel_junID, .keep_all = T) %>% pull(delta_ss3score),
-              y = RBP_novel_delta %>% filter(RBP == "AQR", cluster == "control") %>% distinct(novel_junID, .keep_all = T) %>% pull(delta_ss3score),
-              paired = F,
-              alternative = "greater")
-  
-  rstatix::wilcox_effsize(data = RBP_novel_delta  %>% 
-                            filter(RBP == "AQR") %>% 
-                            distinct(novel_junID, .keep_all = T) %>% 
-                            mutate(cluster = cluster %>% as.factor()),
-                          formula = delta_ss3score ~ cluster)
+  ## We found that mis-splicing events that were only evident in the context of NMD knockdown, were generated from annotated introns which had significantly lower phastCons17 and MES values at their 3’ss
   
   
-  ## U2AF2
-  wilcox.test(x = RBP_novel_delta %>% filter(RBP == "U2AF2", cluster == "gene knockdown") %>% pull(delta_ss3score),
-              y = RBP_novel_delta %>% filter(RBP == "U2AF2", cluster == "control") %>% pull(delta_ss3score),
-              paired = F,
-              alternative = "greater")
+  ## Statistical Tests
+  run_wilcox_test <- function(data, col_test) {
+    wilcox.test(x = data %>% filter(NMD_type == "NMD Sensitive") %>% pull(paste0(col_test)),
+                y = data %>% filter(NMD_type == "NMD Resistant") %>% pull(paste0(col_test)),
+                paired = T,
+                alternative = "less")
+  }
   
-  rstatix::wilcox_effsize(data = RBP_novel_delta  %>% 
-                            filter(RBP == "U2AF2") %>%
-                            distinct(novel_junID, .keep_all = T) %>% 
-                            mutate(cluster = cluster %>% as.factor()),
-                          formula = delta_ss3score ~ cluster,
-                          paired = F)
+  
+  ## Test 5'ss - phastCons17
+  run_wilcox_test(data = subsample, "mean_phastCons17way5ss_100")
+  
+  
+  ## Test 5'ss - MES
+  run_wilcox_test(data = subsample, "ref_mes5ss")
+  
+  
+  ## Test 3'ss - phastCons17
+  run_wilcox_test(data = subsample, "mean_phastCons17way3ss_100")
+  rstatix::wilcox_effsize(subsample, formula = mean_phastCons17way3ss_100 ~ NMD_type, paired = T)
+  
+  
+  ## Test 3'ss - MES
+  run_wilcox_test(data = subsample, "ref_mes3ss")
+  rstatix::wilcox_effsize(subsample, formula = ref_mes3ss ~ NMD_type, paired = T)
+  
   
   
   
   
   #################################################
-  ## PLOT DELTA MES ONLY ACCEPTOR
+  ## PLOTS
   #################################################
   
-  ## DISTANCES
-  
-  limit_bp = 30
-  
-  
-  RBP_novel_acceptor_delta <- RBP_novel_delta %>%
-    filter(novel_type == "novel_acceptor",
-           RBP %in% c("AQR", "U2AF2")) %>%
-    dplyr::select(delta_ss3score, cluster, RBP) %>%
-    drop_na() %>%
-    group_by(RBP, cluster) %>%
-    mutate(medianMSR = delta_ss3score %>% median()) %>% 
-    ungroup()  %>%
-    group_by(RBP) %>%
-    mutate(p.value = format(x = wilcox.test(delta_ss3score ~ cluster)$p.value,
-                            digits = 2, scientific = T)) %>%
-    mutate(p.value = ifelse((p.value %>% as.double()) < 0.001, 0.001, p.value))%>%
-    ungroup() %>%
-    mutate(RBP = factor(x = RBP, levels = target_RBPs)) %>%
-    mutate(RBP = factor(x = RBP, levels = target_RBPs)) %>%
-    mutate(p.value = ifelse(p.value == "0e+00", "2.2e-100",p.value)) %>%
-    dplyr::select(delta_ss3score, cluster, medianMSR, RBP, p.value)
-  
-  
-  delta_mes_acceptor <- ggplot(data = RBP_novel_acceptor_delta)  +
-    geom_density(aes(x = delta_ss3score, fill = cluster), 
-                 alpha = 0.8, linewidth = 0.3, 
-                 color = "black") +
-    geom_vline(xintercept = 0) +
-    geom_vline(aes(xintercept=medianMSR, colour=cluster),
-               linetype="dashed", linewidth=0.9) +
-    facet_wrap(vars(RBP)) +
-    geom_text(data = RBP_novel_acceptor_delta %>% group_by(RBP) %>% dplyr::select(p.value) %>% distinct(p.value), 
-              aes(label = paste0("P<", p.value)), 
-              x=25, y=0.08, family= "Arial", 
-              size = 3.5, 
-              colour = "#333333") +
-    scale_fill_manual(values = c("#64037d", "#999999"),
-                      breaks = c("gene knockdown", "control"),
-                      labels = c("KD", "Wild Type")) + 
-    scale_colour_manual(values = c("#64037d", "#333333"),
-                        breaks = c("gene knockdown", "control"),
-                        labels = c("KD", "Wild Type")) + 
-    labs(x = "Delta MES Acceptor", y = "Density") +
+  plot_5ss <- ggplot(data = subsample, aes(x=mean_phastCons17way5ss_100, y=ref_mes5ss, colour=fct_rev(NMD_type))) +
+    geom_point() +
     theme_light() +
-    guides(fill = guide_legend(title = "Sample type: ",
-                               ncol = 2, nrow = 1 ),
-           colour = guide_legend(title = "Median Delta MES: ",
-                                 ncol = 2, nrow = 1 )) +
-    custom_ggtheme 
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    xlab("phastCons17 5'ss")  +
+    ylab("MaxEntScan 5'ss") +
+    ylim(c(-40, 20)) 
+  
+  plot_3ss <- ggplot(data = subsample, aes(x=mean_phastCons17way3ss_100, y=ref_mes3ss, colour=fct_rev(NMD_type))) +
+    geom_point() +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "bottom") +
+    xlab("phastCons17 3'ss")  +
+    ylab("MaxEntScan 3'ss") +
+    ylim(c(-40, 20))
   
   
-  delta_mes_acceptor + 
-    theme(legend.box = "horizontal") +
-    theme( legend.margin = margin(-0.1,0.5,0,0, unit="cm"),
-           legend.box.margin=margin(l = -5, b = -5))
-  
-  ggsave(file = paste0(figures_folder,"/", target_RBPs[1], "_", target_RBPs[2], "_acceptor_deltaMES.png"), 
-         width = 180, height = 60, dpi = 300, units = "mm")
+  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
+                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
+                    labels = c("b", "c"))
   
   
   
+  ggsave(file = file.path(args$figures_folder, "/supplementary_figure14.png"), 
+         width = 180, height = 90, dpi = 300, units = "mm")
   
   
+  
+}
+
+supplementary_figure15_16 <- function () {
+  
+  #################################################
+  ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
+  #################################################
+  
+  target_genes <- c("UPF1", "UPF2")
+  required_clusters <- c("case", "control")
+  
+  # Load common introns
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_", 
+                                paste(target_genes, collapse = "_"), "_experiments_", 
+                                paste(required_clusters, collapse = "_"), ".rds")
+  
+  common_introns_NMD <- if (file.exists(common_introns_path)) {
+    message("Loading common introns...")
+    readRDS(file = common_introns_path)
+  } else {
+    get_common_introns_across_experiments(RBPs = target_genes, required_clusters = required_clusters)
+  }
+  
+  # Add protein-coding info
+  common_introns_NMD <- common_introns_NMD %>%
+    inner_join(master_introns %>% dplyr::select(ref_junID, protein_coding), by = "ref_junID")
+  
+  # Get novel junctions
+  NMD_novel <- common_introns_NMD %>%
+    filter(!is.na(novel_junID)) %>%
+    left_join(master_novel_junctions %>% dplyr::select(novel_junID, novel_type, distance), by = "novel_junID") %>%
+    mutate(type_colour = paste0(cluster, "_", novel_type),
+           novel_type = ifelse(novel_type == "novel_donor", "Novel Donor", "Novel Acceptor"),
+           cluster = ifelse(cluster == "case", "Knockdown (KD)", "Wild Type"))
+  
+  #################################################
+  ## FUNCTION TO PLOT DISTANCES
+  #################################################
+  
+  plot_nmd_distance <- function(data, gene_name, p_coding, limit_bp = 30) {
+    
+    # Histogram plot
+    plot_data <- ggplot(data = data %>% #dplyr::select(RBP, distance, protein_coding) %>%
+                          filter(RBP == gene_name,
+                                 abs(distance) <= limit_bp,
+                                 protein_coding == p_coding) ) + 
+      geom_histogram(aes(x = distance, fill = type_colour), bins = limit_bp * 2, binwidth = 1, position = "stack") +
+      facet_grid(fct_rev(novel_type) ~ fct_rev(cluster)) +
+      ggtitle(paste0(gene_name, ifelse(protein_coding == 100, " - Protein-coding", " - Noncoding"))) +
+      xlab("Distance (in bp)") +
+      ylab("Unique novel junctions") +
+      theme_light() +
+      scale_x_continuous(limits = c(-limit_bp, limit_bp), breaks = seq(-limit_bp, limit_bp, by = 3)) +
+      scale_fill_manual(values = c("#9ce2c0","#35B779FF","#e99cfc", "#8c04ae"),
+                        breaks = c("control_novel_donor", "case_novel_donor","control_novel_acceptor", "case_novel_acceptor"),
+                        label = c("Donor - Wild Type", "Donor - KD", "Acceptor - Wild Type", "Acceptor - KD")) +
+      guides(fill = guide_legend(title = NULL, ncol = 4, nrow = 1)) +
+      custom_ggtheme
+    
+    if (protein_coding == 0) {plot_data <- plot_data + ggpubr::rremove("legend")}
+    
+    # Add distance rectangle
+    distance_rectangle <- ggplot() +
+      geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100), fill = "grey", color = "black") +
+      geom_text(aes(x = 15, y = 55), size = 3, label = "exon") +
+      geom_rect(aes(xmin = -limit_bp, xmax = 0, ymin = 49, ymax = 51), fill = "grey", color = "black") +
+      geom_text(aes(x = -15, y = 70), size = 3, label = "intron") +
+      theme_void()
+    
+    # Combine plots
+    combined_plot <- plot_data / (distance_rectangle + distance_rectangle) + 
+      patchwork::plot_layout(heights = c(8, 1))
+    
+    return(combined_plot)
+  }
+  
+  #################################################
+  ## PLOT FOR EACH NMD GENE
+  #################################################
+  
+  for (gene_name in target_genes) {
+    
+    # gene_name <- target_genes[1]
+    
+    # Plot for protein-coding
+    PC_NMD <- plot_nmd_distance(data = NMD_novel, gene_name, p_coding = 100)
+    
+    # Plot for noncoding
+    NPC_NMD <- plot_nmd_distance(NMD_novel, gene_name, p_coding = 0)
+    
+    # Combine and save
+    combined_plots <- ggpubr::ggarrange(PC_NMD, NPC_NMD, ncol = 1, nrow = 2)
+    
+    file_name <- if (gene_name == "UPF1") {
+      "supplementary_figure15.png"
+    } else {
+      "supplementary_figure16.png"
+    }
+    
+    
+    ggsave(file = file.path(args$figures_folder, file_name), 
+           plot = combined_plots, width = 180, height = 180, dpi = 300, units = "mm")
+  }
+  
+  
+ 
+  
+}
+
+supplementary_figure17 <- function(RBP_novel) {
   
   ##############################################################
+  ## Supplementary Figure 17
   ## DISTANCES 200 BP (AQR)
   ##############################################################
-  
-  
   
   RBP_novel <- RBP_novel %>%
     mutate(cluster = factor(cluster, levels = c("gene knockdown","control")))
@@ -1623,237 +2190,21 @@ plot_AQR_U2AF2_acceptor <- function() {
   
   plot_aqr_long_distances / (distance_rectangle_longer) + patchwork::plot_layout(heights = c(8, 1))
   
-  ggsave(file = paste0(figures_folder, "/", target_RBP, "_", limit_bp, "bp.png"), 
+  ggsave(file = paste0(args$figures_folder, "/", target_RBP, "_", limit_bp, "bp.png"), 
          width = 180, height = 90, dpi = 300, units = "mm")
   
-  
 }
 
 
-plot_UPF1_UPF2_distances <- function () {
-  
-  
-  #################################################
-  ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
-  #################################################
-  
-  ## As we are only comparing UPF1 and UPF2, we get the common introns between the two genes
-  
-  target_genes = c("UPF1","UPF2")
-  required_clusters <- c("case", "control")
-  
-  ## Get annotated common introns -------
-  
-  common_introns_path <- paste0(results_folder, "/common_introns_details_", 
-                                paste(target_genes, collapse = "_"), "_experiments_", 
-                                paste(required_clusters, collapse = "_"), ".rds")
-  
-  if( file.exists(common_introns_path) ) {
-    
-    message("Loading common introns...")
-    common_introns_NMD <- readRDS(file = common_introns_path)
-    
-  } else {
-    ## Load common introns
-    common_introns_NMD <- get_common_introns_across_experiments(RBPs = target_genes,
-                                                                required_clusters = c("case", "control"))
-  }
-  
-  ## Add protein-coding info
-  common_introns_NMD <- common_introns_NMD %>%
-    inner_join(y = master_introns %>% dplyr::select(ref_junID, protein_coding),
-              by = "ref_junID")
-  
-  
-  ## Get novel junctions from common introns -------
-  
-  NMD_novel <- common_introns_NMD %>% 
-    filter(!is.na(novel_junID)) %>%
-    left_join(y = master_novel_junctions %>% dplyr::select(novel_junID, novel_type, distance),
-              by = "novel_junID")
-  
-  NMD_novel %>% 
-    dplyr::count(RBP, cluster)
-  
-  
-  NMD_novel <- NMD_novel %>%
-    mutate(type_colour = paste0(cluster, "_", novel_type)) %>%
-    mutate(novel_type = ifelse(novel_type == "novel_donor", "Novel Donor", "Novel Acceptor")) %>%
-    mutate(cluster = ifelse(cluster == "case","Knockdown (KD)", "Wild Type"))
-  
-  #################################################
-  ## STATS FOR THE PAPER
-  #################################################
-  
-  
-  ## Same number of annotated introns
-  common_introns_NMD %>% 
-    group_by(RBP, cluster) %>%
-    distinct(ref_junID) %>%
-    dplyr::count() %>%
-    ungroup()
-  
-  ## Different number of novel junctions
-  common_introns_NMD %>% dplyr::count(RBP, cluster)
-  
-  
-  
-  
-  #################################################
-  ## PLOT DISTANCES FOR "UPF1" 
-  #################################################
-  
-  limit_bp <- 30
-  
-  for (gene_name in target_genes) {
-    
-    # gene_name <- target_genes[1]
-    
-    PC_NMD <- ggplot(data = NMD_novel %>%
-                               filter(RBP == gene_name, 
-                                      abs(distance) <= limit_bp,
-                                      protein_coding == 100)) + 
-      geom_histogram(aes(x = distance, fill = type_colour),
-                     bins = limit_bp * 2,
-                     binwidth = 1,
-                     position = "stack"
-      ) +
-      ggplot2::facet_grid(fct_rev(novel_type)~fct_rev(cluster)) +
-      ggtitle(paste0(gene_name, " - Protein-coding")) +
-      xlab("Distance (in bp)") +
-      ylab("Unique novel junctions") +
-      theme_light() +
-      scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
-                         breaks = seq(from = (limit_bp * -1), 
-                                      to = limit_bp,
-                                      by = 3)) +
-      scale_fill_manual(values = c("#9ce2c0","#35B779FF","#e99cfc", "#8c04ae"),
-                        breaks = c("control_novel_donor", "case_novel_donor","control_novel_acceptor", "case_novel_acceptor"),
-                        label = c("Donor - Wild Type", "Donor - KD","Acceptor - Wild Type", "Acceptor - KD")) + 
-      guides(fill = guide_legend(title = NULL, #title = "Junction category & Strand",
-                                 #override.aes = list(size = 3),
-                                 ncol = 4, nrow = 1 ))+
-      custom_ggtheme 
-    
-  
-    
-    NPC_NMD <- ggplot(data = NMD_novel %>%
-                        filter(RBP == gene_name,
-                               protein_coding == 0,
-                               abs(distance) <= limit_bp)) + 
-      geom_histogram(aes(x = distance, fill = type_colour),
-                     bins = limit_bp * 2, binwidth = 1, position = "stack"
-      ) +
-      ggplot2::facet_grid(fct_rev(novel_type)~fct_rev(cluster)) +
-      ggtitle(paste0(gene_name, " - Noncoding")) +
-      xlab("Distance (in bp)") +
-      ylab("Unique novel junctions") +
-      theme_light() +
-      scale_x_continuous(limits = c((limit_bp * -1), limit_bp),
-                         breaks = seq(from = (limit_bp * -1), to = limit_bp,  by = 3)) +
-      scale_fill_manual(values = c("#9ce2c0","#35B779FF","#e99cfc", "#8c04ae"),
-                        breaks = c("control_novel_donor", "case_novel_donor","control_novel_acceptor", "case_novel_acceptor"),
-                        label = c("Donor - Wild Type", "Donor - KD","Acceptor - Wild Type", "Acceptor - KD")) + 
-      guides(fill = guide_legend(title = NULL, ncol = 4, nrow = 1 )) +
-      custom_ggtheme+
-      theme(legend.position = "none")
 
+##################################
+## AUXILIARY FUNCTIONS
+##################################
 
-    
-    distance_rectangle <- ggplot() +
-      geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 100),
-                fill = "grey", color = "black") +
-      geom_text(aes(x = 15, y = 55),  size = 3, label = "exon") +
-      geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 49, ymax = 51),
-                fill = "grey", alpha = 1, color = "black") +
-      geom_text(aes(x = -15, y = 70),  size = 3, label = "intron") +
-      theme_void()
-    
-    
-    PC_NMD <- PC_NMD / (distance_rectangle + distance_rectangle ) +  patchwork::plot_layout(heights = c(8, 1))
-    PC_NMD
-    
-    NPC_NMD <- (NPC_NMD + ggpubr::rremove("legend")) / (distance_rectangle + distance_rectangle ) +  patchwork::plot_layout(heights = c(8, 1))
-    NPC_NMD   
-    
-    
-    
-    ggpubr::ggarrange(PC_NMD, 
-                      NPC_NMD , 
-                      vjust=.5, 
-                      font.label = list(size = 12),
-                      ncol = 1,
-                      nrow = 2)
-    
-    ggsave(file = paste0(figures_folder, "/", gene_name, "_knockdown_distances.png"), 
-           width = 180, height = 180, dpi = 300, units = "mm")
-  }
- 
+aux_get_annotated_introns_accurate_splicing <- function(data, cluster_type) {
   
-}
-
-
-plot_UPF1_UPF2_phastCons17_MES <- function () {
-  
-  
-  #################################################
-  ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
-  ## FROM UPF1 and UPF2
-  #################################################
-  
-  ## As we are only comparing UPF1 and UPF2, we get the common introns between the two genes
-  
-  target_genes = c("UPF1","UPF2")
-  required_clusters <- c("case", "control")
-  
-  ## Get annotated common introns -------
-  
-  common_introns_path <- paste0(results_folder, "/common_introns_details_", 
-                                paste(target_genes, collapse = "_"), "_experiments_", 
-                                paste(required_clusters, collapse = "_"), ".rds")
-  
-  if( file.exists(common_introns_path) ) {
-    
-    NMD_intron <- readRDS(file = common_introns_path)
-    
-  } else {
-    ## Load common introns
-    NMD_intron <- get_common_introns_across_experiments(RBPs = target_genes,
-                                                                required_clusters = c("case", "control"))
-  }
-  
-  ## Add information from the master INTRON table -----------------------------------
-
-  ## Given that we are studying the NMD action, we only subset introns 
-  ## from protein-coding transcripts
-  
-  NMD_intron %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
-  
-  NMD_intron_w_protein_coding <- NMD_intron %>%
-    left_join(y = master_introns %>% dplyr::select(ref_junID, protein_coding,
-                                                    mean_phastCons17way5ss_100,mean_phastCons17way3ss_100,
-                                                    ref_mes5ss, ref_mes3ss),
-               by = "ref_junID") %>%
-    filter(protein_coding == 100)
-  
-  
-  ## ONLY 37615 annotated introns from protein-coding transcripts overlap the two NMD datasets
-  
-  NMD_intron_w_protein_coding %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
-
-  
-  
-  #################################################
-  ## GET COMMON INTRONS THAT ARE MIS-SPLICED &
-  ## ACCURATELY SPLICED IN CONTROL AND CASE EXPERIMENTS
-  #################################################
-  
-  ## 1. CONTROL EXPERIMENTS
-  
-  ## Get annotated introns with accurate splicing across CONTROL NMD experiments
-  
-  control_accurate_splicing <- NMD_intron_w_protein_coding %>% 
-    filter(cluster == "control") %>% 
+  data %>% 
+    filter(cluster == cluster_type) %>% 
     group_by(RBP) %>%
     filter(MSR_D == 0, MSR_A == 0) %>% 
     distinct(ref_junID, .keep_all = T) %>%
@@ -1863,681 +2214,24 @@ plot_UPF1_UPF2_phastCons17_MES <- function () {
     filter(n == 2) %>%
     ungroup() %>%
     pull(ref_junID) %>% 
-    unique()
+    unique() %>%
+    return()
   
-  control_accurate_splicing %>% length()
-  
-  
-  
-  ## Get introns with INACCURATE splicing across CONTROL NMD experiments
-  
-  control_mis_splicing <- setdiff(NMD_intron_w_protein_coding %>% 
-                                    filter(cluster == "control", protein_coding == 100) %>% 
-                                    pull(ref_junID) %>% 
-                                    unique, 
-                                  control_accurate_splicing) 
-  
-  control_mis_splicing %>% unique %>% length()
-  
-  
-  ## 2. CASE EXPERIMENTS
-  
-  ## Get annotated introns with accurate splicing across CASE NMD experiments
-  
-  case_accurate_splicing <- NMD_intron_w_protein_coding %>% 
-    filter(cluster == "case")%>% 
-    group_by(RBP) %>%
-    filter(MSR_D == 0, MSR_A == 0) %>% 
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup() %>%
-    group_by(ref_junID) %>%
-    summarise(n = n()) %>%
-    filter(n == 2) %>%
-    ungroup() %>%
-    pull(ref_junID) %>% 
-    unique
-  case_accurate_splicing %>% length()
+}
 
+aux_get_annotated_introns_inaccurate_splicing <- function(data, accurate_splicing_data, 
+                                                      cluster_type, p_coding) {
   
-  ## Get annotated introns with INACCURATE splicing across CASE NMD experiments
-  case_mis_splicing <- setdiff(NMD_intron_w_protein_coding %>% 
-                                 filter(cluster == "case") %>% 
-                                 pull(ref_junID) %>% unique, 
-                               case_accurate_splicing) %>% unique
-  
-  case_mis_splicing %>% unique %>% length()
-  
-
-  
-  #################################################
-  ## DEFINE NMD-RESISTANT AND NMD-SENSITIVE
-  ## INTRONS
-  #################################################
-  
-  
-  ## 1. NMD RESISTANT INTRONS ---------------------------------------------------------------------------
-  
-  
-  NMD_resistant_introns <- setdiff(control_accurate_splicing, case_mis_splicing) 
-  NMD_resistant_introns %>% length()
-  
-  ## Add master intron table info to calculate expression levels
-  NMD_resistant <- NMD_intron_w_protein_coding %>%
-    filter(ref_junID %in% NMD_resistant_introns) %>%
-    mutate(NMD_type = "NMD Resistant",
-           mean_expression = (ref_sum_counts/ref_n_individuals) %>% log10)  %>% 
-    filter(cluster == "control")
-  
-  NMD_resistant %>% dplyr::count(RBP, cluster)
-  NMD_resistant %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
-  
-  
-  ## 2. NMD SENSITIVE INTRONS ---------------------------------------------------------------------------
-  
-  NMD_sensitive_introns <- intersect(control_accurate_splicing, case_mis_splicing)
-  NMD_sensitive_introns %>% length()
-  
-  ## Add master intron table info to calculate expression levels
-  NMD_sensitive <- NMD_intron_w_protein_coding %>%
-    filter(ref_junID %in% NMD_sensitive_introns)  %>%
-    mutate(NMD_type = "NMD Sensitive",
-           mean_expression = (ref_sum_counts/ref_n_individuals) %>% log10) %>% 
-    filter(cluster == "control")
-  
-  NMD_sensitive %>% dplyr::count(RBP,cluster)
-  NMD_sensitive %>% dplyr::group_by(RBP, cluster) %>%  distinct(ref_junID) %>% dplyr::count() %>% ungroup() 
-  
-  
-
-  
-  #################################################
-  ## SUBSAMPLE TO GET ANNOTATED INTRONS WITH 
-  ## SIMILAR EXPRESSION LEVELS
-  #################################################
-  
-  data_combined <- rbind(NMD_resistant, NMD_sensitive) %>%
-    distinct(ref_junID, .keep_all = T)
-  
-  data_combined %>%
-    dplyr::count(NMD_type)
-  
-  ## Subsampling introns to control by similarity in mean read coverage
-  m.out <- MatchIt::matchit(NMD_type ~ mean_expression, 
-                            data = data_combined, 
-                            distance = data_combined$mean_expression,
-                            method = "nearest", 
-                            caliper = c(mean_expression = 0.005), 
-                            std.caliper = FALSE)
-  subsample <- MatchIt::match.data(m.out)
-  subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(NMD_type)
-  
-  
-  subsample %>% dplyr::count(NMD_type)
-  
-  
-  #################################################
-  ## STATS FOR THE PAPER
-  #################################################
-  
-  ## We found that mis-splicing events that were only evident in the context of NMD knockdown, were generated from annotated introns which had significantly lower phastCons17 and MES values at their 3’ss
-  
-  ## Test 5'ss - phastCons17
-  
-  wilcox.test(x = subsample %>%
-                filter(NMD_type == "NMD Sensitive") %>%
-                pull(mean_phastCons17way5ss_100),
-              y = subsample %>%
-                filter(NMD_type == "NMD Resistant") %>%
-                pull(mean_phastCons17way5ss_100),
-              alternative = "less",
-              paired = T)
-  
-  ## Test 5'ss - MES
-  
-  wilcox.test(x = subsample %>%
-                filter(NMD_type == "NMD Sensitive") %>%
-                pull(ref_mes5ss),
-              y = subsample %>%
-                filter(NMD_type == "NMD Resistant") %>%
-                pull(ref_mes5ss),
-              alternative = "less",
-              paired = T)
-  
-  
-  
-  ## Test 3'ss - phastCons17
-  
-  wilcox.test(x = subsample %>%
-                filter(NMD_type == "NMD Sensitive") %>%
-                pull(mean_phastCons17way3ss_100),
-              y = subsample %>%
-                filter(NMD_type == "NMD Resistant") %>%
-                pull(mean_phastCons17way3ss_100),
-              
-              alternative = "less",
-              paired = T)
-  rstatix::wilcox_effsize(data = subsample %>% 
-                            mutate(NMD_type = NMD_type %>% as.factor()),
-                          formula = mean_phastCons17way3ss_100 ~ NMD_type,
-                          paired = T)
-  
-  
-  ## Test 3'ss - MES
-  
-  wilcox.test(x = subsample %>%
-                filter(NMD_type == "NMD Resistant") %>%
-                pull(ref_mes3ss),
-              y = subsample %>%
-                filter(NMD_type == "NMD Sensitive") %>%
-                pull(ref_mes3ss),
-              alternative = "greater",
-              paired = T)
-  rstatix::wilcox_effsize(data = subsample %>% 
-                            mutate(NMD_type = NMD_type %>% as.factor()),
-                          formula = ref_mes3ss ~ NMD_type,
-                          paired = T)
-  
-  
-  
-  
-  #################################################
-  ## PLOTS
-  #################################################
-  
-  plot_5ss <- ggplot(data = subsample,
-                     aes(x=mean_phastCons17way5ss_100, y=ref_mes5ss, colour=fct_rev(NMD_type))) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    xlab("phastCons17 5'ss")  +
-    ylab("MaxEntScan 5'ss") +
-    ylim(c(-40, 20)) 
-  plot_5ss 
-  
-  plot_3ss <- ggplot(data = subsample,
-                     aes(x=mean_phastCons17way3ss_100, y=ref_mes3ss, colour=fct_rev(NMD_type))) +
-    geom_point() +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "bottom") +
-    xlab("phastCons17 3'ss")  +
-    ylab("MaxEntScan 3'ss") +
-    ylim(c(-40, 20))
-  plot_3ss 
-  
-  
-  
-  ggpubr::ggarrange(ggExtra::ggMarginal(plot_5ss, groupColour = TRUE, groupFill = TRUE), 
-                    ggExtra::ggMarginal(plot_3ss, groupColour = TRUE, groupFill = TRUE),
-                    labels = c("A", "B"))
-  
-  
-  
-  ggsave(file = paste0(figures_folder, "/NMD_sensitive_resistant_introns_scatter_plot.png"), 
-         width = 180, height = 90, dpi = 300, units = "mm")
-  
-  
+  setdiff(data %>% 
+            filter(cluster == cluster_type, protein_coding == p_coding) %>% 
+            pull(ref_junID) %>% 
+            unique, 
+          accurate_splicing_data) %>%
+    return()
   
 }
 
 
-plot_CLIP_ENCODE_by_RBP <- function() {
-  
-
-  
-  ################################
-  ## LOAD METADATA & RBPs
-  ################################
-  
-  # target_genes <- "TARDBP"
-  all_projects <- master_metadata$SRA_project %>% unique()
-  target_genes <- "all"
-  target_genes <- "TARDBP"
-  all_projects <- "TARDBP"
-  
-  required_clusters <- c("case", "control")
-  
-  file_name <- paste0(results_folder, 
-                      "/common_introns_details_", target_genes, "_experiments_", 
-                      paste(required_clusters,collapse = "_"), ".rds")
-  
-  if( file.exists(file_name) ) {
-    
-    message("Loading common introns across all experiments...")
-    common_introns_all_experiments <- readRDS(file = file_name)
-    
-  } else {
-    
-    ## Calculate common introns
-    common_introns_all_experiments <- get_common_introns_across_experiments(RBPs = target_genes,
-                                                                            required_clusters = c("case", "control"))
-  }
-  
-  ## Same number of introns across RBPs
-  common_introns_all_experiments %>%
-    group_by(RBP, cluster) %>%
-    distinct(ref_junID) %>%
-    dplyr::count() %>%
-    ungroup()
-  
-  
-  ## Different number of novel junctions across RBPs
-  common_introns_all_experiments %>%
-    group_by(RBP, cluster) %>%
-    distinct(novel_junID) %>%
-    dplyr::count() %>%
-    ungroup()
-  
-  
-  ####################################
-  ## LOAD MSR VALUES
-  ####################################
-  
-  # Load the MSR tables for current RBP
-  MSR_RBPs <- common_introns_all_experiments %>%
-    inner_join(y = master_introns %>% dplyr::select(ref_junID, seqnames, start, end, strand),
-               by = "ref_junID") %>%
-    dplyr::select(ref_junID,  
-                  MSR_D, 
-                  MSR_A,
-                  RBP, 
-                  cluster,
-                  seqnames, start, end, strand) %>%
-    group_by(RBP, cluster) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    ungroup()
-  
-  
-  MSR_RBPs %>% head()
-
-  ####################################
-  ## MERGE ENCODE and ICLIP DATA
-  ## Use introns with increasing levels
-  ## of MSR
-  ####################################
-  
-  if ( !file.exists(file = paste0(results_folder, "/iCLIP_ENCODE_all_introns_chisq.csv")) ) {
-    
-    iCLIP_binding_MSR_results <- map_df(all_projects, function(target_RBP) {
-      
-      # target_RBP <- "TARDBP"
-      # target_RBP <- "HNRNPC"
-      # target_RBP <- "UPF1"
-      # target_RBP <- "UPF1"
-      
-      
-      ## Only CLIP data from 'HepG2' and 'K562' cell lines
-      iclip_RBP <- map_df(c("HepG2","K562"), function(celltype) {
-        # celltype <- "HepG2"
-        
-        iCLIP_RBP_file_path <- file.path(dependencies_folder, "ENCORI", paste0("ENCORI_hg38_RBPTarget_", target_RBP, "_",celltype,".txt"))
-        
-        if ( file.exists(iCLIP_RBP_file_path) ) {
-          readr::read_delim(file = iCLIP_RBP_file_path,
-                            delim = "\t", col_names = T, skip = 3, show_col_types = FALSE) %>%
-            return()
-        } else {
-          return(NULL)
-        }
-      })
-      
-      ## Only if there's iCLIP data available for the current RBP in HepG2|K562 cell lines
-      
-      if ( iclip_RBP %>% nrow() > 1 ) {
-        
-        #message(Sys.time(), " - ", target_RBP)
-        
-        map_df(c("MSR_D", "MSR_A"), function(MSR_type) {
-          
-          message(Sys.time(), " - ", target_RBP, " ", MSR_type)
-          
-          # MSR_type <- "MSR_D"
-          # MSR_type <- "MSR_A"
-          
-          MSR_RBP <- MSR_RBPs %>%
-            filter(RBP == target_RBP) %>%
-            pivot_wider(id_cols = ref_junID,
-                        names_from = c("cluster"),
-                        values_from = all_of(MSR_type)) %>%
-            mutate(type = MSR_type) %>% 
-            inner_join(y = MSR_RBPs %>%
-                         filter(RBP == target_RBP) %>%
-                         dplyr::select(ref_junID, seqnames, start, end, strand),
-                       by = "ref_junID") %>%
-            distinct(ref_junID, type, .keep_all = T) %>%
-            mutate(start = start - 100,
-                   end = end + 100)
-          
-          MSR_RBP_inc <- MSR_RBP %>%
-            filter(case > control)  %>%
-            distinct(ref_junID, .keep_all = T) %>%
-            GRanges()
-          MSR_RBP_inc
-          
-          MSR_RBP_notinc <- MSR_RBP %>%
-            filter(case <= control) %>%
-            distinct(ref_junID, .keep_all = T) %>%
-            GRanges()
-          MSR_RBP_notinc
-          
-          if ( intersect(MSR_RBP_inc$ref_junID, 
-                         MSR_RBP_notinc$ref_junID) %>% length() > 0) {
-            print("ERROR! Some introns with increasing MSR values are also classified as introns with non-increasing MSR values!")
-            break;
-          }
-          
-          ####################################
-          ## TIDY ICLIP DATA 
-          ####################################
-          
-          
-          
-          iclip_RBP_gr <- iclip_RBP %>%
-            dplyr::select(seqnames = "chromosome", start = "broadStart", end = "broadEnd", "strand" ) %>%
-            GRanges()
-          
-          ####################################
-          ## FIND OVERLAPS - MSR and iCLIP
-          ####################################
-          
-          
-          ## 1. Introns with increasing MSR values ----------------------------------------------------------
-          
-          MSR_RBP_inc_overlaps <- GenomicRanges::findOverlaps(query = MSR_RBP_inc,
-                                                              subject = iclip_RBP_gr,
-                                                              type = "any")
-          ## w binding motifs
-          MSR_RBP_inc_overlapp_iCLIP <- MSR_RBP_inc[S4Vectors::queryHits(MSR_RBP_inc_overlaps) %>% unique,]
-          MSR_RBP_inc_overlapp_iCLIP
-          
-          ## without binding motifs
-          MSR_RBP_inc_NOT_overlapp_iCLIP <- MSR_RBP_inc[-c(S4Vectors::queryHits(MSR_RBP_inc_overlaps) %>% unique),]
-          MSR_RBP_inc_NOT_overlapp_iCLIP
-          
-          
-          
-          
-          ## 2. Introns with NOT increasing MSR values --------------------------------------------------------
-          
-          MSR_RBP_notinc_overlaps <- GenomicRanges::findOverlaps(query = MSR_RBP_notinc,
-                                                                 subject = iclip_RBP_gr,
-                                                                 type = "any")
-          ## w binding motifs
-          MSR_RBP_notinc_overlapp_iCLIP <- MSR_RBP_notinc[S4Vectors::queryHits(MSR_RBP_notinc_overlaps) %>% unique,]
-          MSR_RBP_notinc_overlapp_iCLIP 
-          
-          ## without binding motifs
-          MSR_RBP_notinc_NOT_overlapp_iCLIP <- MSR_RBP_notinc[-c(S4Vectors::queryHits(MSR_RBP_notinc_overlaps) %>% unique),]
-          MSR_RBP_notinc_NOT_overlapp_iCLIP 
-          
-          
-          ## 3. Save data --------------------------------------------------------------------------------------
-          
-          ENCODE_ENCORI_MSR_RBP_motif <- 
-            rbind(
-              
-              cbind(
-                
-                MSR_RBP_notinc[S4Vectors::queryHits(MSR_RBP_notinc_overlaps),] %>% 
-                  as_tibble() %>%
-                  dplyr::rename(MSR_case = case,
-                                MSR_control = control),
-                
-                iclip_RBP_gr[S4Vectors::subjectHits(MSR_RBP_notinc_overlaps),] %>% 
-                  as_tibble() %>% 
-                  dplyr::rename(iCLIP_seqnames = seqnames,
-                                iCLIP_start = start,
-                                iCLIP_end = end,
-                                iCLIP_width = width,
-                                iCLIP_strand = strand)
-              ) %>% 
-                mutate(RBP_motif = T) %>%
-                
-                plyr::rbind.fill(MSR_RBP_notinc[-c(S4Vectors::queryHits(MSR_RBP_notinc_overlaps)),] %>% 
-                                   as_tibble()%>%
-                                   dplyr::rename(MSR_case = case,
-                                                 MSR_control = control) %>%
-                                   mutate(RBP_motif = F)) %>%
-                as_tibble() %>%
-                mutate(MSR_direction = "not_increasing") , 
-              
-              cbind(
-                
-                MSR_RBP_inc[S4Vectors::queryHits(MSR_RBP_inc_overlaps),] %>% 
-                  as_tibble() %>%
-                  dplyr::rename(MSR_case = case,
-                                MSR_control = control),
-                
-                iclip_RBP_gr[S4Vectors::subjectHits(MSR_RBP_inc_overlaps),] %>% 
-                  as_tibble() %>% 
-                  dplyr::rename(iCLIP_seqnames = seqnames,
-                                iCLIP_start = start,
-                                iCLIP_end = end,
-                                iCLIP_width = width,
-                                iCLIP_strand = strand)) %>% #
-                mutate(RBP_motif = T) %>%
-                
-                
-                plyr::rbind.fill(MSR_RBP_inc[-c(S4Vectors::queryHits(MSR_RBP_inc_overlaps)),] %>% 
-                                   as_tibble()%>%
-                                   dplyr::rename(MSR_case = case,
-                                                 MSR_control = control) %>%
-                                   mutate(RBP_motif = F)) %>%
-                
-                
-                as_tibble() %>%
-                mutate(MSR_direction = "increasing") 
-              
-            ) %>%
-            dplyr::rename(MSR_type = type) %>%
-            mutate(RBP = target_RBP)
-          
-          
-          ENCODE_ENCORI_MSR_RBP_motif
-          
-          ENCODE_ENCORI_MSR_RBP_motif %>%
-            distinct(ref_junID, .keep_all =T) %>%
-            mutate(start = start + 100,
-                   end = end - 100) %>%
-            dplyr::count(MSR_direction, RBP_motif )
-          
-          
-
-          write.csv(x = ENCODE_ENCORI_MSR_RBP_motif %>%
-                      inner_join(y = master_introns %>% dplyr::select(ref_junID, transcript_id),
-                                 by = "ref_junID") %>%
-                      inner_join(y = master_transcript %>% dplyr::select(id, gene_id),
-                                 by = c("transcript_id" = "id")) %>%
-                      inner_join(y = master_gene %>% dplyr::select(id, gene_name),
-                                 by = c("gene_id" = "id")) %>%
-                      dplyr::select(-c("transcript_id", "gene_id")) %>%
-                      dplyr::relocate(gene_name, .after = "strand") %>%
-                      mutate(start = start + 100,
-                             end = end - 100),
-                    file = paste0(results_folder, paste0("/ENCODE_ENCORI_",target_RBP,"_",MSR_type,".csv")),
-                    row.names = F)
-          
-          ###################################################################################################
-          
-          RBP_results <- data.frame(RBP= target_RBP,
-                                    MSR_tested = MSR_type,
-                                    total_introns = MSR_RBP %>% distinct(ref_junID) %>% nrow(),
-                                    n_introns =  c(MSR_RBP_inc_overlapp_iCLIP$ref_junID %>% unique(), 
-                                                   MSR_RBP_inc_NOT_overlapp_iCLIP$ref_junID  %>% unique(), 
-                                                   MSR_RBP_notinc_overlapp_iCLIP$ref_junID  %>% unique(), 
-                                                   MSR_RBP_notinc_NOT_overlapp_iCLIP$ref_junID  %>% unique()),
-                                    RBP_iCLIP_type = c(rep("RBP_motif",times=length(MSR_RBP_inc_overlapp_iCLIP)),
-                                                       rep("RBP_no_motif",times=length(MSR_RBP_inc_NOT_overlapp_iCLIP)),
-                                                       rep("RBP_motif",times=length(MSR_RBP_notinc_overlapp_iCLIP)),
-                                                       rep("RBP_no_motif",times=length(MSR_RBP_notinc_NOT_overlapp_iCLIP))), 
-                                    MSR_direction = c(rep("MSR_increasing",times=length(MSR_RBP_inc_overlapp_iCLIP)+length(MSR_RBP_inc_NOT_overlapp_iCLIP)),
-                                                      rep("MSR_not_increasing",times=length(MSR_RBP_notinc_overlapp_iCLIP)+length(MSR_RBP_notinc_NOT_overlapp_iCLIP))))
-          
-          
-          chisq <- chisq.test( table(RBP_results$MSR_direction, RBP_results$RBP_iCLIP_type) )
-          
-
-          MSR_RBP_inc_overlapp_iCLIP 
-          
-          saveRDS(object = RBP_results,
-                  file = file.path(results_folder, paste0("/ENCORI_iCLIP_",target_RBP, "_", MSR_type, "_ChiSquare.rds")))
-          
-          return(  data.frame(RBP= target_RBP,
-                              MSR_tested = MSR_type,
-                              MSR_increasing_w_RBP_motif = MSR_RBP_inc_overlapp_iCLIP$ref_junID %>% length(), 
-                              MSR_not_increasing_w_RBP_motif = MSR_RBP_inc_NOT_overlapp_iCLIP$ref_junID %>% length(), 
-                              MSR_increasing_N_RBP_motif = MSR_RBP_notinc_overlapp_iCLIP$ref_junID %>% length(),  
-                              MSR_not_increasing_N_RBP_motif = MSR_RBP_notinc_NOT_overlapp_iCLIP$ref_junID %>% length(), 
-                              chisq_statistic = chisq$statistic,
-                              chisq_method = chisq$method,
-                              chisq_pvalue = chisq$p.value)
-          )
-          
-        })
-        
-      } else {
-        message("No iCLIP HepG2|K562 data for ", target_RBP)
-      }
-
-    })
-    
-    
-    iCLIP_binding_MSR_results
-    
-    write.csv(x = iCLIP_binding_MSR_results,
-              file = paste0(results_folder, "/iCLIP_ENCODE_all_introns_chisq.csv"),
-              row.names = F)
-    
-  } else {
-    iCLIP_binding_MSR_results <- read.table(file = paste0(results_folder, "/iCLIP_ENCODE_all_introns_chisq.csv"),
-                                            header = T, sep = ",")
-  }
-  
-  
-  ##############################
-  ## PAPER STATS
-  ##############################
-  
-  iCLIP_binding_MSR_results %>%
-    filter(RBP != "SAFB2") %>%
-    pull(RBP) %>% unique %>% length()
-  iCLIP_binding_MSR_results %>% filter(MSR_tested == "MSR_D",
-                                       RBP != "SAFB2") %>% pull(chisq_pvalue) %>% summary
-  
-  iCLIP_binding_MSR_results %>% filter(MSR_tested == "MSR_A",
-                                       RBP != "SAFB2") %>% pull(chisq_pvalue) %>% summary
-  
-  ##############################
-  ## CALCULATE FOLD-CHANGES
-  ##############################
-
-  iCLIP_binding_MSR_results_prop <- iCLIP_binding_MSR_results %>% 
-    rowwise() %>%
-    
-    mutate(MSR_increasing_w_motif = MSR_increasing_w_RBP_motif / (MSR_increasing_w_RBP_motif + MSR_increasing_N_RBP_motif),
-           MSR_increasing_n_motif = MSR_increasing_N_RBP_motif / (MSR_increasing_w_RBP_motif + MSR_increasing_N_RBP_motif),
-           
-           MSR_not_increasing_w_motif = MSR_not_increasing_w_RBP_motif / (MSR_not_increasing_w_RBP_motif + MSR_not_increasing_N_RBP_motif),
-           MSR_not_increasing_n_motif = MSR_not_increasing_N_RBP_motif / (MSR_not_increasing_w_RBP_motif + MSR_not_increasing_N_RBP_motif)) %>%
-    
-    mutate(fold_change_w_motif = log2(MSR_increasing_w_motif) - log2(MSR_not_increasing_w_motif)) %>% 
-    mutate(fold_change_not_motif = log2(MSR_increasing_n_motif) - log2(MSR_not_increasing_n_motif)) 
-  
-  
-  iCLIP_binding_MSR_results_prop <- iCLIP_binding_MSR_results_prop  %>% 
-    dplyr::select(RBP, 
-                  MSR_tested, 
-                  "Introns with RBP binding sites from CLIP-seq data" = fold_change_w_motif,
-                  "Introns without RBP binding sites" = fold_change_not_motif) %>%
-    gather(type,  "2fold", -MSR_tested, -RBP) %>% 
-    arrange( MSR_tested,  desc("2fold"))  %>%
-    ungroup
-  
-  
-  ########################################################
-  ## ADD KNOCKDOWN EFFICIENCY
-  ########################################################
-  
-  project_path <- "ENCODE_SR/ENCODE_Metadata_Extraction/Metadata_results_experiments/"
-  metadata_kEff_path <- paste0(project_path, "metadata_WB_kEff.tsv")
-  metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
-    mutate(kEff_text = ifelse(is.na(kEff_avg), kEff_avg, paste0(round(kEff_avg), "%"))) %>%
-    mutate(kEff_text = kEff_text %>% as.factor())
-  
-  
-  iCLIP_binding_MSR_results_prop <- iCLIP_binding_MSR_results_prop %>%
-    left_join(y = metadata_kEff,
-              by = c("RBP" = "target_gene")) %>%
-    filter(RBP != "SAFB2")
-  iCLIP_binding_MSR_results_prop %>% head()
-  
-  
-  
-  
-  ########################################################
-  ## BAR PLOT
-  ########################################################
-  
-  iCLIP_binding_MSR_results_prop$MSR_tested = factor( iCLIP_binding_MSR_results_prop$MSR_tested, 
-                                                      levels = c( "MSR_D", 
-                                                                  "MSR_A"),
-                                                      labels = c( "MSR Donor", 
-                                                                  "MSR Acceptor"))
-  
-  
-  iCLIP_plot <- ggplot(data = iCLIP_binding_MSR_results_prop,
-                       aes(x = RBP, y = `2fold`, group = factor(MSR_tested)) ) +
-    geom_bar(
-      stat = "identity",
-      aes(x = tidytext::reorder_within(x = RBP, by = -`2fold`, within = type), y = `2fold`,
-          fill = factor(MSR_tested)), position = position_dodge(width = 0.9) ) +
-    ylab("Log2 Fold Change of introns\nwith increasing MSR in KD vs wild-type") +
-    xlab("") +
-    theme_light() +
-    ggforce::facet_row(~ type, scales = "free_x") +
-    tidytext::scale_x_reordered() +
-    custom_ggtheme +
-    guides(fill = guide_legend(title = NULL, ncol = 2,  nrow = 1 ))  +
-    theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1)) +
-    scale_fill_manual(values = c("#35B779FF","#64037d"), #8d03b0
-                      breaks = c("MSR Donor","MSR Acceptor")) +
-    theme( plot.margin = margin(t = 5, r = 5, b = -5, l = 5),
-           legend.box.margin = margin(l = -10, b = -10, t = -5 ))
-  
-  iCLIP_plot +
-    ggnewscale::new_scale_fill() +
-    geom_tile(stat = "identity", 
-              aes(y = 1.4, 
-                  x = tidytext::reorder_within(x = RBP,
-                                               by = -`2fold`,
-                                               within = type),
-                  fill = kEff_avg, color = "No data\navailable"), 
-              linewidth = 0.5, width = 1, height = 0.1) + 
-    viridis::scale_fill_viridis(option = "inferno", 
-                                # na.value = "#999999",
-                                name = "Knockdown\nEfficiency", 
-                                limits = c(0, 100), 
-                                breaks = c(NA, seq(0, 100, 25)),
-                                labels = c("none", paste0(seq(0, 100, 25), "%")),
-                                guide = guide_colourbar(frame.colour = "black", 
-                                                        frame.linewidth = 0.4,
-                                                        order = 1, 
-                                                        ticks.colour = "black", 
-                                                        barwidth = 10, 
-                                                        barheight = 1.5)) +
-    scale_colour_manual(values = c( "No data\navailable" = "black")) +
-    guides(colour = guide_legend(override.aes = list(fill = '#999999'),
-                                 title = NULL,
-                                 label.position = "bottom",
-                                 order = 1))
-  
-  
-  ggsave(file = paste0(figures_folder, "/iCLIP_ENCODE_2fold_efficiency.png"), 
-         width = 180, height = 75, units = "mm", dpi = 300)
-  
-  
-}
 
 
 ##################################

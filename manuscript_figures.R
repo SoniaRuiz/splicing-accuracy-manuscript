@@ -48,17 +48,17 @@ query = paste0("SELECT * FROM 'metadata'")
 df_metadata <- dbGetQuery(con, query) %>% distinct(sample_id, .keep_all = T) %>% as_tibble()
 all_projects <- df_metadata$SRA_project %>% unique
 
-query <- paste0("SELECT * FROM 'intron'")
-master_introns <- dbGetQuery(con, query) %>% as_tibble()
-
-query <- paste0("SELECT * FROM 'novel'")
-master_novel_junctions <- dbGetQuery(con, query) %>% as_tibble()
-
-query <- paste0("SELECT * FROM 'transcript'")
-master_transcripts <- dbGetQuery(con, query) %>% as_tibble()
-
-query <- paste0("SELECT * FROM 'gene'")
-master_genes <- dbGetQuery(con, query) %>% as_tibble()
+# query <- paste0("SELECT * FROM 'intron'")
+# master_introns <- dbGetQuery(con, query) %>% as_tibble()
+# 
+# query <- paste0("SELECT * FROM 'novel'")
+# master_novel_junctions <- dbGetQuery(con, query) %>% as_tibble()
+# 
+# query <- paste0("SELECT * FROM 'transcript'")
+# master_transcripts <- dbGetQuery(con, query) %>% as_tibble()
+# 
+# query <- paste0("SELECT * FROM 'gene'")
+# master_genes <- dbGetQuery(con, query) %>% as_tibble()
 
 
 ## UTILS FUNCTION
@@ -3586,10 +3586,77 @@ plot_ZIP_variance_across_tissues <- function() {
   
   phastcons_type <- 17
   intron_size <- 100
-  common <- FALSE
+  common <- TRUE
+  
+  results_file1 <- file.path(args$data_folder, "figure5_a.csv")
+  results_file2 <- file.path(args$data_folder, "figure5_b.csv")
+  
+  if ( !file.exists(results_file1) && !file.exists(results_file2) ) {
+    
+    prepare_ZIP_variance_data_tissues_to_plot()
+  
+  } 
+    
+  
+  if ( file.exists(results_file1) && !file.exists(results_file2) ) {
+    
+    for (MSR_type in c("Donor", "Acceptor")) {
+      
+      
+      if (MSR_type == "Donor") { 
+        all_coefficient_tissues <- read_csv(file = results_file1, col_names = T) 
+        color_boxplot <- "#35B779FF" 
+      } else { 
+        all_coefficient_tissues <- read_csv(file = results_file2, col_names = T)
+        color_boxplot <- "#8d03b0"
+      }
+      
+      all_coefficient_tissues$feature <- factor( all_coefficient_tissues$feature, 
+                                                      levels = c(# "Gene TPM",
+                                                        "Gene num. transcripts",
+                                                        "Protein coding",
+                                                        "Intron Length",
+                                                        "Intron 5'ss MES score",
+                                                        "Intron 3'ss MES score", 
+                                                        "CDTS 5'ss",
+                                                        "CDTS 3'ss",
+                                                        "PhastCons17 5'ss",
+                                                        "PhastCons17 3'ss") %>% rev() )
+      
+      plotTissuesZINB <- ggplot(data = all_coefficient_tissues, 
+                                aes(x = feature, y = coefficient, fill = feature) ) + 
+        geom_boxplot(fill = color_boxplot) +
+        coord_flip() +
+        #ggforce::facet_col(vars(type)) + 
+        facet_grid(vars(subgroup), scales = "free", switch = "y", space = "free_y")  +
+        #ggtitle(graph_title) +
+        ylab("Distribution of the significant estimate beta values (q<0.05)") +
+        xlab(" ") +
+        theme_light() +
+        custom_ggtheme +
+        scale_fill_manual(breaks = c("MSR_Donor","MSR_Acceptor"),
+                          labels = c("MSR_Donor","MSR_Acceptor")) +
+        theme(axis.text.y = element_text(vjust = 0.5, hjust = 1)) +
+        geom_hline(yintercept = 0,linetype='dotted')
+      
+      
+      plotTissuesZINB
+      file_name <- paste0(args$figures_folder, 
+                          "/ZINB_",MSR_type,
+                          "_alltissues_phastcons", phastcons_type, 
+                          "_common_introns", common,
+                          "_intronsize", intron_size)
+      ggplot2::ggsave(filename = paste0(file_name, ".png"), 
+                      width = 180, height = 60, units = "mm", dpi = 300)
+    }
+  }
+  
+}
+
+prepare_ZIP_variance_data_tissues_to_plot <- function() {
   
   
-  if (file.exists( file.path(args$results_folder, "all_coefficient_tissues.rds") )) {
+  if ( file.exists(file.path(args$results_folder, "all_coefficient_tissues.rds")) ) {
     
     all_coefficient_tissues <- readRDS(file = file.path(args$results_folder, "/all_coefficient_tissues.rds"))
     
@@ -3597,7 +3664,7 @@ plot_ZIP_variance_across_tissues <- function() {
     
     all_coefficient_tissues <- map_df(all_projects, function(project_id) {
       
-      # project_id <- all_projects[1]
+      # project_id <- all_projects[2]
       # project_id <- "BRAIN"
       
       print(paste0(Sys.time(), " - ", project_id))
@@ -3616,13 +3683,14 @@ plot_ZIP_variance_across_tissues <- function() {
         map_df(c("Donor", "Acceptor"), function(novel_type) { 
           
           # novel_type <- "Donor"
-          if ( file.exists(paste0(args$results_folder, "/ZINB_",novel_type,"_",
-                                  cluster_id,
+          if ( file.exists(paste0(args$results_folder, 
+                                  "/ZINB_",novel_type,"_",cluster_id,
                                   "_common_introns", common,
                                   "_introns_phastcons", phastcons_type, 
                                   "_intronsize", intron_size ,".rds")) )  {
             
             message(novel_type, " - ", cluster_id)
+            
             
             ZINB_tissue <- readRDS(file = paste0(args$results_folder,
                                                  "/ZINB_", novel_type,"_", cluster_id, 
@@ -3632,22 +3700,18 @@ plot_ZIP_variance_across_tissues <- function() {
             ZINB_tissue %>% summary()
             message("'ZINB_tissue' loaded!")
             
-            ZINB_expCoef <- (coef((lmtest::coeftest(ZINB_tissue, vcov = sandwich::sandwich)))) #* 
+            ZINB_expCoef <- (stats::coef((lmtest::coeftest(ZINB_tissue, vcov = sandwich::sandwich)))) #* 
             #(sign(x = coef((lmtest::coeftest(ZINB_tissue, vcov = sandwich::sandwich))) %>% unlist() %>% unname()))
             
             ZINB_expCoef <- as.data.frame(ZINB_expCoef, ncol = 2) %>%
               tibble::rownames_to_column("covariate") %>%
               mutate(cluster = cluster_id) %>%
               mutate(pvalue = lmtest::coeftest(ZINB_tissue, vcov = sandwich::sandwich)[,4])
-            # c( (ZINB_table$coefficients$count %>% as.data.frame()) %>%
-            #                        tibble::rownames_to_column("covariate") %>%
-            #                        filter(covariate != "Log(theta)") %>%
-            #                        pull("Pr(>|z|)"),
-            #                      (ZINB_table$coefficients$zero %>% as.data.frame())[,4]))
             
             ZINB_expCoef %>% 
               mutate(MSR = novel_type) %>%
               return()
+            
           }
         })
       })
@@ -3687,14 +3751,7 @@ plot_ZIP_variance_across_tissues <- function() {
     ## COEFFICIENT OF VARIATION
     ################################################################
     
-    # df_glm_estimates %>%
-    #   filter(q <= 0.05) %>%
-    #   dplyr::count(feature)
-    
-    
     all_coefficient_tissues_tidy <- all_coefficient_tissues_fdr %>%
-      #filter(q < 0.05) %>%
-      #mutate(estimate = ifelse(q > 0.05, NA, estimate))%>%
       filter(str_detect(string = covariate, pattern = "count_"),
              str_detect(string = covariate, pattern = "Intercept",negate = T)) %>%
       dplyr::group_by(covariate) %>%
@@ -3743,50 +3800,20 @@ plot_ZIP_variance_across_tissues <- function() {
       drop_na() %>%
       mutate(coefficient = coefficient %>% as.double())
     
-    ## TIDY VALUES
-    all_coefficient_tissues_tidy$feature <- factor( all_coefficient_tissues_tidy$feature, 
-                                                    levels = c(# "Gene TPM",
-                                                      "Gene num. transcripts",
-                                                      "Protein coding",
-                                                      "Intron Length",
-                                                      "Intron 5'ss MES score",
-                                                      "Intron 3'ss MES score", 
-                                                      "CDTS 5'ss",
-                                                      "CDTS 3'ss",
-                                                      "PhastCons17 5'ss",
-                                                      "PhastCons17 3'ss") %>% rev() )
-  
     
-    if (MSR_type == "Donor") { color_boxplot <- "#35B779FF" } else { color_boxplot <- "#8d03b0" }
-    
-    ## PLOT
-    plotTissuesZINB <- ggplot(data = all_coefficient_tissues_tidy, 
-                              aes(x = feature, y = coefficient, fill = feature) ) + 
-      geom_boxplot(fill = color_boxplot) +
-      coord_flip() +
-      #ggforce::facet_col(vars(type)) + 
-      facet_grid(vars(subgroup), scales = "free", switch = "y", space = "free_y")  +
-      #ggtitle(graph_title) +
-      ylab("Distribution of the significant estimate beta values (q<0.05)") +
-      xlab(" ") +
-      theme_light() +
-      custom_ggtheme +
-      scale_fill_manual(breaks = c("MSR_Donor","MSR_Acceptor"),
-                        labels = c("MSR_Donor","MSR_Acceptor")) +
-      theme(axis.text.y = element_text(vjust = 0.5, hjust = 1)) +
-      geom_hline(yintercept = 0,linetype='dotted')
+    ## Save source data 
+    if (MSR_type == "Donor") { 
+      file_name <- "figure5_a.csv" 
+    } else { 
+      file_name <- "figure5_b.csv" 
+    }
     
     
-    plotTissuesZINB
-    file_name <- paste0(args$figures_folder, 
-                        "/ZINB_",MSR_type,
-                        "_alltissues_phastcons", phastcons_type, 
-                        "_common_introns", common,
-                        "_intronsize", intron_size)
-    ggplot2::ggsave(filename = paste0(file_name, ".png"), 
-                    width = 180, height = 60, units = "mm", dpi = 300)
+    write_csv(x = all_coefficient_tissues_tidy, 
+              file = file.path(args$data_folder, file_name), col_names = T)
+    
+    
   }
-
 }
 
 compare_tissues_somatic_mutations <- function(project_id1 = "SKIN",
@@ -4295,5 +4322,5 @@ RBP_NMD_expression_across_tissues <- function() {
 ## CALLS
 ##################################
 
-get_ZIP_tissues()
+plot_ZIP_variance_across_tissues()
   
