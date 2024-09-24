@@ -6,7 +6,7 @@ library(doParallel)
 ####################################################
 ## CONNECT TO THE SPLICING DATABASE ################
 ####################################################
-## source("/home/sruiz/PROJECTS/recount3-database-project/analysis.R")
+## source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/manuscript_AD_figures.R")
 
 ## CONNECT TO THE DATABASE ------------------------------
 
@@ -111,7 +111,7 @@ custom_ggtheme <-  theme(text = element_text(size = 9, family="Arial", colour = 
 ########################################
 
 
-## SECTION 1 ---------------------------------------------
+## SECTION 1 - GENERAL TESTS -----------------------------
 
 dummie_test <- function() {
   
@@ -298,12 +298,6 @@ index_database <- function() {
   
 }
 
-#' Title
-#' Obtain general stats about the database
-#' @return
-#' @export
-#'
-#' @examples
 get_database_stats <- function() {
   
  
@@ -343,254 +337,9 @@ get_database_stats <- function() {
 }
 
 
-#' Title
-#' Get an overview of the metadata of the project
-#' @return
-#' @export
-#'
-#' @examples
-supplementary_figure27_a_to_d <- function() {
-  
+## SECTION 2 - PAPER FIGURES -----------------------------
 
-
-  ## Num samples
-  plot_num_samples <- ggplot(df_metadata %>% 
-                               # mutate(cluster = factor(cluster, 
-                               #                         levels = c("control", "AD"))) %>%
-                               dplyr::count(SRA_project, cluster)  ) +
-    geom_bar(aes(x = n, 
-                 y = SRA_project,
-                 fill = cluster),
-             stat = "identity", position = position_dodge()) + 
-    theme_light() +
-    scale_fill_hue() +
-    labs(y = "", x = "Num. samples" ) +
-    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) +
-    theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
-    scale_fill_manual(values = c("#bfbfbf","#666666"),
-                      breaks = c("control", case_type),
-                      label = c("Control", case_type)) +
-    custom_ggtheme
-  
-  plot_num_samples
-  
-  if ( any(names(df_metadata) == "gender") ) {
-    ## Gender
-    plot_gender <- ggplot(df_metadata %>% 
-                            mutate(gender = gender %>% as.character()) %>%
-                            dplyr::count(cluster, gender)) +
-      geom_bar(aes(y = cluster, x = n, group = gender, fill = gender), alpha = 0.8,
-               stat = "identity", position = "dodge") + 
-      #facet_grid(~cluster)+
-      theme_light() +
-      labs(y = "", x = "Num. samples" ) +
-      scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
-      guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
-      theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
-      custom_ggtheme
-    
-    plot_gender
-  
-  }
-  if (  any(names(df_metadata) == "age") ) {
-    ## AGE
-    plot_age <- ggplot(df_metadata ) +
-      geom_density(aes(x = age, fill = cluster), alpha = 0.7) + 
-      theme_light() +
-      labs(x = "AGE" ) +
-      scale_fill_hue() +
-      guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
-      scale_fill_manual(values = c("#bfbfbf","#666666"),
-                        breaks = c("control", case_type),
-                        label = c("Control", case_type)) +  
-      custom_ggtheme
-  }
-  if ( any(names(df_metadata) == "rin") ) {
-    ## RIN
-    plot_rin <- ggplot(df_metadata ) +
-      geom_density(aes(x = rin, fill = cluster), alpha = 0.7) + 
-      theme_light() +
-      labs(x = "RIN" ) +
-      scale_fill_hue() +
-      guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
-      scale_fill_manual(values = c("#bfbfbf","#666666"),
-                        breaks = c("control", case_type),
-                        label = c("Control", case_type)) +  
-      custom_ggtheme
-  }
-  
-  
-  
-  ## Mapped read depth
-  plot_read_depth <- ggplot(df_metadata ) +
-    geom_density(aes(x = all_mapped_reads, fill = cluster), alpha = 0.6) + 
-    theme_light() +
-    scale_fill_hue() +
-    labs(x = "Mapped Read Count" ) +
-    guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
-    scale_fill_manual(values = c("#bfbfbf","#666666"),
-                      breaks = c("control", case_type),
-                      label = c("Control", case_type)) +   
-    custom_ggtheme
-  
-  
-  plot_read_depth
-  
-  if ( exists("plot_age") ) {
-    ggpubr::ggarrange(plot_num_samples, plot_gender, plot_age, plot_read_depth,
-                      labels = c("a","b","c","d"))
-  } else if ( exists("plot_rin") ) {
-    ggpubr::ggarrange(plot_num_samples, plot_gender, plot_rin, plot_read_depth,
-                      labels = c("a","b","c","d"))
-  } else {
-    ggpubr::ggarrange(plot_num_samples, plot_read_depth,
-                      labels = c("a","b"))
-  }
-  
-  ggplot2::ggsave(file.path(args$figures_folder, "metadata.png"), width = 180, height = 100, units = "mm", dpi = 300)
-  
-}
-
-
-#' Title
-#' Get common introns between cases and controls (ONLY FRONTAL CORTEX) and subsample them by read coverage
-#' @return
-#' @export
-#'
-#' @examples
-supplementary_figure27_e_f <- function() {
-  
-  
-  print("Getting common introns between sample cluster...")
-  
-  clusters <- df_metadata$cluster %>% unique
-  
-  #################################
-  ## GET COMMON INTRONS 
-  ## ACROSS CONTROL AND AD SAMPLES
-  #################################
-  
-  all_introns <- map_df(c(args$control_type,args$case_type), function(cluster_id) {
-    
-    print(paste0(Sys.time(), " - ", args$project_id, " - ", cluster_id))
-    
-    query <- paste0("SELECT DISTINCT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals 
-                  FROM '", cluster_id, "_", args$project_id, "_nevermisspliced'")
-    introns_accurate_splicing <- dbGetQuery(con, query) %>% as_tibble()
-    introns_accurate_splicing %>% nrow()
-    
-    query <- paste0("SELECT DISTINCT ref_junID, MSR_D,  MSR_A, ref_type, ref_sum_counts, ref_n_individuals 
-                  FROM '", cluster_id, "_", args$project_id, "_misspliced'")
-    introns_inaccurate_splicing <- dbGetQuery(con, query) %>% as_tibble()
-    introns_inaccurate_splicing %>% nrow()
-    
-    rbind(introns_inaccurate_splicing, introns_accurate_splicing) %>% mutate(sample_type = cluster_id) %>% distinct(ref_junID, .keep_all = T)
-    
-  })
-  
-  
-
-  df_introns_tidy <- all_introns %>% 
-    dplyr::group_by(ref_junID) %>% 
-    filter(n() > 1) %>% 
-    ungroup  %>%
-    group_by(sample_type) %>%
-    mutate(mean_coverage = (ref_sum_counts/ref_n_individuals) %>% log10()) %>%
-    ungroup()
-  
-
-  # df_introns_tidy
-  # df_introns_tidy %>% dplyr::count(sample_type)
-  
-  
-  if ( df_introns_tidy %>% dplyr::count(ref_junID) %>% filter(n == 1) %>% nrow() > 0 ) {
-    print("ERROR. Common annotated introns should appear only once per sample cluster.")
-  }
-  
-  ##########################################################
-  ## PLOT COVERAGE OF SHARED INTRONS BEFORE SUBSAMPLING
-  ##########################################################
-  
-  plot_BS <- ggplot(data = df_introns_tidy) +
-    geom_density(mapping = aes(x = mean_coverage, fill = sample_type), alpha = 0.8) +
-    ggtitle("Before subsampling") +
-    theme_light() +
-    custom_ggtheme +
-    xlab("log10 mean expression level") +
-    scale_fill_manual(name = "Sample group: ",
-                      values = c("#bfbfbf","#666666"),
-                      breaks = c(args$control_type, args$case_type ),
-                      label = c(args$control_type, args$case_type )) +
-    ylim(c(0, 1))+
-    xlim(c(0, 3))
-  
-  plot_BS
-  
-  
-  #####################################
-  #### START SUBSAMPLIING
-  #####################################
-  
-  
-  # "To compare differences in splicing accuracy between the annotated introns found across the 48 samples studied, we made use of their MSR values. 
-  # To avoid potential biases derived from differences in mean expression levels, we only considered those annotated introns overlapping both groups of samples 
-  # that displayed a maximum difference in their log10 expression levels of 0.005 (matchit() function, MatchIt R package, version 4.5.0). "
-  
-  
-  if ( file.exists(file.path(args$results_folder, "common_subsampled_introns_seed1000.rds")) ) {
-    
-    subsample <- readRDS(file = file.path(args$results_folder, "/common_subsampled_introns_seed1000.rds"))
-    
-  } else {
-    
-    set.seed(1000)
-    print(paste0(Sys.time(), " - start subsampling ... "))
-    
-    ## Subsampling introns to control by similarity in mean read coverage
-    m.out <- MatchIt::matchit(sample_type ~ mean_coverage,
-                              data = df_introns_tidy %>% mutate(sample_type = sample_type %>% as.factor()),
-                              distance = df_introns_tidy$mean_coverage,
-                              method = "nearest",
-                              caliper = c(mean_coverage = .005),
-                              std.caliper = FALSE)
-    subsample <- MatchIt::match.data(m.out)
-    subsample %>% dplyr::count(sample_type)
-    subsample %>% group_by(sample_type) %>% distinct(ref_junID) %>% ungroup() %>% dplyr::count(sample_type)
-    
-    dir.create(path = results_path, recursive = T,showWarnings = T)
-    saveRDS(object = subsample, file = file.path(args$results_folder, "common_subsampled_introns_seed1000.rds"))
-    
-    print(paste0(Sys.time(), " - subsampling finished!"))
-    
-  }
-  
-  subsample %>% group_by(sample_type) %>% distinct(ref_junID) %>% dplyr::count(sample_type)
-  
-  
-  #######################################
-  ## PLOT COVERAGE AFTER SUBSAMPLE
-  #######################################
-  
-  plot_AS <- ggplot(data = subsample) +
-    geom_density(mapping = aes(x = mean_coverage, fill = sample_type), alpha = 0.8) +
-    ggtitle("After subsampling") +
-    theme_light() +
-    custom_ggtheme +
-    xlab("log10 mean expression level") +
-    scale_fill_manual(name = "Sample group: ",
-                      values = c("#bfbfbf","#666666"),
-                      breaks = c(args$control_type, args$case_type ),
-                      label = c(args$control_type, args$case_type )) +
-    ylim(c(0, 1))+
-    xlim(c(0, 3))
-  
-  ggpubr::ggarrange(plot_BS, plot_AS, labels = c("a", "b"), common.legend = T) 
-  
-  dir.create(path = figures_path, recursive = T,showWarnings = T)
-  ggplot2::ggsave(file.path(args$figures_path, "supplementary_figure27_e_f.png"), width = 180, height = 100, units = "mm", dpi = 300)
-
-}
-
+## Main figures
 
 #' Title
 #' Visualise differences in number of unique novel junctions from common introns from AD vs control samples
@@ -862,8 +611,6 @@ main_figure8_b <- function() {
 }
 
 
-
-
 #' Title
 #' Visualise differences in modulo3 values in introns from AD vs control samples
 #' Only using common, subsampled introns
@@ -965,9 +712,6 @@ main_figure8_c <- function() {
   ggplot2::ggsave(file.path(args$figures_folder, "figure8_c.png"), width = 80, height = 70, units = "mm", dpi = 300)
   
 }
-
-
-
 
 #' Title
 #' GO, KEGG and REACTOME ENRICHMENT analysis of the introns showing increasing MSR values in AD compared to control samples
@@ -1166,6 +910,206 @@ main_figure8_d_e <- function() {
                   width = 180, height = 180, units = "mm", dpi = 300)
 }
 
+
+## Supplementary figures
+
+#' Title
+#' Get an overview of the metadata of the project
+#' @return
+#' @export
+#'
+#' @examples
+supplementary_figure27_a_to_d <- function() {
+  
+  
+  
+  ## Num samples
+  plot_num_samples <- ggplot(df_metadata %>% dplyr::count(SRA_project, cluster)) +
+    geom_bar(aes(x = n, y = SRA_project, fill = cluster),
+             stat = "identity", position = position_dodge()) + 
+    theme_light() +
+    scale_fill_hue() +
+    labs(y = "", x = "Num. samples" ) +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) +
+    theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
+    scale_fill_manual(values = c("#bfbfbf","#666666"),
+                      breaks = c("control", args$case_type),
+                      label = c("Control", args$case_type)) +
+    custom_ggtheme
+  
+  plot_num_samples
+  
+  if ( any(names(df_metadata) == "gender") ) {
+    ## Gender
+    plot_gender <- ggplot(df_metadata %>% 
+                            mutate(gender = gender %>% as.character()) %>%
+                            dplyr::count(cluster, gender)) +
+      geom_bar(aes(y = cluster, x = n, group = gender, fill = gender), alpha = 0.8,
+               stat = "identity", position = "dodge") + 
+      theme_light() +
+      labs(y = "", x = "Num. samples" ) +
+      scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
+      guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
+      theme(axis.text.y = element_text(angle = 90, hjust = 0.5, vjust = 0.5)) +
+      custom_ggtheme
+    
+    plot_gender
+    
+  }
+  
+  if (  any(names(df_metadata) == "age") ) {
+    ## AGE
+    plot_age <- ggplot(df_metadata ) +
+      geom_density(aes(x = age, fill = cluster), alpha = 0.7) + 
+      theme_light() +
+      labs(x = "AGE" ) +
+      scale_fill_hue() +
+      guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
+      scale_fill_manual(values = c("#bfbfbf","#666666"),
+                        breaks = c("control", args$case_type),
+                        label = c("Control", args$case_type)) +  
+      custom_ggtheme
+  }
+  
+  if ( any(names(df_metadata) == "rin") ) {
+    ## RIN
+    plot_rin <- ggplot(df_metadata ) +
+      geom_density(aes(x = rin, fill = cluster), alpha = 0.7) + 
+      theme_light() +
+      labs(x = "RIN" ) +
+      scale_fill_hue() +
+      guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
+      scale_fill_manual(values = c("#bfbfbf","#666666"),
+                        breaks = c("control", args$case_type),
+                        label = c("Control", args$case_type)) +  
+      custom_ggtheme
+  }
+  
+  
+  ## Mapped read depth
+  plot_read_depth <- ggplot(df_metadata ) +
+    geom_density(aes(x = all_mapped_reads, fill = cluster), alpha = 0.6) + 
+    theme_light() +
+    scale_fill_hue() +
+    labs(x = "Mapped Read Count" ) +
+    guides(fill = guide_legend(title = NULL, ncol = 3, nrow = 1)) +
+    scale_fill_manual(values = c("#bfbfbf","#666666"),
+                      breaks = c("control", args$case_type),
+                      label = c("Control", args$case_type)) +   
+    custom_ggtheme
+  
+  
+  plot_read_depth
+  
+  if ( exists("plot_age") ) {
+    ggpubr::ggarrange(plot_num_samples, plot_gender, plot_age, plot_read_depth,
+                      labels = c("a","b","c","d"))
+    
+  } else if ( exists("plot_rin") ) {
+    
+    ggpubr::ggarrange(plot_num_samples, plot_gender, plot_rin, plot_read_depth,
+                      labels = c("a","b","c","d"))
+  } else {
+    
+    ggpubr::ggarrange(plot_num_samples, plot_read_depth,
+                      labels = c("a","b"))
+  }
+  
+  
+  ggplot2::ggsave(file.path(args$figures_folder, "supplementary_figure27_ad.png"), width = 180, height = 100, units = "mm", dpi = 300)
+  
+}
+
+
+
+#' Title
+#' Get common introns between cases and controls (ONLY FRONTAL CORTEX) and subsample them by read coverage
+#' @return
+#' @export
+#'
+#' @examples
+supplementary_figure27_e_f <- function() {
+  
+  
+  print("Getting common introns between sample cluster...")
+  
+  clusters <- df_metadata$cluster %>% unique()
+  
+  #################################
+  ## GET COMMON INTRONS 
+  ## ACROSS CONTROL AND AD SAMPLES
+  #################################
+  
+  df_introns_tidy <- get_common_introns()
+  
+  if ( df_introns_tidy %>% dplyr::count(ref_junID) %>% filter(n == 1) %>% nrow() > 0 ) {
+    print("ERROR. Common annotated introns should appear only once per sample cluster.")
+  }
+  
+  ##########################################################
+  ## PLOT COVERAGE OF SHARED INTRONS BEFORE SUBSAMPLING
+  ##########################################################
+  
+  plot_BS <- ggplot(data = df_introns_tidy) +
+    geom_density(mapping = aes(x = mean_coverage, fill = sample_type), alpha = 0.8) +
+    ggtitle("Before subsampling") +
+    theme_light() +
+    custom_ggtheme +
+    xlab("log10 mean expression level") +
+    scale_fill_manual(name = "Sample group: ",
+                      values = c("#bfbfbf","#666666"),
+                      breaks = c(args$control_type, args$case_type ),
+                      label = c(args$control_type, args$case_type )) +
+    ylim(c(0, 1))+
+    xlim(c(0, 3))
+  
+  plot_BS
+  
+  
+  #####################################
+  #### START SUBSAMPLIING
+  #####################################
+  
+  
+  # "To compare differences in splicing accuracy between the annotated introns found across the 48 samples studied, we made use of their MSR values. 
+  # To avoid potential biases derived from differences in mean expression levels, we only considered those annotated introns overlapping both groups of samples 
+  # that displayed a maximum difference in their log10 expression levels of 0.005 (matchit() function, MatchIt R package, version 4.5.0). "
+  
+  
+  subsample <- if ( file.exists(file.path(args$results_folder, "common_subsampled_introns_seed1000.rds")) ) {
+    readRDS(file = file.path(args$results_folder, "/common_subsampled_introns_seed1000.rds"))
+    
+  } else {
+    subsample_introns(df_introns_tidy)
+    
+  }
+  
+  # subsample %>% group_by(sample_type) %>% distinct(ref_junID) %>% dplyr::count(sample_type)
+  
+  
+  #######################################
+  ## PLOT COVERAGE AFTER SUBSAMPLE
+  #######################################
+  
+  plot_AS <- ggplot(data = subsample) +
+    geom_density(mapping = aes(x = mean_coverage, fill = sample_type), alpha = 0.8) +
+    ggtitle("After subsampling") +
+    theme_light() +
+    custom_ggtheme +
+    xlab("log10 mean expression level") +
+    scale_fill_manual(name = "Sample group: ",
+                      values = c("#bfbfbf","#666666"),
+                      breaks = c(args$control_type, args$case_type ),
+                      label = c(args$control_type, args$case_type )) +
+    ylim(c(0, 1))+
+    xlim(c(0, 3))
+  
+  ggpubr::ggarrange(plot_BS, plot_AS, labels = c("a", "b"), common.legend = T) 
+  
+  dir.create(path = figures_path, recursive = T,showWarnings = T)
+  ggplot2::ggsave(file.path(args$figures_path, "supplementary_figure27_e_f.png"), width = 180, height = 100, units = "mm", dpi = 300)
+  
+}
 
 
 
@@ -1818,6 +1762,60 @@ AD_control_plot_effsize_MSR_normalised_by_TPM <- function(effect.size.file.path,
 ##################################
 
 
+get_common_introns <- function() {
+  
+  all_introns <- map_df(c(args$control_type, args$case_type), function(cluster_id) {
+    
+    print(paste0(Sys.time(), " - ", args$project_id, " - ", cluster_id))
+    
+    query <- paste0("SELECT ref_junID, MSR_D, MSR_A, ref_type, ref_sum_counts, ref_n_individuals 
+                  FROM '", cluster_id, "_", args$project_id, "_nevermisspliced'")
+    introns_accurate_splicing <- dbGetQuery(con, query) %>% as_tibble()
+  
+    
+    query <- paste0("SELECT ref_junID, MSR_D,  MSR_A, ref_type, ref_sum_counts, ref_n_individuals 
+                  FROM '", cluster_id, "_", args$project_id, "_misspliced'")
+    introns_inaccurate_splicing <- dbGetQuery(con, query) %>% as_tibble()
+    
+    
+    rbind(introns_inaccurate_splicing, introns_accurate_splicing) %>% mutate(sample_type = cluster_id) %>% distinct(ref_junID, .keep_all = T)
+  
+    })
+  
+  
+  
+  all_introns %>% 
+    dplyr::group_by(ref_junID) %>% 
+    filter(n() > 1) %>% 
+    ungroup  %>%
+    group_by(sample_type) %>%
+    mutate(mean_coverage = (ref_sum_counts/ref_n_individuals) %>% log10()) %>%
+    ungroup() %>% 
+    return()
+}
+
+
+subsample_introns <- function(df_introns) {
+  set.seed(1000)
+  print(paste0(Sys.time(), " - start subsampling ... "))
+  
+  ## Subsampling introns to control by similarity in mean read coverage
+  m.out <- MatchIt::matchit(sample_type ~ mean_coverage,
+                            data = df_introns %>% mutate(sample_type = sample_type %>% as.factor()),
+                            distance = df_introns$mean_coverage,
+                            method = "nearest",
+                            caliper = c(mean_coverage = .005),
+                            std.caliper = FALSE)
+  subsample <- MatchIt::match.data(m.out)
+  subsample %>% dplyr::count(sample_type)
+  subsample %>% group_by(sample_type) %>% distinct(ref_junID) %>% ungroup() %>% dplyr::count(sample_type)
+  
+  
+  saveRDS(object = subsample, file = file.path(args$results_folder, "common_subsampled_introns_seed1000.rds"))
+  
+  print(paste0(Sys.time(), " - subsampling finished!"))
+}
+
 
 # "Analysis of MSR measures also demonstrated significantly higher levels of MSRs in AD samples at both donor and acceptor sites 
 # (5’ss, effect-size=0.052, one-tailed paired Wilcoxon signed rank test, P<0.001; 3’ss, effect-size=0.054, 
@@ -2184,5 +2182,7 @@ plot_distances <- function() {
 ## CALLS
 ##################################
 
-AD_control_effsize_MSR_normalised_by_TPM()
-  
+common_introns <- get_common_introns()
+message("Common introns obtained!")
+
+subsample_introns(common_introns)
