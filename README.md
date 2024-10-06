@@ -9,40 +9,32 @@ doi: [https://doi.org/10.1101/2023.03.29.534370](https://doi.org/10.1101/2023.03
 
 
 ## Repository 
+The 'splicing-accuracy-manuscript' repository contains the code used to generate all the analyses and figures produced for the manuscript [**Splicing accuracy varies across human introns, tissues and age**](https://doi.org/10.1101/2023.03.29.534370).
 
-This 'splicing-accuracy-manuscript' repository contains the code used to generate all the analyses and figures produced for the manuscript [**Splicing accuracy varies across human introns, tissues and age**](https://doi.org/10.1101/2023.03.29.534370).
+### 1. *'manuscript_figures.R'*
+To produce the main and supplementary figures and tables using the *'Splicing'* database, supplied for the manuscript *"Splicing accuracy varies across introns, tissues, age and disease"*.
 
+### 2. *'manuscript_ageing_figures.R'*
+Produces the main and supplementary figures and tables using the *'Age Stratification'* database, supplied for the manuscript *"Splicing accuracy varies across introns, tissues, age and disease"*.
 
-### 1. *"Splicing"* Database - Paper figure generation
+### 3. *'manuscript_AD_figures.R'*
+Produces the main and supplementary figures and tables using the *'AD - control'* SQLITE database (recount3 ID  = SRP100948), supplied for the manuscript *"Splicing accuracy varies across introns, tissues, age and disease"*. 
 
-To produce the main and supplementary figures and tables made using the *'Splicing'* database supplied for the manuscript *"Splicing accuracy varies across introns, tissues and age"*, please use the functions provided within the R script *"splicing_accuracy_manuscript_figures.R"*. 
+### 4. *'manuscript_ENCODE_figures.R'*
+Produces the main and supplementary figures and tables using the *'ENCODE shRNA'* SQLITE database, supplied for the manuscript *"Splicing accuracy varies across introns, tissues, age and disease"*.
 
-
-### 2. *"Age Stratification"* Database - Paper figure generation
-
-To produce the main and supplementary figures and tables made using the *'Age Stratification'* database supplied for the manuscript *"Splicing accuracy varies across introns, tissues and age"*, please use the functions provided within the R script *"splicing_accuracy_manuscript_age_figures.R"*.
-
-To evaluate whether the expression levels of RNA-binding proteins involved in post-transcriptional processes [Van Nostrand et at. 2020](https://www.nature.com/articles/s41586-020-2077-3) are affected by the age of the sample donor across BRAIN tissues, please use the code provided within the R script: *"splicing_accuracy_manuscript_age_figures.R"* (function 'age_stratification_RBPs_affected_age').
-
-
-### 3. *"ENCODE shRNA"* Database - Paper figure generation
-
-To produce the main and supplementary figures and tables made using the *'ENCODE shRNA'* database supplied for the manuscript *"Splicing accuracy varies across introns, tissues and age"*, please use the functions provided within the R script *"splicing_accuracy_manuscript_ENCODE_figures.R"*.
-
-
-### 4. Supplementary Tables
-
+## Supplementary Tables
 All supplementary tables can be accessed through Zenodo using the DOI: [10.5281/zenodo.7732872](https://zenodo.org/record/7732872)
 
+## Databases
+All SQLite databases used in the *'Splicing accuracy varies across human introns, tissues and age'* paper, can be freely downloaded from [this website](https://rytenlab.com/browser/app/splicing_accuracy_manuscript_databases).
 
-## Environments
-
+## Tested Environments
 The code included within this repository has been successfully tested on:
 * Ubuntu version "16.04.7 LTS (Xenial Xerus)"
 * Ubuntu version "22.04.2 LTS (Jammy Jellyfish)"
 
 ## Acknowledgments
-
 * All [RytenLab](https://rytenlab.com/) members
 * [Aligning Science Across Parkinson's (ASAP)](https://parkinsonsroadmap.org/#)
 * [UCL Great Ormond Street Institute Of Child Health](https://www.ucl.ac.uk/child-health/great-ormond-street-institute-child-health-0)
