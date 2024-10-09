@@ -61,14 +61,6 @@ query <- paste0("SELECT * FROM 'gene'")
 master_genes <- dbGetQuery(con, query) %>% as_tibble()
 
 
-## UTILS FUNCTION
-
-get_mode <- function(data) {
-  uniqv <- unique(data)
-  uniqv[which.max(tabulate(match(data, uniqv)))]
-}
-
-
 custom_ggtheme <-  theme(text = element_text(size = 7, colour = "black"),
                          axis.ticks = element_line(colour = "black", linewidth = 2),
                          axis.text = element_text(size = 7, colour = "black"),
@@ -1596,7 +1588,7 @@ main_figure4_bc <- function() {
 
 ## 7. Local sequence conservation is the most important predictor of mis-splicing
 
-get_data_figure4_d <- function() {
+get_data_main_figure4_d <- function() {
   
 
   ###############################
@@ -2160,7 +2152,7 @@ get_common_introns_across_tissues <- function () {
   
 }
 
-prepare_ZIP_variance_data_tissues_to_plot <- function() {
+get_data_main_figure5_ab <- function() {
   
   
   if ( file.exists(file.path(args$results_folder, "all_coefficient_tissues.rds")) ) {
@@ -2407,250 +2399,6 @@ main_figure5_ab <- function() {
 
 
 
-## We Found that the expression levels of 107 RBPs (FDR<0.04) and 5 essential NMD genes67 (FDR<0.04) decreased with age in multiple tissues (Supplementary Figure 18a,b) (Supplementary Table 7). 
-## Focusing on brain tissue alone, 40% of the 115 RBPs studied had decreased expression levels with age (FDR<0.04) (Supplementary Figure 18b).
-
-RBP_NMD_expression_across_tissues <- function() {
-  
-  
-  source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/scripts/27_age_effect_uncorrected_TPM_lm.R")
-  source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/scripts/99_utils.R")
-  
-  
-  ###################################
-  ## LOAD THE GENE LIST
-  ###################################
-  
-  gene_type <- "RBP"
-  
-  if (gene_type == "NMD") {
-    gene_list <- data.frame(id = c("ENSG00000005007", "ENSG00000151461", "ENSG00000169062", 
-                                   "ENSG00000157106", "ENSG00000198952", "ENSG00000070366", "ENSG00000116698"),
-                            name = c("UPF1", "UPF2", "UPF3", 
-                                     "SMG1", "SMG5", "SMG6", "SMG7"))
-  } else {
-    gene_list <- all_RBPs <- xlsx::read.xlsx(file = file.path(args$dependencies_folder, '/RBPs_subgroups.xlsx'), 
-                                             header = TRUE, sheetIndex = 1) %>% as_tibble() %>% distinct(name, .keep_all = T)
-  }
-  
-  
-  ###################################
-  ## LINEAR REGRESSION TO TEST IF THE
-  ## COVARIATE AGE AFFECTS THE LOG10 TPM LEVELS
-  ###################################
-  
-  if ( !file.exists(file.path(args$results_folder, paste0(gene_type, "_genes_age_lm.rds"))) ) {
-    
-    gene_age_lm <- map_df(all_projects, function(project_id) {
-      
-      # project_id <- all_projects[1]
-      
-      message(Sys.time(), " - ", project_id)
-      local_results_folder <- file.path(base_folder, "results", main_project, "/", gtf_version, project_id)
-      
-      if ( file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl", gtf_version,".rds")) &&
-           file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_covariates.rds")) ) {
-        
-        message(Sys.time(), " - loading data for ", project_id, "...")
-        
-        dds_tpm <- readRDS(file = paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds"))
-        sample_metadata <- readRDS(file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
-        
-        
-      } else {
-        
-        dir.create(file.path(local_results_folder, paste0(gene_type, "_expression")), recursive = TRUE, showWarnings = T)
-        
-        ## Get metadata for local tissue
-        metadata <- readRDS(file = paste0(local_results_folder, "/base_data/", project_id, "_samples_raw_metadata.rds"))
-        
-        metadata$gtex.smafrze %>% unique
-        metadata$gtex.smrin %>% unique %>% min
-        
-        
-        ## Get base TPM for local tissue
-        recount_tpm <- readRDS(file = file.path(base_folder, "results/tpm/", paste0(project_id, "_tpm.rds"))) %>%
-          as_tibble(rownames = "gene")
-        
-        
-        recount_tpm %>% head
-        recount_tpm %>% nrow()
-        recount_tpm %>% ncol()
-        
-        
-        ## Tidy the object
-        
-        ## Filter by the samples of the current cluster
-        dds_tpm <- recount_tpm %>% 
-          dplyr::select(gene, all_of(metadata$external_id)) %>%
-          mutate(gene = gsub(pattern = "\\..*", replacement = "", x = gene)) %>%
-          filter(gene %in% gene_list$id)
-        
-        
-        saveRDS(object = dds_tpm,
-                file = paste0(local_results_folder, "/", gene_type, "_expression/", 
-                              project_id, "_tpm_ensembl", gtf_version, ".rds"))
-        
-        
-        # 2. Get the covariates to correct for
-        sample_metadata <- tidy_sample_metadata(sample.metadata = metadata, 
-                                                samples = metadata$external_id) %>% 
-          as_tibble(rownames = "covariates")
-        
-        saveRDS(object = sample_metadata, 
-                file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
-        
-        
-        rm(recount_tpm)
-        #gc()
-        
-      }
-      
-      
-      ##########################################
-      # 2. ANALYSIS
-      # Test if TPM values are significantly affected by age
-      ##########################################
-      
-      message(Sys.time(), " - getting linear models for ", project_id, "...")
-      
-      
-      lm_output <- age_effect_uncorrected_TPM_lm(project.id = project_id,
-                                                 tpm.uncorrected = dds_tpm,
-                                                 sample.metadata = sample_metadata,
-                                                 gene.list = gene_list,
-                                                 results.folder = paste0(local_results_folder,  "/", gene_type, "_expression/"))
-      
-      return(lm_output %>%
-               mutate(project = project_id))
-      
-      
-    })
-    
-    saveRDS(object = gene_age_lm %>% as_tibble(),
-            file = file.path(args$results_folder,"/", paste0(gene_type, "_genes_age_lm.rds")) ) 
-    
-    write_csv(x = gene_age_lm,
-              file = paste0(args$results_folder,"/", paste0(gene_type, "_genes_age_lm.csv")))
-    
-  } else {
-    message("Loading '", paste0(gene_type, "_genes_age_lm.rds"), "' file ...")
-    gene_age_lm <- readRDS(file = file.path(args$results_folder, paste0(gene_type, "_genes_age_lm.rds")) ) 
-  }
-  
-  
-  tissues_data_tidy <- gene_age_lm %>%
-    #mutate(Estimate = Estimate / 100) %>%
-    filter(covariate == "gtex.age") 
-  
-  
-  ##################################
-  ## GET STATS FOR THE PAPER
-  ##################################
-  
-  ## We formally assessed this in the GTEx dataset, and found that the expression levels of 107 RBPs (FDR<0.04) and 5 essential NMD genes67 (FDR<0.04) decreased with age in multiple tissues
-  
-  tissues_data_tidy %>%
-    filter(q <= 0.05, Estimate < 0) %>%
-    pull(name) %>%
-    unique() %>%
-    length()
-  
-  tissues_data_tidy %>%
-    filter(q <= 0.05, Estimate < 0) %>%
-    group_by(project) %>%
-    dplyr::count()
-  
-  tissues_data_tidy %>%
-    filter(q <= 0.05, Estimate < 0) %>%
-    pull(q) %>%
-    summary()
-  
-  ((tissues_data_tidy %>%
-      filter(q <= 0.05) %>%
-      nrow) * 100) / (tissues_data_tidy %>% nrow)
-  
-  
-  tissues_data_tidy %>%
-    filter(q <= 0.05) %>%
-    pull(q) %>%
-    summary()
-  
-  
-  ##################################
-  ## GET STATS FOR BRAIN
-  ##################################
-  
-  brain_data_tidy <- tissues_data_tidy %>%
-    filter(covariate == "gtex.age",
-           project == "BRAIN") %>%
-    distinct(name, .keep_all =T)
-  
-  # write.csv(x = brain_data_tidy %>%
-  #             dplyr::select(name, Estimate, q, pval) %>%
-  #             as.data.frame,
-  #           file = paste0(args$results_folder, "/_paper_review/results/brain_age_RPBs_lm.csv"))
-  # 
-  ((brain_data_tidy %>%
-      filter(q <= 0.05, Estimate < 0) %>%
-      nrow) * 100) / (brain_data_tidy %>% nrow)
-  
-  brain_data_tidy$name
-  
-  brain_data_tidy %>%
-    filter(q <= 0.05, Estimate < 0) %>%
-    pull(q) %>%
-    summary()
-  
-  ##################################
-  ## PLOT
-  ##################################
-  
-  ## Check the NMD factors with TPM values affected by age
-  gene_age_lm_tidy <- tissues_data_tidy %>%
-    filter(covariate == "gtex.age") %>%
-    mutate(q = ifelse(Estimate < 0, q, NA)) %>%
-    mutate(q = ifelse(q > 0.05, NA, q)) %>%
-    mutate(`log10(q)` = q %>% log10()) %>%
-    group_by(name) %>%
-    mutate(name = factor(name, levels=(gene_age_lm$name)[order(gene_age_lm$name %>% unique %>% dplyr::desc())] %>% unique))  %>%
-    ungroup()
-  
-  #gene_age_lm_tidy$name <- factor(gene_age_lm_tidy$name, levels=(gene_age_lm_tidy$name)[order(gene_age_lm_tidy$Estimate)])
-  
-  ggplot(data = gene_age_lm_tidy %>%
-           mutate(project = str_replace(project, pattern = "_", replacement = " ")) ) + 
-    geom_tile(mapping = aes(x = fct_rev(name), 
-                            y = fct_rev(project), 
-                            fill = `log10(q)`, 
-                            colour = "q>=0.05")) +
-    scale_fill_gradient(low = "red", 
-                        high = "white", 
-                        na.value = '#cccccc') +
-    scale_colour_manual(values = c( "q>=0.05" = "#cccccc")) +
-    xlab("") + 
-    ylab("") + 
-    theme_light()  +
-    custom_ggtheme +
-    guides(colour = guide_legend(override.aes = list(fill = '#cccccc'),
-                                 title = "",
-                                 label.position = "bottom",
-                                 order = 2)) +
-    theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1, size = 5),
-          axis.text.y = element_text(size = 5, colour = "black"),
-          legend.position = "top",
-          legend.text = element_text(size = 5, colour = "black"),
-          legend.title = element_text(size = 5, colour = "black"),
-          legend.box.margin = margin(l = -10, r = -10, b = -10, t = -5
-          ))
-  
-  
-  
-  file_name <- paste0(args$figures_folder, "/age_all_effect_", gene_type, ".png")
-  ggplot2::ggsave(filename = file_name, width = 180, height = 90, units = "mm", dpi = 300)
-  
-  
-}
 
 
 
@@ -3432,7 +3180,7 @@ supplementary_figure11 <- function() {
   cluster_id2 <- "Skin - Not Sun Exposed (Suprapubic)"
   
   tables <- c(paste0(cluster_id1, "_", project_id1), paste0(cluster_id2, "_", project_id2))
-  supplementary_figure11_path <- file.path(args$results_folder, "supplementary_figure11.rds")
+  supplementary_figure11_path <- file.path(args$results_folder, "supplementary_figure11_after_subsampling.rds")
   
   if (!file.exists(supplementary_figure11_path)) {
     
@@ -3462,22 +3210,23 @@ supplementary_figure11 <- function() {
       ungroup() %>%
       mutate(mean_coverage = log10(ref_sum_counts / ref_n_individuals))
     
-    saveRDS(df_database_introns_tidy, file = file.path(args$results_folder, "supplementary_figure11.rds"))
+    saveRDS(df_database_introns_tidy, file = file.path(args$results_folder, "supplementary_figure11_before_subsampling.rds"))
     
     # Subsampling
     data_combined <- df_database_introns_tidy %>%
       group_by(ref_junID) %>%
       filter(n() == 2) %>%
-      ungroup()
+      ungroup() %>%
+      mutate(tissue_int = ifelse(tissue == "Skin - Sun Exposed (Lower leg)_SKIN", 0, 1))
     
     message("Start data subsampling...")
     
-    m.out <- MatchIt::matchit(tissue ~ mean_coverage, data = data_combined, distance = data_combined$mean_coverage, method = "nearest", caliper = 0.005, std.caliper = FALSE)
+    m.out <- MatchIt::matchit(tissue_int~mean_coverage, data = data_combined)
     subsample <- MatchIt::match.data(m.out) %>% distinct(ref_junID, .keep_all = TRUE)
     
     message("Data subsampling finished!")
     
-    saveRDS(subsample, supplementary_figure11_path)
+    saveRDS(object = subsample, file = file = file.path(args$results_folder, "supplementary_figure11_after_subsampling.rds"))
     
     df_database_introns <- df_database_introns_tidy
     subsample_introns <- subsample
@@ -3486,8 +3235,8 @@ supplementary_figure11 <- function() {
     
   } else {
     
-    df_database_introns <- readRDS(file.path(args$results_folder, "supplementary_figure11.rds"))
-    subsample_introns <- readRDS(supplementary_figure11_path)
+    df_database_introns <- readRDS(file.path(args$results_folder, "supplementary_figure11_before_subsampling.rds"))
+    subsample_introns <- readRDS(file.path(args$results_folder, "supplementary_figure11_after_subsampling.rds"))
     
   }
   
@@ -3530,6 +3279,247 @@ supplementary_figure11 <- function() {
     list(donor_test = donor_test, acceptor_test = acceptor_test)
   }
 }
+
+
+## We Found that the expression levels of 107 RBPs (FDR<0.04) and 5 essential NMD genes67 (FDR<0.04) decreased with age in multiple tissues (Supplementary Figure 18a,b) (Supplementary Table 7). 
+## Focusing on brain tissue alone, 40% of the 115 RBPs studied had decreased expression levels with age (FDR<0.04) (Supplementary Figure 18b).
+
+supplementary_figure18 <- function() {
+  
+  
+  source("~/PROJECTS/recount3-database-project/scripts/27_age_effect_uncorrected_TPM_lm.R")
+  source("~/PROJECTS/splicing-accuracy-manuscript/scripts/99_utils.R")
+  
+  
+  ###################################
+  ## LOAD THE GENE LIST
+  ###################################
+  
+  gene_type <- "NMD"
+  
+  if (gene_type == "NMD") {
+    gene_list <- data.frame(id = c("ENSG00000005007", "ENSG00000151461", "ENSG00000169062", "ENSG00000157106", "ENSG00000198952", "ENSG00000070366", "ENSG00000116698"),
+                            name = c("UPF1", "UPF2", "UPF3", "SMG1", "SMG5", "SMG6", "SMG7"))
+  } else {
+    gene_list <- all_RBPs <- xlsx::read.xlsx(file = file.path(args$dependencies_folder, '/RBPs_subgroups.xlsx'), header = TRUE, sheetIndex = 1) %>% as_tibble() %>% distinct(name, .keep_all = T)
+  }
+  
+  
+  ###################################
+  ## LINEAR REGRESSION TO TEST IF THE
+  ## COVARIATE AGE AFFECTS THE LOG10 TPM LEVELS
+  ###################################
+  
+  if ( !file.exists(file.path(args$results_folder, paste0(gene_type, "_genes_age_lm.rds"))) ) {
+    
+    gene_age_lm <- map_df(all_projects, function(project_id) {
+      
+      # project_id <- all_projects[1]
+      
+      message(Sys.time(), " - ", project_id)
+      local_results_folder <- file.path(base_folder, "results", main_project, "/", gtf_version, project_id)
+      
+      if ( file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl", gtf_version,".rds")) &&
+           file.exists(paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_covariates.rds")) ) {
+        
+        message(Sys.time(), " - loading data for ", project_id, "...")
+        
+        dds_tpm <- readRDS(file = paste0(local_results_folder, "/", gene_type, "_expression/", project_id, "_tpm_ensembl",gtf_version,".rds"))
+        sample_metadata <- readRDS(file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
+        
+        
+      } else {
+        
+        dir.create(file.path(local_results_folder, paste0(gene_type, "_expression")), recursive = TRUE, showWarnings = T)
+        
+        ## Get metadata for local tissue
+        metadata <- readRDS(file = paste0(local_results_folder, "/base_data/", project_id, "_samples_raw_metadata.rds"))
+        
+        metadata$gtex.smafrze %>% unique
+        metadata$gtex.smrin %>% unique %>% min
+        
+        
+        ## Get base TPM for local tissue
+        recount_tpm <- readRDS(file = file.path(base_folder, "results/tpm/", paste0(project_id, "_tpm.rds"))) %>%
+          as_tibble(rownames = "gene")
+        
+        
+        recount_tpm %>% head
+        recount_tpm %>% nrow()
+        recount_tpm %>% ncol()
+        
+        
+        ## Tidy the object
+        
+        ## Filter by the samples of the current cluster
+        dds_tpm <- recount_tpm %>% 
+          dplyr::select(gene, all_of(metadata$external_id)) %>%
+          mutate(gene = gsub(pattern = "\\..*", replacement = "", x = gene)) %>%
+          filter(gene %in% gene_list$id)
+        
+        
+        saveRDS(object = dds_tpm,
+                file = paste0(local_results_folder, "/", gene_type, "_expression/", 
+                              project_id, "_tpm_ensembl", gtf_version, ".rds"))
+        
+        
+        # 2. Get the covariates to correct for
+        sample_metadata <- tidy_sample_metadata(sample.metadata = metadata, 
+                                                samples = metadata$external_id) %>% 
+          as_tibble(rownames = "covariates")
+        
+        saveRDS(object = sample_metadata, 
+                file = paste0(local_results_folder,  "/", gene_type, "_expression/", project_id, "_covariates.rds"))
+        
+        
+        rm(recount_tpm)
+        #gc()
+        
+      }
+      
+      
+      ##########################################
+      # 2. ANALYSIS
+      # Test if TPM values are significantly affected by age
+      ##########################################
+      
+      message(Sys.time(), " - getting linear models for ", project_id, "...")
+      
+      
+      lm_output <- age_effect_uncorrected_TPM_lm(project.id = project_id,
+                                                 tpm.uncorrected = dds_tpm,
+                                                 sample.metadata = sample_metadata,
+                                                 gene.list = gene_list,
+                                                 results.folder = paste0(local_results_folder,  "/", gene_type, "_expression/"))
+      
+      return(lm_output %>%
+               mutate(project = project_id))
+      
+      
+    })
+    
+    saveRDS(object = gene_age_lm %>% as_tibble(),
+            file = file.path(args$results_folder,"/", paste0(gene_type, "_genes_age_lm.rds")) ) 
+    
+    write_csv(x = gene_age_lm,
+              file = paste0(args$results_folder,"/", paste0(gene_type, "_genes_age_lm.csv")))
+    
+  } else {
+    message("Loading '", paste0(gene_type, "_genes_age_lm.rds"), "' file ...")
+    gene_age_lm <- readRDS(file = file.path(args$results_folder, paste0(gene_type, "_genes_age_lm.rds")) ) 
+  }
+  
+  tissues_data_tidy <- gene_age_lm %>%  filter(covariate == "gtex.age") 
+  
+  
+  ##################################
+  ## GET STATS FOR THE PAPER
+  ##################################
+  
+  ## We formally assessed this in the GTEx dataset, and found that the expression levels of 107 RBPs (FDR<0.04) and 5 essential NMD genes67 (FDR<0.04) decreased with age in multiple tissues
+  
+  tissues_data_tidy %>%
+    filter(q <= 0.05, Estimate < 0) %>%
+    pull(name) %>%
+    unique() %>%
+    length()
+  
+  tissues_data_tidy %>%
+    filter(q <= 0.05, Estimate < 0) %>%
+    group_by(project) %>%
+    dplyr::count()
+  
+  tissues_data_tidy %>%
+    filter(q <= 0.05, Estimate < 0) %>%
+    pull(q) %>%
+    summary()
+  
+  ((tissues_data_tidy %>%
+      filter(q <= 0.05) %>%
+      nrow) * 100) / (tissues_data_tidy %>% nrow)
+  
+  
+  tissues_data_tidy %>%
+    filter(q <= 0.05) %>%
+    pull(q) %>%
+    summary()
+  
+  
+  ##################################
+  ## GET STATS FOR BRAIN
+  ##################################
+  
+  brain_data_tidy <- tissues_data_tidy %>%
+    filter(covariate == "gtex.age",
+           project == "BRAIN") %>%
+    distinct(name, .keep_all =T)
+  
+  
+  ((brain_data_tidy %>%
+      filter(q <= 0.05, Estimate < 0) %>%
+      nrow) * 100) / (brain_data_tidy %>% nrow)
+  
+  brain_data_tidy$name
+  
+  brain_data_tidy %>%
+    filter(q <= 0.05, Estimate < 0) %>%
+    pull(q) %>%
+    summary()
+  
+  ##################################
+  ## PLOT
+  ##################################
+  
+  ## Check the NMD factors with TPM values affected by age
+  gene_age_lm_tidy <- tissues_data_tidy %>%
+    filter(covariate == "gtex.age") %>%
+    mutate(q = ifelse(Estimate < 0, q, NA)) %>%
+    mutate(q = ifelse(q > 0.05, NA, q)) %>%
+    mutate(`log10(q)` = q %>% log10()) %>%
+    group_by(name) %>%
+    mutate(name = factor(name, levels=(gene_age_lm$name)[order(gene_age_lm$name %>% unique %>% dplyr::desc())] %>% unique))  %>%
+    ungroup()
+  
+  #gene_age_lm_tidy$name <- factor(gene_age_lm_tidy$name, levels=(gene_age_lm_tidy$name)[order(gene_age_lm_tidy$Estimate)])
+  
+  ggplot(data = gene_age_lm_tidy %>%
+           mutate(project = str_replace(project, pattern = "_", replacement = " ")) ) + 
+    geom_tile(mapping = aes(x = fct_rev(name), 
+                            y = fct_rev(project), 
+                            fill = `log10(q)`, 
+                            colour = "q>=0.05")) +
+    scale_fill_gradient(low = "red", 
+                        high = "white", 
+                        na.value = '#cccccc') +
+    scale_colour_manual(values = c( "q>=0.05" = "#cccccc")) +
+    xlab("") + 
+    ylab("") + 
+    theme_light()  +
+    custom_ggtheme +
+    guides(colour = guide_legend(override.aes = list(fill = '#cccccc'),
+                                 title = "",
+                                 label.position = "bottom",
+                                 order = 2)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = .5, hjust = 1, size = 5),
+          axis.text.y = element_text(size = 5, colour = "black"),
+          legend.position = "top",
+          legend.text = element_text(size = 5, colour = "black"),
+          legend.title = element_text(size = 5, colour = "black"),
+          legend.box.margin = margin(l = -10, r = -10, b = -10, t = -5
+          ))
+  
+  
+  
+  file_name <- if (gene_type == "NMD") {
+    file.path(args$figures_folder, "supplementary_figure18_a.png")
+  } else {
+    file.path(args$figures_folder, "supplementary_figure18_b.png")
+  }
+  ggplot2::ggsave(filename = file_name, width = 180, height = 90, units = "mm", dpi = 300)
+  
+  
+}
+
 
 supplementary_figure28 <- function() {
   
@@ -3968,6 +3958,11 @@ supplementary_table3 <- function()  {
 run_sql_query <- function(con, table, columns, table_suffix) {
   query <- paste0("SELECT DISTINCT ", columns, " FROM '", table, table_suffix, "'")
   dbGetQuery(con, query) %>% as_tibble()
+}
+
+get_mode <- function(data) {
+  uniqv <- unique(data)
+  uniqv[which.max(tabulate(match(data, uniqv)))]
 }
 
 ##################################

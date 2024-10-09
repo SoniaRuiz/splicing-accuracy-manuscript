@@ -76,33 +76,23 @@ custom_ggtheme <-  theme(text = element_text(size = 7, family="Arial", colour = 
 #' @export
 #'
 #' @examples
-age_stratification_get_stats <- function() {
+age_database_stats <- function() {
   
-  
-  tables <- dbListTables(con)
-  query <- paste0("SELECT * from 'metadata'")
   
   ## Total number of samples considered
-  db_metadata <- dbGetQuery(con, query) %>% as_tibble()
-  db_metadata %>%
-    distinct(sample_id, .keep_all = T)
+  df_metadata %>% distinct(sample_id, .keep_all = T)
   
   
   ## Number of individuals
-  db_metadata %>%
-    distinct(external_id, .keep_all = T)
+  df_metadata %>% distinct(external_id, .keep_all = T)
   
   
   ## Number of samples per age group
-  db_metadata %>%
-    distinct(external_id, .keep_all = T)%>%
-    dplyr::count(cluster)
+  df_metadata %>%  distinct(external_id, .keep_all = T) %>% dplyr::count(cluster)
   
   
   ## Number of tissues considered
-  db_metadata %>%
-    distinct(external_id, .keep_all = T)%>%
-    dplyr::count(SRA_project,cluster)
+  df_metadata %>% distinct(external_id, .keep_all = T) %>% dplyr::count(SRA_project,cluster)
   
   
   ## ANNOTATED INTRONS 
@@ -118,7 +108,6 @@ age_stratification_get_stats <- function() {
   
   
   
-  
   ## NOVEL JUNCTIONS
   
   query <- paste0("SELECT novel_junID, novel_type from 'novel'")
@@ -128,14 +117,19 @@ age_stratification_get_stats <- function() {
   novel %>% distinct(novel_junID) %>% nrow()
   novel %>% dplyr::count(novel_type)
   
+  
+  
+  ## TRANSCRIPTS AND GENES
+  
   ## covering 200,837 transcripts, 31,544 genes
+  query <- paste0("SELECT transcript_id from 'transcript'")
+  transcript <- dbGetQuery(con, query) 
+  transcript %>% distinct(transcript_id) %>% nrow()
+  
   query <- paste0("SELECT gene_id from 'gene'")
   gene <- dbGetQuery(con, query) 
   gene %>% nrow()
   
-  query <- paste0("SELECT transcript_id from 'transcript'")
-  transcript <- dbGetQuery(con, query) 
-  transcript %>% distinct(transcript_id) %>% nrow()
 
 }
 
@@ -147,15 +141,12 @@ age_stratification_get_stats <- function() {
 #' @export
 #'
 #' @examples
-age_stratification_plot_metadata <- function() {
+supplementary_figure23 <- function() {
   
 
+  db_metadata <- df_metadata %>% mutate(gender = gender %>% as.integer())
   
-  db_metadata <- df_metadata %>%
-    mutate(gender = gender %>% as.integer())
   
-  # db_metadata <- project_init %>% dplyr::rename(cluster = age_group, SRA_project = project, gender = sex)
-
   ## Num samples
   plot_num_samples <- ggplot(db_metadata %>% 
            dplyr::count(SRA_project,cluster) %>%
@@ -216,10 +207,8 @@ age_stratification_plot_metadata <- function() {
                     plot_rin,plot_read_depth,
                     labels = c("a","b","c","d"))
   
-  
 
-  file_name <- paste0(figures_folder, "/age_metadata")
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 210, height = 190, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = file.path(args$figures_folder, "supplementary_figure23.png"), width = 210, height = 190, units = "mm", dpi = 300)
   
   
 }
@@ -233,24 +222,9 @@ age_stratification_plot_metadata <- function() {
 #'
 #' @examples
 get_common_introns_across_age_groups <- function() {
+
   
-  ## CONNECT TO THE DATABASE
-  con <- dbConnect(RSQLite::SQLite(), database_path) 
-  dbListTables(con)
-  query <- paste0("SELECT * FROM 'metadata'")
-  
-  
-  ## Load metadata
-  df_metadata <- dbGetQuery(con, query) %>%
-    group_by(SRA_project) %>%
-    mutate(nsamples = n()) %>%
-    filter(nsamples >= 70)
-  
-  
-  #folder_results <- paste0(getwd(), "/results/_paper/results/")
-  #dir.create(file.path(folder_results), recursive = TRUE, showWarnings = T)
-  
-  
+
   df_age_groups_all_introns <- map_df(age_projects, function(project_id) {
       
     # project_id <- age_projects[1]
@@ -269,10 +243,7 @@ get_common_introns_across_age_groups <- function() {
       
       print(paste0(age_group))
       
-      query <- paste0("SELECT name 
-                      FROM sqlite_master 
-                      WHERE type='table' AND name='", 
-                      age_group, "_", project_id, "_nevermisspliced';")
+      query <- paste0("SELECT name FROM sqlite_master WHERE type='table' AND name='", age_group, "_", project_id, "_nevermisspliced';")
         
       if ( (dbGetQuery(con, query) %>% nrow()) > 0 ) {
         
@@ -359,8 +330,7 @@ get_common_introns_across_age_groups <- function() {
   
   
   ## Save data
-  file_name <- paste0(results_folder, "/common_introns_all_age_groups.rds")
-  saveRDS(object = df_age_groups_tidy, file = file_name)
+  saveRDS(object = file.path(args$results_folder, "/common_introns_all_age_groups.rds"), file = file_name)
   
 }
 
@@ -711,6 +681,24 @@ main_figure7_b <- function() {
   )
   
   
+  clusterProfiler::dotplot(ego_MSR %>% filter(ONTOLOGY == "CC"), 
+                           x = "GeneRatio", 
+                           showCategory = 30, 
+                           split="ONTOLOGY") +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
+    xlab("Gene Ratio") +
+    ggforce::facet_col(ONTOLOGY~., scales = "free_y", space = "free") +
+    custom_ggtheme +
+    theme(legend.position = "top",legend.box = "horizontal",
+          plot.margin = margin(t = -5,b = 0,l = 5,r = 5),
+          legend.margin=margin(t = -5,b = -5, r = 5, 0),
+          legend.box.margin=margin(t = -5,r = 10,b = -5,l = 0)) + 
+    scale_size(range = c(1, 5)) +
+    guides(size = guide_legend(title = "Gene Count: "),
+           colour = guide_legend(title = "q: "))    
+  ggplot2::ggsave(file.path(args$figures_folder, "figure7_bGO.png"), width = 180, height = 75, units = "mm", dpi = 300)
+  
+  
   ## . Interestingly, this analysis identified significant enrichment in terms such as "neuron to neuron synapse" (FDR<0.001), "tau protein binding" (FDR=0.006) and "dendritic spine" (FDR<0.001) 
   ego_MSR %>% as_tibble() %>% filter(Description == "dendritic spine")
   ego_MSR %>% as_tibble() %>% filter(str_detect(Description, pattern = "neuron to neuron synapse")) 
@@ -746,13 +734,11 @@ main_figure7_b <- function() {
                                       organism = 'hsa', keyType="kegg", pvalueCutoff = 0.05)
   
   clusterProfiler::dotplot(kegg, showCategory=30) 
-  
+  ggplot2::ggsave(file.path(args$figures_folder, "figure7_bKEGG.png"), width = 180, height = 75, units = "mm", dpi = 300)
   
   
   ## Save Data
-  write.csv(x = kegg %>% as.data.frame() ,
-            file = file.path(args$data_folder, "figure7_b2.csv"),
-            row.names = F)
+  write.csv(x = kegg %>% as.data.frame(), file = file.path(args$data_folder, "figure7_b2.csv"), row.names = F)
   
 }
 

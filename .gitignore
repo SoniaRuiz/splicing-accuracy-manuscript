@@ -57,7 +57,10 @@ results
 knockdown_analysis
 paper_figures
 database
-dependencies
+
+dependencies/ENCORI/*
+!dependencies/ENCORI/encori-rbp.sh
+
 natcomms_review
 ENCODE_LR
 SAI-10k-calc
