@@ -2,7 +2,7 @@
 
 ## Splicing accuracy varies across human introns, tissues, age and disease
 
-*Sonia Garcia-Ruiz, [David Zhang](https://github.com/dzhang32), [Emil K Gustavsson](https://github.com/egustavsson), Guillermo Rocamora-Perez, [Melissa Grant-Peters](https://github.com/mgrantpeters), Aine Fairbrother-Browne, Regina H Reynolds, Jonathan W Brenton, Ana L Gil-Martinez, Zhongbo Chen, Donald C Rio, Juan A Botia, Sebastian Guelfi, [Leonardo Collado-Torres](https://lcolladotor.github.io/), Mina Ryten*
+*Sonia Garcia-Ruiz, [David Zhang](https://github.com/dzhang32), [Emil K Gustavsson](https://github.com/egustavsson), [Guillermo Rocamora-Perez](https://github.com/guillermo1996/), [Melissa Grant-Peters](https://github.com/mgrantpeters), [Aine Fairbrother-Browne](https://github.com/ainefairbrother), [Regina H Reynolds](https://github.com/RHReynolds), [Jonathan W Brenton](https://github.com/Jbrenton191), Ana L Gil-Martinez, [Zhongbo Chen](https://github.com/ZhongboUCL), Donald C Rio, [Juan A Botia](https://github.com/juanbot), Sebastian Guelfi, [Leonardo Collado-Torres](https://lcolladotor.github.io/), Mina Ryten*
 
 bioRxiv 2023.03.29.534370;
 doi: [https://doi.org/10.1101/2023.03.29.534370](https://doi.org/10.1101/2023.03.29.534370)
@@ -27,7 +27,7 @@ Produces the main and supplementary figures and tables using the *'ENCODE shRNA'
 All supplementary tables can be accessed through Zenodo using the DOI: [10.5281/zenodo.7732872](https://zenodo.org/record/7732872)
 
 ## Databases
-All SQLite databases used in the *'Splicing accuracy varies across human introns, tissues and age'* paper, can be freely downloaded from [this website](https://rytenlab.com/browser/app/splicing_accuracy_manuscript_databases).
+All SQLite databases used in the *'Splicing accuracy varies across human introns, tissues, age and disease'* paper, can be freely downloaded from [this website](https://rytenlab.com/browser/app/splicing_accuracy_manuscript_databases).
 
 ## Tested Environments
 The code included within this repository has been successfully tested on:
