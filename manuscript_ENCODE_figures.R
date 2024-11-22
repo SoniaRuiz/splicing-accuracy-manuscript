@@ -10,7 +10,7 @@ library(ggridges)
 ## CONNECT TO THE SPLICING DATABASE ################
 ####################################################
 
-# source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/splicing_accuracy_manuscript_ENCODE_figures.R")
+# source("/home/sruiz/PROJECTS/splicing-accuracy-manuscript/manuscript_ENCODE_figures.R")
 
 
 ## CONNECT TO THE DATABASE ------------------------------
@@ -27,12 +27,7 @@ database_path <- paste0(database_folder,  "/", project_name, ".sqlite")
 con <- dbConnect(RSQLite::SQLite(), database_path)
 tables <- dbListTables(con)
 
-
-
-
 ## SET PATHS TO FOLDERS
-
-
 
 base_folder <- here::here()
 
@@ -55,6 +50,7 @@ dir.create(file.path(args$data_folder), recursive = TRUE, showWarnings = F)
 query = paste0("SELECT * FROM 'metadata'")
 master_metadata <- dbGetQuery(con, query) %>% as_tibble()
 all_projects <- master_metadata$SRA_project %>% unique
+all_projects %>% length
 
 query <- paste0("SELECT * FROM 'intron'")
 master_introns <- dbGetQuery(con, query) %>% as_tibble()
@@ -367,653 +363,32 @@ get_common_introns_across_experiments <- function (RBPs = NULL,
   return(common_introns_all_experiments)
 }
 
-get_anchor_effect_control_knockdown <- function() {
-  
-  ## Load common introns
-  
-  required_clusters <- "control"
-  target_genes = "all"
-  
-  common_introns_path <- paste0(args$results_folder, "/common_introns_details_",
-                                paste(target_genes, collapse = "_"), "_experiments_", 
-                                paste(required_clusters,collapse = "_"), ".rds")
-  
-  if( file.exists(common_introns_path) ) {
-    
-    message("Loading common introns...")
-    common_introns_all_experiments <- readRDS(file = common_introns_path)
-    
-  } else {
-    ## Load common introns
-    message("Calculating common introns...")
-    common_introns_all_experiments <- get_common_introns_across_experiments(RBPs = "all",
-                                                                            required_clusters = required_clusters)
-  }
-
-  common_introns_all_experiments %>%
-    distinct(RBP) %>%
-    dplyr::count()
-  
-  common_introns_all_experiments %>%
-    group_by(RBP) %>%
-    distinct(ref_junID) %>%
-    dplyr::count() %>%
-    ungroup()
-  
-  common_introns_all_experiments_w_novel <- common_introns_all_experiments %>%
-    left_join(y = master_novel_junctions %>% dplyr::select(novel_junID, novel_type, distance),
-              by = "novel_junID")
-  
-  #################################################
-  ## PROPORTION OF UNIQUE JUNCTIONS
-  #################################################
-  
-  df_proportion_jxn <- map_df(all_projects, function(project_id) {
-    
-    # project_id <- all_projects[1]
-    
-    print(paste0(Sys.time(), " - ", project_id))
-    
-    common_introns_local_experiment <- common_introns_all_experiments_w_novel %>% filter(RBP == project_id)
-    
-    annotated_junc <- common_introns_local_experiment %>% distinct(ref_junID) %>% nrow()
-    donor_junc <- common_introns_local_experiment %>% filter(novel_type == "novel_donor") %>% distinct(novel_junID) %>% nrow()
-    acceptor_junc <- common_introns_local_experiment %>% filter(novel_type == "novel_acceptor") %>% distinct(novel_junID) %>% nrow()
-    
-    annotated_prop <- annotated_junc/(annotated_junc + donor_junc + acceptor_junc)
-    donor_prop <- donor_junc/(annotated_junc + donor_junc + acceptor_junc)
-    acceptor_prop <- acceptor_junc/(annotated_junc + donor_junc + acceptor_junc)
-    
-    return(data.frame(RBP = project_id,
-                      annotated_prop = annotated_prop,
-                      donor_prop = donor_prop,
-                      acceptor_prop = acceptor_prop))
-    
-  })
-  
-  
-  df_proportion_jxn_tidy <- df_proportion_jxn %>%
-    tidyr::gather(key = "type", value = "prop", -RBP) %>%
-    mutate(type = str_remove_all(string = type, pattern = "_prop")) %>%
-    filter(type != "annotated") %>%
-    mutate(prop = prop * 100)
-  
-  df_proportion_jxn_tidy$type = factor(df_proportion_jxn_tidy$type, 
-                                       levels = c("donor","acceptor"))
-  
-  unique_jxn_violin_plot <- ggplot(df_proportion_jxn_tidy, aes(type, prop, fill = type)) + 
-    geom_violin(trim = FALSE) +
-    geom_point(size = 0.5, colour = "#333333") +
-    geom_line( aes(group = RBP), colour = "#333333",linewidth = .2 )  +
-    theme_light() +
-    ylab("% unique junctions") +
-    xlab("") +
-    theme(axis.line = element_line(colour = "black"), 
-          text = element_text(colour = "black", size = 12),
-          legend.position = "top") +
-    scale_x_discrete( breaks = c( "acceptor", "donor"),
-                      labels = c( "Novel Acceptor", "Novel Donor")) +
-    scale_fill_manual(values = c( "#35B779FF", "#8d03b0"),
-                      breaks = c( "donor", "acceptor"),
-                      labels = c( "Novel Donor", "Novel Acceptor")) +
-    guides(fill = guide_legend(title = NULL,
-                               ncol = 2, 
-                               nrow = 1)) +
-    custom_ggtheme + 
-    theme(legend.position = "right")
-  
-  
-  #################################################
-  ## CUMMULATIVE NUMBER OF READS
-  #################################################
-  
-  
-  df_proportion_reads <- map_df(all_projects, function(project_id) {
-    
-    # project_id <- all_projects[1]
-    
-    print(paste0(Sys.time(), " - ", project_id))
-    
-    common_introns_local_experiment <- common_introns_all_experiments_w_novel %>% filter(RBP == project_id)
-    
-    annotated_reads <- common_introns_local_experiment %>% distinct(ref_junID, .keep_all = T) %>% pull(ref_sum_counts) %>% sum()
-    donor_reads <- common_introns_local_experiment %>% filter(novel_type == "novel_donor") %>% distinct(novel_junID, .keep_all = T) %>% pull(novel_sum_counts) %>% sum()
-    acceptor_reads <- common_introns_local_experiment %>% filter(novel_type == "novel_acceptor")%>% distinct(novel_junID, .keep_all = T) %>% pull(novel_sum_counts) %>% sum()
-    
-    annotated_prop <- annotated_reads/(annotated_reads + donor_reads + acceptor_reads)
-    donor_prop <- donor_reads/(annotated_reads + donor_reads + acceptor_reads)
-    acceptor_prop <- acceptor_reads/(annotated_reads + donor_reads + acceptor_reads)
-    
-    return(data.frame(RBP = project_id,
-                      annotated = annotated_prop,
-                      donor = donor_prop,
-                      acceptor = acceptor_prop))
-    
-  })
-  
-  df_proportion_reads_tidy <- df_proportion_reads  %>%
-    tidyr::gather(key = "type", value = "prop", -RBP) %>%
-    filter(type != "annotated") %>%
-    mutate(prop = prop * 100)
-  
-  df_proportion_reads_tidy$type = factor(df_proportion_reads_tidy$type, 
-                                         levels = c("donor", "acceptor"))
-  
-  
-  reads_violin_plot <- ggplot(df_proportion_reads_tidy, aes(type, prop, fill = type)) + 
-    geom_violin(trim = FALSE) +
-    geom_point(size = 0.5, colour = "#333333") +
-    geom_line( aes(group = RBP), colour = "#333333",linewidth = .2  )  +
-    theme_light() +
-    ylab("% cumulative read counts") +
-    xlab("") +
-    theme(axis.line = element_line(colour = "black"), 
-          text = element_text(colour = "black", size = 12),
-          legend.position = "top") +
-    scale_x_discrete( breaks = c( "acceptor", "donor"),# "annotated_intron"),
-                      labels = c( "Novel Acceptor", "Novel Donor")) +
-    scale_fill_manual(values = c( "#35B779FF", "#8d03b0"),
-                      breaks = c( "donor", "acceptor"),
-                      labels = c( "Novel Donor", "Novel Acceptor")) + 
-    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))+
-    custom_ggtheme + 
-    theme(legend.position = "right")
-  
-  
-  
-  ggpubr::ggarrange(unique_jxn_violin_plot,
-                    reads_violin_plot,
-                    common.legend = T,
-                    #labels = c("a", "b"),
-                    align = "h",
-                    ncol = 2,
-                    nrow = 1) +
-    theme( plot.margin = margin(t = -5,
-                                r = -5,
-                                b = -10,
-                                l = -5),
-           legend.box.margin=margin(b = -10))
-  
-  
-  ggsave(file = paste0(args$figures_folder , "/anchor_RBP_unique_jxn_reads.png"),
-         width = 130, height = 50, dpi = 300, units = "mm")
-  
-  #################################################
-  ## MODULO
-  #################################################
-  
-  df_modulo_experiments <- common_introns_all_experiments_w_novel %>%
-    group_by(RBP) %>%
-    distinct(novel_junID, .keep_all = T) %>%
-    filter(abs(distance) <= 100) %>% 
-    mutate(novel_type = str_replace(string = novel_type,
-                                    pattern = "_",
-                                    replacement = " ")) %>%
-    mutate(modulo = abs(distance) %% 3) %>%
-    ungroup
-  
-  df_modulo_experiments <- df_modulo_experiments %>% 
-    group_by(RBP,modulo) %>%
-    summarise(n = n()) %>%
-    mutate(freq = (n / sum(n))*100) 
-  
-  df_modulo_experiments$modulo = factor(df_modulo_experiments$modulo, 
-                                        levels = c( "0", "1", "2"))
-  
-  ggplot(df_modulo_experiments, aes(x = freq, y = modulo)) +
-    ggridges::geom_density_ridges_gradient() +
-    ylab("Modulo3 of the distance") +
-    xlab("% of novel junctions") +
-    theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "none") +
-    scale_x_continuous(breaks = c(30,35,40),
-                       labels = c("30%","35%","40%")) +
-    scale_y_discrete(expand = c(0,0.5,1,0))
-  
-  
-  ggsave(file = paste0(args$figures_folder , "/anchor_RBP_modulo.png"),
-         width = 50, height = 60, dpi = 300, units = "mm")
-  
-  
-  
-  
-  #################################################
-  ## DISTANCES
-  #################################################
-  
-  
-  limit_bp = 30
-  
-  common_introns_all_experiments_w_protein <- common_introns_all_experiments_w_novel %>%
-    #filter(RBP == "U2AF2") %>%
-    left_join(y = master_introns %>% dplyr::select(ref_junID, protein_coding),
-              by = "ref_junID")
-  
-  plot_distances_PC <- ggplot(common_introns_all_experiments_w_protein %>%
-                                filter(protein_coding %in% c(0,100)) %>%
-                                mutate(protein_coding_label = ifelse (protein_coding == 0, "Noncoding", "Protein-coding")) %>%
-                                mutate(protein_coding_label = protein_coding_label %>% as.factor()) %>%
-                                mutate(novel_type = str_replace(string = novel_type, pattern = "_", replacement = " ")) %>%
-                                distinct(novel_junID, .keep_all = T) %>% 
-                                filter(abs(distance) < limit_bp) ) + 
-    geom_histogram(aes(x = distance, fill = fct_rev(novel_type)),
-                   bins = 60, 
-                   binwidth = 1, 
-                   position = "identity", 
-                   alpha = 1, 
-                   color = "black", 
-                   linewidth = 0.1) +
-    scale_x_continuous(breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
-    # ggsci::scale_fill_npg()+
-    scale_fill_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("novel donor", "novel acceptor"),
-                      labels = c("Novel donor", "Novel acceptor")) +
-    labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
-    facet_grid(fct_rev(protein_coding_label)~fct_rev(novel_type),
-               scales = "free_y") +
-    
-    guides(fill = guide_legend(title = "Sample type: ", ncol = 1, nrow = 2 )) +
-    theme_light() +
-    custom_ggtheme + 
-    theme( legend.position = "none",
-                            
-                            plot.margin = margin(t = 0,
-                                                 r = -5,
-                                                 b = 0,
-                                                 l = -5),
-                            legend.box.margin=margin(b = -10))
-  plot_distances_PC
-  
-  distance_rectangle <- ggplot() +
-    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
-    geom_text(aes(x = 15, y = 33),  size = 3, label = "exon") +
-    geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
-    geom_text(aes(x = -15, y = 48),  size = 3, label = "intron") +
-    theme_void()
-  
-  plot_distances_PC / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
-  
-  
-  ggsave(file = paste0(args$figures_folder , "/anchor_RBP_distances.png"),
-         width = 125, height = 60, dpi = 300, units = "mm")
-  
-  
-  
-  
-  #################################################
-  ## DELTA MES
-  #################################################
-  
-  
-  ## DELTA MES VALUES 
-  
-  RBP_delta_MES <- common_introns_all_experiments_w_novel %>%
-    filter(RBP == "U2AF2") %>%
-    left_join(y = master_introns %>% dplyr::select(ref_junID, ref_mes5ss, ref_mes3ss),
-              by = "ref_junID")%>%
-    left_join(y = master_novel_junctions %>% dplyr::select(novel_junID, novel_mes5ss, novel_mes3ss),
-              by = "novel_junID") %>% 
-    distinct(novel_junID, .keep_all = T) %>%
-    mutate(delta_ss5score = ref_mes5ss - novel_mes5ss,
-           delta_ss3score = ref_mes3ss - novel_mes3ss) %>%
-    dplyr::select(novel_junID, ref_junID, novel_type,  
-                  delta_ss5score, delta_ss3score, RBP) %>%
-    drop_na() %>%
-    dplyr::select(delta_ss5score, delta_ss3score, novel_type) %>%
-    gather(key = delta_type, value = deltaMES) %>%
-    mutate(delta_type = ifelse(delta_type == "delta_ss5score", "MES Donor", "MES Acceptor")) %>%
-    mutate(delta_type = delta_type %>% as.factor()) %>%
-    mutate(deltaMES = deltaMES %>% as.double()) %>%
-    filter(deltaMES != 0) 
-  
-  
-  
-  ## PREPARE DATA FOR THE DENSITY PLOT
-  
-  delta_mes <- ggplot(data = RBP_delta_MES )  +
-    geom_density(aes(x = deltaMES, fill = delta_type), alpha = 0.9) +
-    geom_vline(xintercept = 0) +
-    ggforce::facet_col(~fct_rev(delta_type), strip.position = "right") +
-    scale_fill_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("MES Donor", "MES Acceptor"),
-                      labels = c("Novel Donor", "Novel Acceptor")) +
-    labs(x = "Delta MES", y = "Density") +
-    theme_light() +
-    custom_ggtheme + 
-    theme( plot.margin = margin(t = 0, r = 0, b = 0, l = 0),
-           legend.box.margin = margin(b = -11) ) + 
-    theme( legend.position = "none")
-  
-  delta_mes
-  ggsave(file = paste0(args$figures_folder, "/anchor_RBP_deltaMES.png"),
-         width = 45, height = 50, dpi = 300, units = "mm")
-  
-  
-  
-  
-  #################################################
-  ## MSR
-  #################################################
-  
-  
-  
-  df_all_introns_tidy <- common_introns_all_experiments_w_protein %>%
-    filter(RBP == "U2AF1") %>%
-    dplyr::select(ref_junID, MSR_D, MSR_A, RBP, protein_coding) %>%
-    gather(key = "MSR_type", value = "MSR", -ref_junID, -RBP, - protein_coding) %>%
-    mutate(type_label = ifelse(MSR == 0, "Accurate Splicing", "Mis-splicing"))
-  
-  df_all_introns_tidy <- df_all_introns_tidy %>%
-    mutate(percentile_group = case_when(MSR == 0 ~ "0",
-                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
-                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
-                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
-                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
-                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
-  
-  df_all_introns_tidy$MSR_type = factor(df_all_introns_tidy$MSR_type, 
-                                        levels = c("MSR_D", "MSR_A"))
-  
-  plot1 <- ggplot(data = df_all_introns_tidy) + 
-    geom_bar(aes(x = type_label, fill = MSR_type), position = "dodge") +
-    ggplot2::labs(x = "", y = "Annotated introns")+
-    theme_light() +
-    scale_fill_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("MSR_D","MSR_A"),
-                      labels = c("MSR Donor","MSR Acceptor")) +
-    custom_ggtheme +
-    #facet_grid(~target_gene) +
-    guides(fill = guide_legend(title = NULL,
-                               ncol = 2, 
-                               nrow = 1)) + 
-    theme( plot.margin = margin(0,10,0,0),
-           legend.box.margin=margin(b = -5) )
-  
-  
-  plot1
-  
-  
-  
-  ## 2. ZOOMED PLOT VERSION
-  
-  df_all_introns_tidy$percentile_group = factor(df_all_introns_tidy$percentile_group,
-                                                levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
-  
-  plot2 <- ggplot(data = df_all_introns_tidy %>%
-                    filter(percentile_group != "0")) +
-    geom_bar(aes(x = percentile_group, fill = MSR_type),position = "dodge")+
-    #ggtitle("All annotated introns") +
-    xlab("Mis-splicing ratio value group") +
-    ylab("") +
-    ggforce::facet_zoom(ylim=c(0,1000), split = TRUE) +
-    #ylim(c(0,23000))+
-    theme_light() +
-    scale_fill_manual(values = c("#35B779FF","#64037d"),
-                      breaks = c("MSR_D","MSR_A"),
-                      labels = c("MSR Donor","MSR Acceptor")) +
-    custom_ggtheme +
-    #facet_grid(~target_gene) +
-    guides(fill = guide_legend(title = NULL,
-                               ncol = 2,
-                               nrow = 1))
-  
-  
-  ggpubr::ggarrange(plot1,
-                    plot2,
-                    labels = c("", ""),
-                    nrow = 2, 
-                    ncol = 1,
-                    heights = c(1,1.5),
-                    common.legend = T)
-  
-  ggsave(file = paste0(args$figures_folder,"/anchor_RBP_MSR.png"),
-         width = 135, height = 70, dpi = 300, units = "mm")
-  
-  
-  ########################################################
-  ## MSR BIOTYPE
-  ########################################################
-  
-  
-  
-  ## TIDY DATAFRAME
-  df_biotype_result_tidy <- common_introns_all_experiments_w_protein %>%
-    filter(RBP == "U2AF1") %>%
-    filter(protein_coding %in% c(0,100)) %>%
-    mutate(biotype = ifelse(protein_coding == 100, "PC", "non PC"))  %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    group_by(ref_junID) %>%
-    mutate(mean_coverage = (sum(ref_sum_counts)/sum(ref_n_individuals)) %>% log10()) %>%
-    ungroup()
-  
-  df_biotype_result_tidy %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    dplyr::count(biotype)
-  
-  ## PLOT
-  plot_BS <- ggplot(data = df_biotype_result_tidy %>% distinct(ref_junID,.keep_all = T)) +
-    geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.9) +
-    ggtitle("Before subsampling") +
-    xlab("log10 mean expression level") +
-    theme_light() +
-    custom_ggtheme +
-    ggsci::scale_fill_npg(name = "Transcript biotype: ")
-  
-  plot_BS
-  #### START SUBSAMPLIING
-  
-  ## lncRNA
-  df_lncRNA_tidy <- df_biotype_result_tidy %>% 
-    distinct(ref_junID, .keep_all = T) %>%
-    dplyr::filter(biotype == "non PC")
-  ## protein-coding
-  df_protein_coding_tidy <- df_biotype_result_tidy %>% 
-    distinct(ref_junID, .keep_all = T) %>%
-    dplyr::filter(biotype  == "PC")
-  
-  data_combined <- rbind(df_protein_coding_tidy, df_lncRNA_tidy) %>% dplyr::select(-distance)
-  
-  ## QC
-  if ( !identical( data_combined$ref_junID %>% sort(), 
-                   df_biotype_result_tidy %>% 
-                   distinct(ref_junID,.keep_all = T) %>% 
-                   pull(ref_junID) %>% 
-                   sort()
-  ) ) {
-    print("ERROR!")
-    break;
-  }
-  
-  
-  if ( !file.exists(paste0(args$results_folder, "/MSR_subsample.rds")) ) {
-    ## Subsampling introns to control by similarity in mean read coverage
-    m.out <- MatchIt::matchit(biotype ~ mean_coverage, 
-                              data = data_combined, 
-                              distance = data_combined$mean_coverage,
-                              method = "nearest", 
-                              caliper = c(mean_coverage = 0.005), 
-                              std.caliper = FALSE)
-    
-    
-    subsample <- MatchIt::match.data(m.out)
-    subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(biotype)
-    
-    
-    saveRDS(object = subsample,
-            file = paste0(args$results_folder, "/anchor_MSR_subsample.rds"))
-  } else {
-    subsample <- readRDS(file = paste0(args$results_folder, "/anchor_MSR_subsample.rds"))
-  }
-  
-  
-  plot_AS <- ggplot(data = subsample) +
-    geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.9) +
-    ggtitle("After subsampling") +
-    theme_light() +
-    custom_ggtheme +
-    xlab("log10 mean expresion level")+
-    ggsci::scale_fill_npg(name = "Transcript biotype: ")
-  
-  
-  ggpubr::ggarrange(plot_BS,
-                    plot_AS,
-                    labels = c("a", "b"),
-                    common.legend = T)
-  
-  file_name <- paste0(args$figures_folder, "/anchor_MSR_subsampling")
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
-  
-  
-  
-  ## Analysing differences in MSR_D and MSR_A
-  
-  ## subset introns from lncRNA transcripts after subsampling
-  subsample_lncRNA <- subsample %>%
-    dplyr::filter(biotype=="non PC")
-  ## subset introns from protein-coding transcripts after subsampling
-  subsample_protein_coding <- subsample %>%
-    dplyr::filter(biotype=="PC")
-  ## QC
-  if ( intersect(subsample_protein_coding$ref_junID, subsample_lncRNA$ref_junID) %>% length() > 0 )  {
-    print("ERROR! some introns have been categorised as lncRNA and protein-coding.")
-  }
-  
-  
-  df_introns_biotype <- subsample %>%
-    filter(protein_coding %in% c(0,100)) %>%
-    mutate(type_PC = ifelse(protein_coding == 100, "PC", "non PC")) 
-  
-  any(df_introns_biotype %>%
-        pull(ref_junID ) %>% 
-        duplicated())
-  
-  
-  df_introns_biotype$biotype = factor(df_introns_biotype$biotype, 
-                                      levels = c("non PC","PC"))
-  
-  df_introns_biotype <- df_introns_biotype %>%
-    dplyr::select(ref_junID, biotype, MSR_D, MSR_A) %>%
-    gather(key = "MSR_type", value = "MSR", -biotype, -ref_junID)
-  
-  
-  df_introns_biotype$MSR_type = factor(df_introns_biotype$MSR_type, 
-                                       levels = c("MSR_A", "MSR_D"))
-  
-  
-  print(paste0(Sys.time(), " - ", df_introns_biotype %>% nrow(), " - introns after tidying!"))
-  
-  
-  df_introns_biotype %>% 
-    filter(biotype == "PC") %>%
-    pull(MSR) %>%
-    summary()
-  
-  df_introns_biotype %>% 
-    filter(biotype == "non PC") %>%
-    pull(MSR) %>%
-    summary()
-  
-  df_introns_biotype_tidy <- df_introns_biotype %>%
-    group_by(biotype, MSR_type) %>%
-    distinct(ref_junID, .keep_all = T) %>%
-    mutate(percentile_group = case_when(MSR == 0 ~ "0",
-                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
-                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
-                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
-                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
-                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
-  
-  df_introns_biotype_tidy$MSR_type = factor(df_introns_biotype_tidy$MSR_type, 
-                                            levels = c("MSR_D","MSR_A"))
-  df_introns_biotype_tidy$percentile_group = factor(df_introns_biotype_tidy$percentile_group, 
-                                                    levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
-  
-  df_introns_biotype_tidy$biotype = factor(df_introns_biotype_tidy$biotype, 
-                                           levels = c("PC","non PC"))
-  
-  MSR_label <- c(
-    MSR_D = "MSR Donor",
-    MSR_A = "MSR Acceptor"
-  )
-  
-  ggplot(data = df_introns_biotype_tidy) + 
-    geom_bar(aes(x = percentile_group, fill = biotype),
-             position = "dodge", linewidth = .3, color = "#333333")+
-    #ggtitle("MSR Donor") +
-    xlab("Mis-splicing ratio value group") +
-    ylab("Number of annotated introns") +
-    ggforce::facet_col(~MSR_type, strip.position = "top", labeller = labeller(MSR_type=MSR_label))+
-    #ylim(c(0,23000))+
-    scale_fill_manual(values = c("#333333","#cccccc"),
-                      breaks = c("PC","non PC"),
-                      labels = c("Protein-coding   ","Non-protein-coding ")) +
-    theme_light() +
-    custom_ggtheme +
-    guides(fill = guide_legend(title = "",
-                               ncol = 2, nrow = 1)) + 
-    theme( plot.margin = margin(t = 0,b = 0,r = 0,l = 0),
-           legend.box.margin=margin(b = -10) )+
-    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
-  
-
-  file_name <- paste0(args$figures_folder, "/anchor_MSR_biotype")
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), 
-                  width = 70, height = 60, units = "mm", dpi = 300)
-  
-  
-  plotMSR_donor_zoomed <- ggplot(data = df_introns_biotype_tidy) + 
-    geom_bar(aes(x = percentile_group, fill = biotype),
-             position = "dodge", linewidth = .5, color = "#333333")+
-    ggforce::facet_col(~MSR_type, strip.position = "top", labeller = labeller(MSR_type=MSR_label))+
-    #ggtitle("MSR Donor") +
-    xlab("Mis-splicing ratio value group") +
-    ylab("") +
-    scale_y_continuous(limits =c(0,800), position = "right") +
-    
-    scale_fill_manual(values = c("#333333","#cccccc"),
-                      breaks = c("PC","non PC"),
-                      labels = c("Protein-coding","Non-protein-coding")) +
-    theme_light() +
-    custom_ggtheme +
-    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
-          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) +
-    guides(fill = guide_legend(title = NULL,  
-                               ncol = 2, nrow = 1)) 
-  plotMSR_donor_zoomed
-  file_name <- paste0(args$figures_folder, "/anchor_MSR_biotype_zoomed")
-  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 70, height = 60, units = "mm", dpi = 300)
-  
-}
 
 
-get_effect_size_data_all_RBPs <- function() {
+
+##################################
+## MAIN FIGURE 5
+##################################
+
+get_data_main_figure5_c <- function(replace = T) {
   
-  ###############################
-  ## LOAD METADATA
-  ###############################
+  ## LOAD DATABASE METADATA
   
-  if (analysis_type=="shRNA") {
-    
-    metadata_RBPs <- master_metadata %>% 
-      pivot_longer(c("Splicing regulation", "Spliceosome", "Exon Junction Complex", 
-                     "NMD", "Novel RBP", "RNA modification"), names_to = "Category") %>%
+  metadata_RBPs <- if (analysis_type=="shRNA") {
+    master_metadata %>% 
+      pivot_longer(c("Splicing regulation", 
+                     "Spliceosome", 
+                     "Exon Junction Complex", 
+                     "NMD", 
+                     "Novel_RBP", 
+                     "RNA modification"), names_to = "Category") %>%
       filter(value == 1) %>%
       dplyr::select(-value) %>%
       distinct(target_gene, sample_id, .keep_all = T)
-    
-    metadata_RBPs$Category %>% unique
-  } else {
-    metadata_RBPs <- master_metadata
-  }
+  } else { master_metadata }
   
- 
+  metadata_RBPs$Category %>% unique
   
-  
-  ##########################
-  ## GET THE EFFECT SIZES
-  ##########################
   
   ## Load common introns ---------------------------------------
   
@@ -1024,29 +399,18 @@ get_effect_size_data_all_RBPs <- function() {
                                 paste(target_genes, collapse = "_"), "_experiments_", 
                                 paste(required_clusters, collapse = "_"), ".rds")
   
-  
-  if ( !file.exists(common_introns_path)  ) {
-    
-    ## Get common introns
+  common_introns_all_experiments <- if (!file.exists(common_introns_path)) {
     message("Calculating common introns...")
-    common_introns_all_experiments <- get_common_introns_across_experiments(RBPs = target_genes,
-                                                                            required_clusters = c("case", "control"))
-    
-    common_introns_all_experiments %>% dplyr::count(RBP)
-    
+    get_common_introns_across_experiments(RBPs = target_genes, required_clusters = c("case", "control"))
   } else {
-    
     message("Loading common introns across '", target_genes, "' experiments...")
-    common_introns_all_experiments <- readRDS(file = common_introns_path)
-    
+    readRDS(file = common_introns_path)
   }
   
   
   ## Run the wilcox test on MSR_D --------------------------
   
-  if ( !file.exists(paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds")) ) {
-    
-    source(paste0(base_folder, "/knockdown_analysis/helper_functions.R"))
+  if (!file.exists(paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds")) || replace) {
     
     message("Calculating MSR_D effect sizes...")
     
@@ -1061,7 +425,7 @@ get_effect_size_data_all_RBPs <- function() {
                   values_from = c("MSR_D") )
     MSR_D %>% head()
     
-    MSR_D_tests <- generateMSRtests(target_RBPs = all_projects, 
+    MSR_D_tests <- GenerateMSRtests(target_RBPs = all_projects, 
                                     MSR_Table = MSR_D, 
                                     file_output = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"), 
                                     overwrite = T,
@@ -1070,8 +434,7 @@ get_effect_size_data_all_RBPs <- function() {
     ## Add the categories
     if (analysis_type=="shRNA") {
       MSR_D_tests <- MSR_D_tests %>%
-        left_join(y = metadata_RBPs %>% dplyr::select(target_gene, Category),
-                  by = "target_gene") 
+        left_join(y = metadata_RBPs %>% distinct(target_gene, Category), by = "target_gene") 
     }
     
     ## Add bonferroni correction
@@ -1088,16 +451,11 @@ get_effect_size_data_all_RBPs <- function() {
               file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.csv"), col_names = T)
     
   } else {
-    
     message("Loading 'ENCODE_effectsize_MSRD.rds' file ...")
     MSR_D_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"))
   }
   
-  
-  
-  if ( !file.exists(paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds")) ) {
-    
-    source(paste0(base_folder, "/knockdown_analysis/helper_functions.R"))
+  if (!file.exists(paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"))) {
     
     message("Calculating MSR_A effect sizes...")
     
@@ -1111,7 +469,7 @@ get_effect_size_data_all_RBPs <- function() {
                   values_from = c("MSR_A"))
     MSR_A %>% head()
     
-    MSR_A_tests <- generateMSRtests(target_RBPs = all_projects, 
+    MSR_A_tests <- GenerateMSRtests(target_RBPs = all_projects, 
                                     MSR_Table = MSR_A, 
                                     file_output = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"),  
                                     overwrite = T, 
@@ -1120,8 +478,7 @@ get_effect_size_data_all_RBPs <- function() {
     ## Add the categories
     if (analysis_type=="shRNA") {
       MSR_A_tests <- MSR_A_tests %>%
-        left_join(y = metadata_RBPs %>% dplyr::select(target_gene, Category),
-                  by = "target_gene")
+        left_join(y = metadata_RBPs %>% distinct(target_gene, Category), by = "target_gene")
     }
     
     ## Add bonferroni correction
@@ -1160,22 +517,12 @@ get_effect_size_data_all_RBPs <- function() {
                           distinct(target_gene)%>%
                           nrow() )
   
-  MSR_D_tests %>%
-    distinct(target_gene, .keep_all = T) %>%
-    filter(FDR <= 0.05) %>%
-    distinct(target_gene, .keep_all=T) 
-  
-  MSR_D_tests %>%
-    distinct(target_gene, .keep_all = T) %>%
-    filter(FDR <= 0.05) %>%
-    distinct(target_gene, .keep_all=T) %>%
-    pull(FDR) %>%
-    summary
+  MSR_D_tests %>% distinct(target_gene, .keep_all = T) %>% filter(FDR <= 0.05) %>% distinct(target_gene, .keep_all=T) 
+  MSR_D_tests %>% distinct(target_gene, .keep_all = T) %>% filter(FDR <= 0.05) %>% distinct(target_gene, .keep_all=T) %>% pull(FDR) %>% summary
   
   
   
   ## MSR_A
-  
   ## increase in mis-splicing rates in samples with gene knockdowns compared to untreated controls for 90% of the 54 genes considered
   
   (MSR_A_tests %>%
@@ -1185,21 +532,10 @@ get_effect_size_data_all_RBPs <- function() {
                           distinct(target_gene)%>%
                           nrow() )
   
-  MSR_A_tests %>%
-    distinct(target_gene, .keep_all = T) %>%
-    filter(FDR <= 0.05) %>%
-    distinct(target_gene, .keep_all=T)
-  
-  MSR_A_tests %>%
-    distinct(target_gene, .keep_all = T) %>%
-    filter(FDR <= 0.05) %>%
-    distinct(target_gene, .keep_all=T) %>%
-    pull(FDR) %>%
-    summary
+  MSR_A_tests %>% distinct(target_gene, .keep_all = T) %>% filter(FDR <= 0.05) %>% distinct(target_gene, .keep_all=T)
+  MSR_A_tests %>% distinct(target_gene, .keep_all = T) %>% filter(FDR <= 0.05) %>% distinct(target_gene, .keep_all=T) %>% pull(FDR) %>% summary
   
  
-  
-  
   ## 2ND TEST ------------------------------------------------------------------------------------
   
   ## Knockdowns of the splicing machinery components tended to have a greater effect on 3’ss than 5’ss mis-splicing 
@@ -1254,19 +590,31 @@ get_effect_size_data_all_RBPs <- function() {
     filter(FDR <= 0.05) %>%
     arrange(desc(effect_size) )
 }
-
   
-plot_effect_size_data_all_RBPs <- function() {
-  
+main_figure5_c <- function() {
   
   ## Run the wilcox test on MSR_A --------------------------
   
-  
   message("Loading 'ENCODE_effectsize_MSRD.rds' file ...")
-  MSR_D_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds"))
+  MSR_D_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRD.rds")) %>% distinct(target_gene, Category, .keep_all =T)
   
   message("Loading 'ENCODE_effectsize_MSRA.rds' file ...")
-  MSR_A_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds"))
+  MSR_A_tests <- readRDS(file = paste0(args$results_folder, "/ENCODE_effectsize_MSRA.rds")) %>% distinct(target_gene, Category, .keep_all =T)
+  
+  RBPs_subgroups <- readxl::read_excel("dependencies/RBPs_subgroups.xlsx")
+  
+  
+  #Tidy
+  MSR_D_tests <- MSR_D_tests %>% 
+    left_join(y = RBPs_subgroups %>% gather(category, type, -id,-name) %>% filter(type == 1), 
+              by = c("target_gene" = "name")) %>%
+    mutate(category = ifelse(is.na(category), Category, category)) %>% 
+    dplyr::select(-c(id, Category, type)) %>% dplyr::rename(Category=category)
+  MSR_A_tests <- MSR_A_tests  %>% 
+    left_join(y = RBPs_subgroups %>% gather(category, type, -id,-name) %>% filter(type == 1), 
+              by = c("target_gene" = "name")) %>%
+    mutate(category = ifelse(is.na(category), Category, category)) %>% 
+    dplyr::select(-c(id, Category, type)) %>% dplyr::rename(Category=category) 
   
   
   ##########################
@@ -1277,24 +625,31 @@ plot_effect_size_data_all_RBPs <- function() {
   MSR_combined = rbind(MSR_A_tests %>% mutate(MSR_type = "MSR_A"), 
                        MSR_D_tests %>% mutate(MSR_type = "MSR_D")) %>% 
     filter(FDR <= 0.05 | target_gene == "SAFB2")## 'SAFB2' is a novel RBP that will be used as control
-  MSR_combined$Category[is.na(MSR_combined$Category)] <- "Novel_RBP"
+
+  #MSR_combined[is.na(MSR_combined$Category),] %>% print(n=100)
+  #MSR_combined$Category[is.na(MSR_combined$Category)] <- "Novel_RBP"
   
-  max_genes <- 40
-  
+  max_genes <- 10
   
   # Filter the Splicing regulation category
-  filter_splicing_regulation <- MSR_combined %>% 
-    dplyr::select(-statistical_test, -H0, -H1) %>% 
+  filter_splicing_regulation <- MSR_combined %>%
+    distinct(target_gene, .keep_all = T) %>% 
     arrange(-effect_size) %>%
-    #filter(Category == "Splicing_regulation") %>%
-    distinct(target_gene, .keep_all = T) %>%
+    filter(Category == "Splicing regulation") %>%
+    head(max_genes) %>%
+    pull(target_gene)
+  filter_spliceosome <- MSR_combined %>%
+    distinct(target_gene, .keep_all = T) %>% 
+    arrange(-effect_size) %>%
+    filter(Category == "Spliceosome") %>%
     head(max_genes) %>%
     pull(target_gene)
   
   MSR_graph_data <- MSR_combined %>%
-    filter(target_gene %in% c(filter_splicing_regulation) ) %>% #| Category != c("Splicing regulation") ) %>%
+    filter(target_gene %in% c(filter_splicing_regulation, filter_spliceosome, "UPF1", "UPF2", "MAGOH", "SAFB2")) %>% #| Category != c("Splicing regulation") ) %>%
     arrange(-effect_size) %>%
-    mutate(target_gene = factor(target_gene, levels = .$target_gene %>% unique))
+    mutate(target_gene = factor(target_gene, levels = .$target_gene %>% unique)) %>%
+    distinct(target_gene, MSR_type, .keep_all = T)
   
   if (analysis_type == "shRNA") {
     MSR_graph_data <- MSR_graph_data %>%
@@ -1303,45 +658,48 @@ plot_effect_size_data_all_RBPs <- function() {
                                                 "Spliceosome", 
                                                 "NMD", 
                                                 "Exon Junction Complex", 
-                                                "Novel RBP")))  # Use factors to sort the graph)
+                                                "Novel_RBP")))  # Use factors to sort the graph)
     print(MSR_graph_data$Category %>% unique())
   }
-  
-  
  
   
   ##########################
   ## METADATA KEFF
   ##########################
   
-  
-  metadata_kEff_path <- file.path("ENCODE_SR/ENCODE_Splicing_Analysis/metadata/metadata_WB_kEff.tsv")
+  metadata_kEff_path <- file.path("ENCODE_SR/metadata_WB_kEff.tsv")
   metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
     mutate(kEff_text = ifelse(is.na(kEff_avg), kEff_avg, paste0(round(kEff_avg), "%"))) %>%
     mutate(kEff_text = kEff_text %>% as.factor())
 
-
   MSR_graph_data <- MSR_graph_data %>%
-    left_join(y = metadata_kEff,
-              by = "target_gene") %>% 
+    left_join(y = metadata_kEff, by = "target_gene") %>% 
     dplyr::select(-c(statistical_test, H0,H1)) %>% 
-    distinct(target_gene,Category,MSR_type, .keep_all = T)
+    distinct(target_gene, Category, MSR_type, .keep_all = T)
   
   MSR_graph_data %>% head()
   
   ## Save data
-  
-  write.csv(x = MSR_graph_data,
-            file = file.path(args$data_folder,"figure5_c.csv"), row.names = T)
+  write.csv(x = MSR_graph_data, file = file.path(args$data_folder,"figure5_c.csv"), row.names = T)
   
   ##########################
   ## PLOT
   ##########################
   
+  MSR_graph_data <- MSR_graph_data %>%
+    mutate(Category = as.character(Category)) %>%
+    mutate(Category = ifelse(Category == "Exon Junction Complex", "EJC", Category)) %>%
+    mutate(Category = ifelse(Category == "Novel_RBP", "Control", Category)) %>%
+    mutate(Category = str_replace(string = Category, pattern = "_", replacement = " ")) %>%
+    mutate(Category = ifelse(Category == "Splicing regulation", str_to_title(string = Category), Category)) %>%
+    mutate(Category = factor(Category, 
+                             levels = c("Splicing Regulation", "Spliceosome",  "NMD", "EJC", "Control" ))) %>%
+    arrange(Category, desc(effect_size)) %>%  # First by 'type', then by 'prop' descending
+    mutate(target_gene = factor(target_gene, levels = unique(target_gene)))  # Reorder target_gene
+  MSR_graph_data$MSR_type = factor(MSR_graph_data$MSR_type, levels = c( "MSR_A","MSR_D"))
+  
   # Plot the graph
-  plot_effectsize <- ggplot(MSR_graph_data, # %>%
-                              #dplyr::filter(!(target_gene %in% c("PABPC1","RPS19","RPS3A", "EIF4G1"))), 
-                            aes(x = target_gene, y = effect_size)) + 
+  plot_effectsize <- ggplot(MSR_graph_data, aes(x = target_gene, y = effect_size)) + 
     geom_bar(aes(fill = MSR_type), 
              stat = "identity", color = "black", 
              linewidth = 0.25, width = 0.80, position = "dodge") + 
@@ -1357,27 +715,19 @@ plot_effect_size_data_all_RBPs <- function() {
                       breaks = c("MSR_D", "MSR_A"))  +
     guides(fill = guide_legend(title = NULL, order = 2, ncol = 2,  nrow = 1 )) +
     theme_light()  +
-      ggforce::facet_row(facets = vars(Category), 
+    ggforce::facet_row(facets = vars(Category), 
                        scales = "free_x", space = "free",
                        #labeller = labeller(Category = category_labels),
                        drop = T,
-                       shrink = T)+
-    custom_ggtheme +
+                       shrink = T) +
     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
           legend.box = "horizontal") +
-    guides(colour = guide_legend(override.aes = list(fill = '#999999'),
-                                 title = NULL,
-                                 label.position = "bottom",
-                                 order = 1)) +
+    guides(colour = guide_legend(override.aes = list(fill = '#999999'), title = NULL, label.position = "bottom", order = 1)) +
    ggnewscale::new_scale_fill() +
    geom_tile(stat = "identity",
              aes(y = 0.68, fill = kEff_avg, color = "No data\navailable"),
-             linewidth = 0.5,
-             width = 1,
-             height = 0.045) +
-   geom_text(aes(y = 0.76, label = kEff_text),
-             color = "black",
-             size = 2.5) +
+             linewidth = 0.5, width = 1, height = 0.045) +
+   geom_text(aes(y = 0.76, label = kEff_text), color = "black", size = 2.5) +
    viridis::scale_fill_viridis(option = "inferno",
                                # na.value = "#999999",
                                name = "Knockdown\nEfficiency",
@@ -1392,16 +742,15 @@ plot_effect_size_data_all_RBPs <- function() {
                                                        barheight = 1.5)) +
    scale_colour_manual(values = c( "No data\navailable" = "black")) +
    custom_ggtheme +
-     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1),
-           legend.box = "horizontal") +
-     guides(colour = guide_legend(override.aes = list(fill = '#999999'),
-                                  title = NULL,
-                                  label.position = "bottom",
-                                  order = 1))
+     theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 1), legend.box = "horizontal") +
+     guides(colour = guide_legend(override.aes = list(fill = '#999999'), title = NULL, label.position = "bottom", order = 1))
   
+  
+  plot_effectsize
   # Save the graph
-  ggsave(file = paste0(args$figures_folder, "/Effect_size_combined_top", max_genes, ".png"), 
-         width = 180, height = 90, units = "mm", dpi = 300)
+  figure_name <- file.path(args$figures_folder, "main_figure5c")
+  ggsave(file = paste0(figure_name, ".png"),  plot = plot_effectsize, width = 180, height = 90, units = "mm", dpi = 300)
+  ggsave(file = paste0(figure_name, ".svg"),  plot = plot_effectsize, width = 180, height = 90, units = "mm", dpi = 300)
   
   
   
@@ -1414,14 +763,7 @@ plot_effect_size_data_all_RBPs <- function() {
 
 main_figure6_a <- function() {
   
-  
-  
-  
-  ###########################################
-  ## LOAD COMMON INTRONS AND NOVEL FOR AQR 
-  ## AND U2AF2
-  ###########################################
-  
+  ## LOAD COMMON INTRONS AND NOVEL FOR AQR AND U2AF2
   target_RBPs <- c("AQR", "U2AF2")
   required_clusters <- c("case", "control")
   common_introns_path <- paste0(args$results_folder, "/common_introns_details_", 
@@ -1440,19 +782,19 @@ main_figure6_a <- function() {
   
   RBP_novel <- common_introns %>%
     filter(RBP %in% target_RBPs) %>%
-    mutate(cluster = factor(ifelse(cluster == "case", "gene knockdown", "control"), 
-                            levels = c("control", "gene knockdown"))) %>%
     inner_join(master_introns %>% dplyr::select(ref_junID), by = "ref_junID") %>%
-    left_join(master_novel_junctions %>% 
-                dplyr::select(novel_junID, novel_type, distance), 
-              by = "novel_junID") %>%
+    left_join(master_novel_junctions %>% dplyr::select(novel_junID, novel_type, distance), by = "novel_junID") %>%
     group_by(RBP, cluster) %>%
     distinct(novel_junID, .keep_all = TRUE) %>%
     ungroup() %>%
     mutate(novel_type = str_replace(string = novel_type, pattern = "_", replacement = " ")) %>%
     filter(abs(distance) < limit_bp) %>%
     mutate(RBP = factor(x = RBP, levels = target_RBPs)) %>%
-    dplyr::select(distance, cluster, novel_type, RBP)
+    dplyr::select(distance, cluster, novel_type, RBP) %>%
+    mutate(cluster = factor(ifelse(cluster == "case" & novel_type == "novel donor", "gene knockdown donor",
+                                   ifelse(cluster == "case" & novel_type == "novel acceptor", "gene knockdown acceptor", "control")),
+                            levels = c("control", "gene knockdown donor", "gene knockdown acceptor"))) %>%
+    mutate(novel_type = str_to_title(novel_type)) 
   
   ## Save source data
   
@@ -1462,12 +804,13 @@ main_figure6_a <- function() {
   ## PLOT AQR AND U2AF1 DISTANCES
   #################################################
   
-  distances_plot <- ggplot( data = RBP_novel  ) + 
-    geom_histogram(aes(x = distance, fill = fct_rev(cluster)), bins = 60,  binwidth = 1,  position = "identity", alpha = 1,  color = "black",  linewidth = 0.1) +
+  distances_plot <- ggplot(data = RBP_novel) + 
+    geom_histogram(aes(x = distance, fill = fct_rev(cluster)), 
+                   bins = 60,  binwidth = 1,  position = "identity", alpha = 1,  color = "black",  linewidth = 0.1) +
     scale_x_continuous(breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
-    scale_fill_manual(values = c("#8d03b0", "#666666"),
-                      breaks = c("gene knockdown", "control"),
-                      labels = c("gene knockdown  ", "control")) +
+    scale_fill_manual(values = c("#35B779FF", "#8d03b0", "#666666"),
+                      breaks = c("gene knockdown donor", "gene knockdown acceptor", "control"),
+                      labels = c("gene knockdown donor", "gene knockdown acceptor", "control")) +
     labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
     facet_grid(fct_rev(novel_type)~RBP) +
     guides(fill = guide_legend(title = "Sample type: ", ncol = 2, nrow = 1 )) +
@@ -1486,8 +829,9 @@ main_figure6_a <- function() {
   distances_plot <- distances_plot / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
   distances_plot
   
-  ggsave(file = file.path(args$figures_folder, "figure6a.png"), 
-         width = 183, height = 110, dpi = 300, units = "mm")
+  figure_name <- file.path(args$figures_folder, "main_figure6_a")
+  ggsave(file = paste0(figure_name, ".png"), width = 180, height = 80, dpi = 300, units = "mm")
+  ggsave(file = paste0(figure_name, ".svg"), width = 180, height = 80, dpi = 300, units = "mm")
   
   
 }
@@ -1495,11 +839,7 @@ main_figure6_a <- function() {
 main_figure6_b <- function() {
   
   
-  
-  ###########################################
-  ## LOAD COMMON INTRONS AND NOVEL FOR AQR 
-  ## AND U2AF2
-  ###########################################
+  ## LOAD COMMON INTRONS AND NOVEL FOR AQR AND U2AF2
   
   target_RBPs <- c("AQR", "U2AF2")
   required_clusters <- c("case", "control")
@@ -1544,43 +884,72 @@ main_figure6_b <- function() {
   #################################################
   ## PREPARE DATA TO PLOT 
   #################################################
+
+  
   RBP_novel_acceptor_delta <- RBP_novel %>%
     filter(novel_type == "novel_acceptor") %>%
     dplyr::group_by(RBP, cluster) %>%
     mutate(medianMSR = median(delta_ss3score)) %>%
     ungroup() %>%
+    mutate(cluster = factor(cluster, levels = c("gene knockdown", "control"))) %>%
     dplyr::group_by(RBP) %>%
-    mutate(p.value = format(wilcox.test(delta_ss3score ~ cluster)$p.value, digits = 2, scientific = TRUE)) %>%
-    mutate(p.value = ifelse(as.numeric(p.value) < 0.001, "0.001", p.value)) %>%
+    mutate(
+      p.value = format(
+        wilcox.test(delta_ss3score ~ cluster, 
+                    data = cur_data(), 
+                    alternative = "greater",
+                    subset = cluster %in% c("gene knockdown", "control"),
+                    exact = T)$p.value,
+        digits = 2, scientific = TRUE
+      )
+    ) %>%
+    ungroup()%>%
+    mutate(p.value = ifelse(as.numeric(p.value) == 0, "2.2e-16", p.value)) %>%
     mutate(RBP = factor(RBP, levels = target_RBPs)) %>%
-    dplyr::select(delta_ss3score, cluster, medianMSR, RBP, p.value)
+    dplyr::select(delta_ss3score, cluster, medianMSR, RBP, p.value) 
+  
+  
+  # RBP_novel_acceptor_delta <- RBP_novel %>%
+  #   filter(novel_type == "novel_acceptor") %>%
+  #   
+  #   dplyr::group_by(RBP, cluster) %>%
+  #   mutate(medianMSR = median(delta_ss3score)) %>%
+  #   ungroup() %>%
+  #   dplyr::group_by(RBP) %>%
+  #   mutate(p.value = format(wilcox.test(delta_ss3score ~ cluster)$p.value, digits = 2, scientific = TRUE)) %>%
+  #   ungroup %>%
+  #   mutate(p.value = ifelse(as.numeric(p.value) == 0, "2.2e-16", p.value)) %>%
+  #   mutate(RBP = factor(RBP, levels = target_RBPs)) %>%
+  #   dplyr::select(delta_ss3score, cluster, medianMSR, RBP, p.value) 
+    
   
   write.csv(RBP_novel_acceptor_delta, file = file.path(args$data_folder, "figure6_b.csv"), row.names = FALSE)
-  
   
   #################################################
   ## PLOT DELTA MES ONLY ACCEPTOR - AQR and U2AF2
   #################################################
+  
   delta_mes_acceptor <- ggplot(data = RBP_novel_acceptor_delta)  +
     geom_density(aes(x = delta_ss3score, fill = cluster), alpha = 0.8, linewidth = 0.3, color = "black") +
     geom_vline(xintercept = 0) +
     geom_vline(aes(xintercept = medianMSR, color = cluster), linetype = "dashed", linewidth = 0.9) +
     facet_wrap(vars(RBP)) +
     geom_text(data = distinct(RBP_novel_acceptor_delta, RBP, p.value), 
-              aes(label = paste0("P<", p.value)), x = 25, y = 0.08, size = 3.5, color = "#333333") +
-    scale_fill_manual(values = c("#64037d", "#999999"), breaks = c("gene knockdown", "control"), labels = c("KD", "Wild Type")) + 
-    scale_colour_manual(values = c("#64037d", "#333333"), breaks = c("gene knockdown", "control"), labels = c("KD", "Wild Type")) + 
-    labs(x = "Delta MES Acceptor", y = "Density") +
+              aes(label = paste0("P<", p.value)), x = 25, y = 0.08, size = 3, color = "#333333") +
+    scale_fill_manual(values = c("#64037d", "#999999"), breaks = c("gene knockdown", "control"), labels = c("shRNA knockdown", "Control")) + 
+    scale_colour_manual(values = c("#64037d", "#333333"), breaks = c("gene knockdown", "control"), labels = c("shRNA knockdown", "Control")) + 
+    labs(x = "Delta MES Acceptor") +
     theme_light() +
     custom_ggtheme
   
+  delta_mes_acceptor
   
-  ggsave(file = paste0(args$figures_folder,"/", target_RBPs[1], "_", target_RBPs[2], "_acceptor_deltaMES.png"), 
-         width = 180, height = 60, dpi = 300, units = "mm")
-  
+  figure_name <- file.path(args$figures_folder, "main_figure6_b")
+  ggsave(file = paste0(figure_name, ".png"), width = 180, height = 60, dpi = 300, units = "mm")
+  ggsave(file = paste0(figure_name, ".svg"), width = 180, height = 60, dpi = 300, units = "mm")
   
   ## Supplementary Figure for AQR distances
-  supplementary_figure14(RBP_novel)
+  # supplementary_figure14(RBP_novel)
 
 }
 
@@ -1606,11 +975,7 @@ main_figure6_c <- function() {
   }
   
   # Summary of introns across experiments
-  common_introns_summary <- common_introns_all_experiments %>%
-    group_by(RBP, cluster) %>%
-    distinct(ref_junID) %>%
-    dplyr::count() %>%
-    ungroup()
+  common_introns_summary <- common_introns_all_experiments %>% group_by(RBP, cluster) %>% distinct(ref_junID) %>% dplyr::count() %>% ungroup()
   
   ####################################
   ## LOAD MSR VALUES
@@ -1726,8 +1091,8 @@ main_figure6_c <- function() {
     
     dplyr::select(RBP, 
                   MSR_tested, 
-                  "Introns with RBP binding sites from CLIP-seq data" = fold_change_w_motif,
-                  "Introns without RBP binding sites" = fold_change_not_motif) %>%
+                  "Introns containing binding sites for each RBP" = fold_change_w_motif,
+                  "Introns not containing binding sites for each RBP" = fold_change_not_motif) %>%
     
     gather(type,  "2fold", -MSR_tested, -RBP) %>% 
     arrange( MSR_tested,  desc("2fold"))  %>%
@@ -1738,19 +1103,17 @@ main_figure6_c <- function() {
   ## ADD KNOCKDOWN EFFICIENCY
   ########################################################
   
-  metadata_kEff_path <- file.path("ENCODE_SR/ENCODE_Splicing_Analysis/metadata/metadata_WB_kEff.tsv")
+  metadata_kEff_path <- file.path("ENCODE_SR/metadata_WB_kEff.tsv")
   metadata_kEff <- readr::read_delim(metadata_kEff_path, show_col_types = F) %>%
     mutate(kEff_text = ifelse(is.na(kEff_avg), kEff_avg, paste0(round(kEff_avg), "%"))) %>%
     mutate(kEff_text = kEff_text %>% as.factor())
   
   iCLIP_binding_MSR_results_prop <- fold_changes %>%
-    left_join(y = metadata_kEff,
-              by = c("RBP" = "target_gene")) %>%
+    left_join(y = metadata_kEff, by = c("RBP" = "target_gene")) %>%
     filter(RBP != "SAFB2")
   
   # Export data
-  write.csv(x = iCLIP_binding_MSR_results_prop, file = file.path(args$data_folder, "/figure6_c.csv"),
-            row.names = F)
+  write.csv(x = iCLIP_binding_MSR_results_prop, file = file.path(args$data_folder, "/figure6_c.csv"), row.names = F)
   
   
   ####################################
@@ -1764,11 +1127,10 @@ main_figure6_c <- function() {
   
   iCLIP_plot <-  ggplot(data = iCLIP_binding_MSR_results_prop,
                         aes(x = RBP, y = `2fold`, group = factor(MSR_tested)) ) +
-    geom_bar(
-      stat = "identity",
-      aes(x = tidytext::reorder_within(x = RBP, by = -`2fold`, within = type), y = `2fold`,
-          fill = factor(MSR_tested)), position = position_dodge(width = 0.9) ) +
-    ylab("Log2 Fold Change of introns\nwith increasing MSR in KD vs wild-type") +
+    geom_bar(stat = "identity",
+             aes(x = tidytext::reorder_within(x = RBP, by = -`2fold`, within = type), y = `2fold`,
+                 fill = factor(MSR_tested)), position = position_dodge(width = 0.9)) +
+    ylab("Log2 Fold Change of introns with increasing MSR\nvalues in shRNA knockdown vs control sampmles") +
     xlab("") +
     theme_light() +
     ggforce::facet_row(~ type, scales = "free_x") +
@@ -1776,18 +1138,12 @@ main_figure6_c <- function() {
     custom_ggtheme +
     guides(fill = guide_legend(title = NULL, ncol = 2,  nrow = 1 ))  +
     theme(axis.text.x = element_text(angle = 90, vjust = 1, hjust = 1)) +
-    scale_fill_manual(values = c("#35B779FF","#64037d"), #8d03b0
-                      breaks = c("MSR Donor","MSR Acceptor")) +
-    theme( plot.margin = margin(t = 5, r = 5, b = -5, l = 5),
-           legend.box.margin = margin(l = -10, b = -10, t = -5 )) +
+    scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("MSR Donor","MSR Acceptor")) +
+    theme(plot.margin = margin(t = 5, r = 5, b = -5, l = 5), legend.box.margin = margin(l = -10, b = -10, t = -5 )) +
     ggnewscale::new_scale_fill() +
-    geom_tile(stat = "identity", 
-              aes(y = 1.4, x = tidytext::reorder_within(x = RBP, by = -`2fold`,
-                                               within = type),
-                  fill = kEff_avg, color = "No data\navailable"), 
-              linewidth = 0.5, width = 1, height = 0.1) + 
+    geom_tile(aes(y = 1.4, x = tidytext::reorder_within(x = RBP, by = -`2fold`, within = type), fill = kEff_avg), 
+              linewidth = 0.5, width = 1, height = 0.1, stat = "identity") + 
     viridis::scale_fill_viridis(option = "inferno", 
-                                # na.value = "#999999",
                                 name = "Knockdown\nEfficiency", 
                                 limits = c(0, 100), 
                                 breaks = c(NA, seq(0, 100, 25)),
@@ -1799,15 +1155,14 @@ main_figure6_c <- function() {
                                                         barwidth = 10, 
                                                         barheight = 1.5)) +
     scale_colour_manual(values = c( "No data\navailable" = "black")) +
-    guides(colour = guide_legend(override.aes = list(fill = '#999999'),
-                                 title = NULL,
-                                 label.position = "bottom",
-                                 order = 1))
+    guides(colour = guide_legend(override.aes = list(fill = '#999999'), title = NULL, label.position = "bottom", order = 1))
   
-  print(iCLIP_plot)
+  iCLIP_plot
   
-  ggsave(file = paste0(args$figures_folder, "/main_figure6c.png"), 
-         width = 180, height = 75, units = "mm", dpi = 300)
+  
+  figure_name <- file.path(args$figures_folder, "/main_figure6c")
+  ggsave(file = paste0(figure_name, ".png"), width = 180, height = 75, units = "mm", dpi = 300)
+  ggsave(file = paste0(figure_name, ".svg"), width = 180, height = 75, units = "mm", dpi = 300)
   
   
 }
@@ -1817,6 +1172,443 @@ main_figure6_c <- function() {
 ##################################
 ## SUPPLEMENTARY FIGURES
 ##################################
+
+supplementary_figure7 <- function() {
+  
+  ## RBP knockdowns were aligned
+  ## junctions from shRNA control experiments followed by RNA-sequencing data downloaded from the ENCODE platform
+  ## were extracted using a minimum anchor length of 8 bp required to call the presence of a junction 
+  ## (regtools junctions extract -a 8, https://regtools.readthedocs.io/en/latest/).
+  ## This represented an increase in stringency of 3 bp with respect to the anchor used in the GTEx v8 data (5bp by default).
+  
+  required_clusters <- "control"
+  target_genes = "all"
+  
+  common_introns_path <- paste0(args$results_folder, "/common_introns_details_",
+                                paste(target_genes, collapse = "_"), "_experiments_", 
+                                paste(required_clusters,collapse = "_"), ".rds")
+  
+  if( file.exists(common_introns_path) ) {
+    
+    message("Loading common introns...")
+    common_introns_all_experiments <- readRDS(file = common_introns_path)
+    
+  } else {
+    ## Load common introns
+    message("Calculating common introns...")
+    common_introns_all_experiments <- get_common_introns_across_experiments(RBPs = "all", required_clusters = required_clusters)
+  }
+  
+  common_introns_all_experiments %>% distinct(RBP) %>% dplyr::count()
+  common_introns_all_experiments %>% group_by(RBP) %>% distinct(ref_junID) %>% dplyr::count() %>% ungroup()
+  common_introns_all_experiments_w_novel <- common_introns_all_experiments %>% 
+    left_join(y = master_novel_junctions %>% dplyr::select(novel_junID, novel_type, distance), by = "novel_junID")
+  
+  #################################################
+  ## SUPPLEMENTARY FIGURE 7.a
+  #################################################
+  
+  df_proportion_jxn <- map_df(all_projects, function(project_id) {
+    # project_id <- all_projects[1]
+    print(paste0(Sys.time(), " - ", project_id))
+    common_introns_local_experiment <- common_introns_all_experiments_w_novel %>% filter(RBP == project_id)
+    
+    annotated_junc <- common_introns_local_experiment %>% distinct(ref_junID) %>% nrow()
+    donor_junc <- common_introns_local_experiment %>% filter(novel_type == "novel_donor") %>% distinct(novel_junID) %>% nrow()
+    acceptor_junc <- common_introns_local_experiment %>% filter(novel_type == "novel_acceptor") %>% distinct(novel_junID) %>% nrow()
+    
+    annotated_prop <- annotated_junc/(annotated_junc + donor_junc + acceptor_junc)
+    donor_prop <- donor_junc/(annotated_junc + donor_junc + acceptor_junc)
+    acceptor_prop <- acceptor_junc/(annotated_junc + donor_junc + acceptor_junc)
+    
+    return(data.frame(RBP = project_id, annotated_prop = annotated_prop, donor_prop = donor_prop, acceptor_prop = acceptor_prop))
+  })
+  
+  
+  df_proportion_jxn_tidy <- df_proportion_jxn %>%
+    tidyr::gather(key = "type", value = "prop", -RBP) %>%
+    mutate(type = str_remove_all(string = type, pattern = "_prop")) %>%
+    filter(type != "annotated") %>%
+    mutate(prop = prop * 100)
+  
+  df_proportion_jxn_tidy$type = factor(df_proportion_jxn_tidy$type, 
+                                       levels = c("donor","acceptor"))
+  
+  unique_jxn_violin_plot <- ggplot(df_proportion_jxn_tidy, aes(type, prop, fill = type)) + 
+    geom_violin(trim = FALSE) +
+    geom_point(size = 0.5, colour = "#333333") +
+    geom_line( aes(group = RBP), colour = "#333333",linewidth = .2 )  +
+    theme_light() +
+    ylab("% unique junctions") +
+    xlab("") +
+    theme(axis.line = element_line(colour = "black"), text = element_text(colour = "black", size = 12), legend.position = "top") +
+    scale_x_discrete(breaks = c("acceptor", "donor"), labels = c("Novel Acceptor", "Novel Donor")) +
+    scale_fill_manual(values = c("#35B779FF", "#8d03b0"), breaks = c("donor", "acceptor"), labels = c("Novel Donor", "Novel Acceptor")) +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) +
+    custom_ggtheme + 
+    theme(legend.position = "right")
+  
+  
+  #################################################
+  ## SUPPLEMENTARY FIGURE 7.b
+  #################################################
+  
+  
+  df_proportion_reads <- map_df(all_projects, function(project_id) {
+    # project_id <- all_projects[1]
+    print(paste0(Sys.time(), " - ", project_id))
+    common_introns_local_experiment <- common_introns_all_experiments_w_novel %>% filter(RBP == project_id)
+    
+    annotated_reads <- common_introns_local_experiment %>% distinct(ref_junID, .keep_all = T) %>% pull(ref_sum_counts) %>% sum()
+    donor_reads <- common_introns_local_experiment %>% filter(novel_type == "novel_donor") %>% distinct(novel_junID, .keep_all = T) %>% pull(novel_sum_counts) %>% sum()
+    acceptor_reads <- common_introns_local_experiment %>% filter(novel_type == "novel_acceptor")%>% distinct(novel_junID, .keep_all = T) %>% pull(novel_sum_counts) %>% sum()
+    
+    annotated_prop <- annotated_reads/(annotated_reads + donor_reads + acceptor_reads)
+    donor_prop <- donor_reads/(annotated_reads + donor_reads + acceptor_reads)
+    acceptor_prop <- acceptor_reads/(annotated_reads + donor_reads + acceptor_reads)
+    
+    return(data.frame(RBP = project_id, annotated = annotated_prop, donor = donor_prop, acceptor = acceptor_prop))
+  })
+  
+  df_proportion_reads_tidy <- df_proportion_reads %>% tidyr::gather(key = "type", value = "prop", -RBP) %>% filter(type != "annotated") %>% mutate(prop = prop * 100)
+  df_proportion_reads_tidy$type = factor(df_proportion_reads_tidy$type, levels = c("donor", "acceptor"))
+  
+  reads_violin_plot <- ggplot(df_proportion_reads_tidy, aes(type, prop, fill = type)) + 
+    geom_violin(trim = FALSE) +
+    geom_point(size = 0.5, colour = "#333333") +
+    geom_line( aes(group = RBP), colour = "#333333",linewidth = .2  )  +
+    theme_light() +
+    ylab("% cumulative read counts") +
+    xlab("") +
+    theme(axis.line = element_line(colour = "black"), text = element_text(colour = "black", size = 12), legend.position = "top") +
+    scale_x_discrete(breaks = c( "acceptor", "donor"), labels = c( "Novel Acceptor", "Novel Donor")) +
+    scale_fill_manual(values = c( "#35B779FF", "#8d03b0"), breaks = c( "donor", "acceptor"),labels = c( "Novel Donor", "Novel Acceptor")) + 
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))+
+    custom_ggtheme + 
+    theme(legend.position = "right")
+  
+  ggpubr::ggarrange(unique_jxn_violin_plot, reads_violin_plot, common.legend = T, align = "h", ncol = 2, nrow = 1) +
+    theme(plot.margin = margin(t = -5, r = -5, b = -10, l = -5), legend.box.margin=margin(b = -10))
+  
+  ggsave(file = paste0(args$figures_folder , "/supplementary_figure7ab.png"), width = 130, height = 50, dpi = 300, units = "mm")
+  
+  
+  #################################################
+  ## SUPPLEMENTARY FIGURE 7.c
+  #################################################
+  
+  RBP_delta_MES <- common_introns_all_experiments_w_novel %>%
+    left_join(y = master_introns %>% dplyr::select(ref_junID, ref_mes5ss, ref_mes3ss), by = "ref_junID")%>%
+    left_join(y = master_novel_junctions %>% dplyr::select(novel_junID, novel_mes5ss, novel_mes3ss), by = "novel_junID") %>% 
+    distinct(novel_junID, .keep_all = T) %>%
+    mutate(delta_ss5score = ref_mes5ss - novel_mes5ss, delta_ss3score = ref_mes3ss - novel_mes3ss) %>%
+    dplyr::select(novel_junID, ref_junID, novel_type, delta_ss5score, delta_ss3score, RBP) %>%
+    drop_na() %>%
+    dplyr::select(delta_ss5score, delta_ss3score, novel_type) %>%
+    gather(key = delta_type, value = deltaMES) %>%
+    mutate(delta_type = ifelse(delta_type == "delta_ss5score", "MES Donor", "MES Acceptor")) %>%
+    mutate(delta_type = delta_type %>% as.factor()) %>%
+    mutate(deltaMES = deltaMES %>% as.double()) %>%
+    filter(deltaMES != 0) 
+
+  
+  delta_mes <- ggplot(data = RBP_delta_MES )  +
+    geom_density(aes(x = deltaMES, fill = delta_type), alpha = 0.9) +
+    geom_vline(xintercept = 0) +
+    ggforce::facet_col(~fct_rev(delta_type), strip.position = "right") +
+    scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("MES Donor", "MES Acceptor"), labels = c("Novel Donor", "Novel Acceptor")) +
+    labs(x = "Delta MES", y = "Density") +
+    theme_light() +
+    custom_ggtheme + 
+    theme(plot.margin = margin(t = 0, r = 0, b = 0, l = 0), legend.box.margin = margin(b = -11) ) + 
+    theme(legend.position = "none")
+  
+  delta_mes
+  ggsave(file = paste0(args$figures_folder, "/supplementary_figure7c.png"), width = 45, height = 50, dpi = 300, units = "mm")
+  
+  
+  
+  #################################################
+  ## SUPPLEMENTARY FIGURE 7.d
+  #################################################
+  
+  limit_bp = 30
+  
+  common_introns_all_experiments_w_protein <- common_introns_all_experiments_w_novel %>% 
+    left_join(y = master_introns %>% dplyr::select(ref_junID, protein_coding), by = "ref_junID")
+  
+  plot_distances_PC <- ggplot(common_introns_all_experiments_w_protein %>%
+                                filter(protein_coding %in% c(0,100)) %>%
+                                mutate(protein_coding_label = ifelse (protein_coding == 0, "Noncoding", "Protein-coding")) %>%
+                                mutate(protein_coding_label = protein_coding_label %>% as.factor()) %>%
+                                mutate(novel_type = str_replace(string = novel_type, pattern = "_", replacement = " ")) %>%
+                                distinct(novel_junID, .keep_all = T) %>% 
+                                filter(abs(distance) < limit_bp) ) + 
+    geom_histogram(aes(x = distance, fill = fct_rev(novel_type)), bins = 60, binwidth = 1, position = "identity", alpha = 1, color = "black", linewidth = 0.1) +
+    scale_x_continuous(breaks = seq(-limit_bp, limit_bp, length.out = 5)) +
+    scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("novel donor", "novel acceptor"), labels = c("Novel donor", "Novel acceptor")) +
+    labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
+    facet_grid(fct_rev(protein_coding_label)~fct_rev(novel_type), scales = "free_y") +
+    guides(fill = guide_legend(title = "Sample type: ", ncol = 1, nrow = 2 )) +
+    theme_light() +
+    custom_ggtheme + 
+    theme(legend.position = "none", plot.margin = margin(t = 0, r = -5, b = 0, l = -5), legend.box.margin=margin(b = -10))
+  plot_distances_PC
+  
+  distance_rectangle <- ggplot() +
+    geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
+    geom_text(aes(x = 15, y = 33),  size = 3, label = "exon") +
+    geom_rect(aes(xmin = (limit_bp)*-1, xmax = 0, ymin = 30, ymax = 31), fill = "grey", alpha = 1, color = "black") +
+    geom_text(aes(x = -15, y = 48),  size = 3, label = "intron") +
+    theme_void()
+  
+  plot_distances_PC / (distance_rectangle +  distance_rectangle) + patchwork::plot_layout(heights = c(8, 1))
+  
+  ggsave(file = paste0(args$figures_folder , "/supplementary_figure7d.png"), width = 125, height = 60, dpi = 300, units = "mm")
+  
+  #################################################
+  ## SUPPLEMENTARY FIGURE 7.e
+  #################################################
+  
+  df_modulo_experiments <- common_introns_all_experiments_w_novel %>%
+    group_by(RBP) %>%
+    distinct(novel_junID, .keep_all = T) %>%
+    filter(abs(distance) <= 100) %>% 
+    mutate(novel_type = str_replace(string = novel_type, pattern = "_", replacement = " ")) %>%
+    mutate(modulo = abs(distance) %% 3) %>%
+    ungroup
+  
+  df_modulo_experiments <- df_modulo_experiments %>% 
+    group_by(RBP,modulo) %>%
+    summarise(n = n()) %>%
+    mutate(freq = (n / sum(n))*100) 
+  
+  df_modulo_experiments$modulo = factor(df_modulo_experiments$modulo, levels = c( "0", "1", "2"))
+  
+  ggplot(df_modulo_experiments, aes(x = freq, y = modulo)) +
+    ggridges::geom_density_ridges_gradient() +
+    ylab("Modulo3 of the distance") +
+    xlab("% of novel junctions") +
+    theme_light() +
+    custom_ggtheme +
+    theme(legend.position = "none") +
+    scale_x_continuous(breaks = c(30,35,40), labels = c("30%","35%","40%")) +
+    scale_y_discrete(expand = c(0,0.5,1,0))
+  
+  
+  ggsave(file = paste0(args$figures_folder , "/supplementary_figure7e.png"), width = 50, height = 60, dpi = 300, units = "mm")
+  
+  
+  
+  #################################################
+  ## SUPPLEMENTARY FIGURE 7.F
+  #################################################
+  
+  df_all_introns_tidy <- common_introns_all_experiments_w_protein %>%
+    dplyr::select(ref_junID, MSR_D, MSR_A, RBP, protein_coding) %>%
+    gather(key = "MSR_type", value = "MSR", -ref_junID, -RBP, - protein_coding) %>%
+    mutate(type_label = ifelse(MSR == 0, "Accurate Splicing", "Mis-splicing")) 
+  
+  df_all_introns_tidy <- df_all_introns_tidy %>%
+    mutate(percentile_group = case_when(MSR == 0 ~ "0",
+                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
+                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
+                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
+                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
+                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
+  
+  
+  df_all_introns_tidy <- df_all_introns_tidy %>% group_by(RBP, MSR_type) %>% distinct(ref_junID, .keep_all = T) %>% ungroup()
+  df_all_introns_tidy$MSR_type <- factor(df_all_introns_tidy$MSR_type, levels = c("MSR_D", "MSR_A"))
+  
+  plot1 <- ggplot(data = df_all_introns_tidy) + 
+    geom_bar(aes(x = type_label, fill = MSR_type), position = "dodge") +
+    ggplot2::labs(x = "", y = "Annotated introns") + theme_light() +
+    scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("MSR_D","MSR_A"), labels = c("MSR Donor","MSR Acceptor")) +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) + 
+    theme(plot.margin = margin(0,10,0,0), legend.box.margin=margin(b = -5))
+  plot1
+  
+  ## 2. ZOOMED PLOT VERSION
+  df_all_introns_tidy$percentile_group = factor(df_all_introns_tidy$percentile_group, levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
+  
+  plot2 <- ggplot(data = df_all_introns_tidy %>% filter(percentile_group != "0")) +
+    geom_bar(aes(x = percentile_group, fill = MSR_type),position = "dodge")+
+    xlab("Mis-splicing ratio value group") +
+    ylab("") +
+    ggforce::facet_zoom(ylim = c(0,22000), split = TRUE) +
+    theme_light() +
+    scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("MSR_D","MSR_A"), labels = c("MSR Donor","MSR Acceptor")) +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
+  plot2
+  
+  ggpubr::ggarrange(plot1, plot2, labels = c("", ""), nrow = 2,  ncol = 1, heights = c(1,1.5), common.legend = T)
+  ggsave(file = paste0(args$figures_folder,"/supplementary_figure7f.png"), width = 135, height = 70, dpi = 300, units = "mm")
+  
+  
+  ########################################################
+  ## SUPPLEMENTARY FIGURE 7.g
+  ########################################################
+  
+  ## TIDY DATAFRAME
+  df_biotype_result_tidy <- common_introns_all_experiments_w_protein %>%
+    filter(protein_coding %in% c(0,100)) %>%
+    mutate(biotype = ifelse(protein_coding == 100, "PC", "non PC"))  %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    group_by(ref_junID) %>%
+    mutate(mean_coverage = (sum(ref_sum_counts)/sum(ref_n_individuals)) %>% log10()) %>%
+    ungroup()
+  
+  df_biotype_result_tidy %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(biotype)
+  
+  ## PLOT
+  plot_BS <- ggplot(data = df_biotype_result_tidy %>% distinct(ref_junID,.keep_all = T)) +
+    geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.9) +
+    ggtitle("Before subsampling") +
+    xlab("log10 mean expression level") +
+    theme_light() +
+    custom_ggtheme +
+    ggsci::scale_fill_npg(name = "Transcript biotype: ")
+  
+  plot_BS
+  #### START SUBSAMPLIING
+  
+  ## lncRNA
+  df_lncRNA_tidy <- df_biotype_result_tidy %>% 
+    distinct(ref_junID, .keep_all = T) %>%
+    dplyr::filter(biotype == "non PC")
+  ## protein-coding
+  df_protein_coding_tidy <- df_biotype_result_tidy %>% 
+    distinct(ref_junID, .keep_all = T) %>%
+    dplyr::filter(biotype  == "PC")
+  
+  data_combined <- rbind(df_protein_coding_tidy, df_lncRNA_tidy) %>% dplyr::select(-distance)
+  
+  ## QC
+  if (!identical(data_combined$ref_junID %>% sort(),
+                 df_biotype_result_tidy %>% distinct(ref_junID,.keep_all = T) %>% pull(ref_junID) %>% sort())) {
+    stop("ERROR!")
+  }
+  
+  
+  if ( !file.exists(paste0(args$results_folder, "/MSR_subsample.rds")) ) {
+    ## Subsampling introns to control by similarity in mean read coverage
+    m.out <- MatchIt::matchit(biotype ~ mean_coverage, 
+                              data = data_combined, 
+                              distance = data_combined$mean_coverage,
+                              method = "nearest", 
+                              caliper = c(mean_coverage = 0.005), 
+                              std.caliper = FALSE)
+    
+    subsample <- MatchIt::match.data(m.out)
+    subsample %>% distinct(ref_junID, .keep_all = T) %>% dplyr::count(biotype)
+    
+    saveRDS(object = subsample, file = paste0(args$results_folder, "/anchor_MSR_subsample.rds"))
+  } else {
+    subsample <- readRDS(file = paste0(args$results_folder, "/anchor_MSR_subsample.rds"))
+  }
+  
+  
+  plot_AS <- ggplot(data = subsample) +
+    geom_density(mapping = aes(x = mean_coverage, fill = biotype), alpha = 0.9) +
+    ggtitle("After subsampling") +
+    theme_light() +
+    custom_ggtheme +
+    xlab("log10 mean expresion level")+
+    ggsci::scale_fill_npg(name = "Transcript biotype: ")
+  
+  ggpubr::ggarrange(plot_BS, plot_AS, labels = c("a", "b"), common.legend = T)
+  
+  #file_name <- paste0(args$figures_folder, "/anchor_MSR_subsampling")
+  #ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 180, height = 90, units = "mm", dpi = 300)
+  
+  ## Analysing differences in MSR_D and MSR_A
+  ## subset introns from lncRNA transcripts after subsampling
+  subsample_lncRNA <- subsample %>% dplyr::filter(biotype=="non PC")
+  ## subset introns from protein-coding transcripts after subsampling
+  subsample_protein_coding <- subsample %>% dplyr::filter(biotype=="PC")
+  ## QC
+  if (intersect(subsample_protein_coding$ref_junID, subsample_lncRNA$ref_junID) %>% length() > 0 )  {
+    stop("ERROR! some introns have been categorised as lncRNA and protein-coding.")
+  }
+  
+  df_introns_biotype <- subsample %>% filter(protein_coding %in% c(0,100)) %>% mutate(type_PC = ifelse(protein_coding == 100, "PC", "non PC")) 
+  
+  any(df_introns_biotype %>% pull(ref_junID) %>% duplicated())
+  
+  df_introns_biotype$biotype = factor(df_introns_biotype$biotype, levels = c("non PC","PC"))
+  df_introns_biotype <- df_introns_biotype %>% dplyr::select(ref_junID, biotype, MSR_D, MSR_A) %>% gather(key = "MSR_type", value = "MSR", -biotype, -ref_junID)
+  df_introns_biotype$MSR_type = factor(df_introns_biotype$MSR_type, levels = c("MSR_A", "MSR_D"))
+
+  print(paste0(Sys.time(), " - ", df_introns_biotype %>% nrow(), " - introns after tidying!"))
+  
+  df_introns_biotype %>% filter(biotype == "PC") %>% pull(MSR) %>% summary()
+  df_introns_biotype %>% filter(biotype == "non PC") %>% pull(MSR) %>% summary()
+  
+  df_introns_biotype_tidy <- df_introns_biotype %>%
+    group_by(biotype, MSR_type) %>%
+    distinct(ref_junID, .keep_all = T) %>%
+    mutate(percentile_group = case_when(MSR == 0 ~ "0",
+                                        MSR > 0 & MSR <= 0.2 ~ "(0,.2]",
+                                        MSR > 0.2 & MSR <= 0.4 ~ "(.2,.4]",
+                                        MSR > 0.4 & MSR <= 0.6 ~ "(.4,.6]",
+                                        MSR > 0.6 & MSR <= 0.8 ~ "(.6,.8]",
+                                        MSR > 0.8 & MSR <= 1 ~ "(.8,1]"))
+  
+  df_introns_biotype_tidy$MSR_type = factor(df_introns_biotype_tidy$MSR_type, levels = c("MSR_D","MSR_A"))
+  df_introns_biotype_tidy$percentile_group = factor(df_introns_biotype_tidy$percentile_group, levels = c("0","(0,.2]","(.2,.4]","(.4,.6]","(.6,.8]","(.8,1]"))
+  df_introns_biotype_tidy$biotype = factor(df_introns_biotype_tidy$biotype, levels = c("PC","non PC"))
+  
+  MSR_label <- c(MSR_D = "MSR Donor", MSR_A = "MSR Acceptor")
+  
+  ggplot(data = df_introns_biotype_tidy) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge", linewidth = .3, color = "#333333")+
+    #ggtitle("MSR Donor") +
+    xlab("Mis-splicing ratio value group") +
+    ylab("Number of annotated introns") +
+    ggforce::facet_col(~MSR_type, strip.position = "top", labeller = labeller(MSR_type=MSR_label))+
+    #ylim(c(0,23000))+
+    scale_fill_manual(values = c("#333333","#cccccc"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding   ","Non-protein-coding ")) +
+    theme_light() +
+    custom_ggtheme +
+    guides(fill = guide_legend(title = "",
+                               ncol = 2, nrow = 1)) + 
+    theme( plot.margin = margin(t = 0,b = 0,r = 0,l = 0),
+           legend.box.margin=margin(b = -10) )+
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) 
+  
+  file_name <- paste0(args$figures_folder, "/supplementary_figure7g")
+  ggplot2::ggsave(filename = paste0(file_name, ".png"), width = 70, height = 60, units = "mm", dpi = 300)
+  
+  
+  plotMSR_donor_zoomed <- ggplot(data = df_introns_biotype_tidy) + 
+    geom_bar(aes(x = percentile_group, fill = biotype),
+             position = "dodge", linewidth = .5, color = "#333333")+
+    ggforce::facet_col(~MSR_type, strip.position = "top", labeller = labeller(MSR_type=MSR_label))+
+    xlab("Mis-splicing ratio value group") +
+    ylab("") +
+    scale_y_continuous(limits =c(0,800), position = "right") +
+    
+    scale_fill_manual(values = c("#333333","#cccccc"),
+                      breaks = c("PC","non PC"),
+                      labels = c("Protein-coding","Non-protein-coding")) +
+    theme_light() +
+    custom_ggtheme +
+    theme(panel.border = element_blank(), panel.grid.major = element_blank(),
+          panel.grid.minor = element_blank(), axis.line = element_line(colour = "black")) +
+    guides(fill = guide_legend(title = NULL,  
+                               ncol = 2, nrow = 1)) 
+  plotMSR_donor_zoomed
+  file_name <- paste0(args$figures_folder, "/supplementary_figure7g.png")
+  ggplot2::ggsave(filename = file_name, width = 70, height = 60, units = "mm", dpi = 300)
+  
+}
 
 supplementary_figure14 <- function () {
   
@@ -2036,9 +1828,7 @@ supplementary_figure14 <- function () {
 
 supplementary_figure15_16 <- function () {
   
-  #################################################
   ## LOAD COMMON INTRONS AND NOVEL JUNCTIONS
-  #################################################
   
   target_genes <- c("UPF1", "UPF2")
   required_clusters <- c("case", "control")
@@ -2080,7 +1870,7 @@ supplementary_figure15_16 <- function () {
                                  protein_coding == p_coding) ) + 
       geom_histogram(aes(x = distance, fill = type_colour), bins = limit_bp * 2, binwidth = 1, position = "stack") +
       facet_grid(fct_rev(novel_type) ~ fct_rev(cluster)) +
-      ggtitle(paste0(gene_name, ifelse(protein_coding == 100, " - Protein-coding", " - Noncoding"))) +
+      ggtitle(paste0(gene_name, ifelse(p_coding == 100, " - Protein-coding", " - Noncoding"))) +
       xlab("Distance (in bp)") +
       ylab("Unique novel junctions") +
       theme_light() +
@@ -2091,7 +1881,7 @@ supplementary_figure15_16 <- function () {
       guides(fill = guide_legend(title = NULL, ncol = 4, nrow = 1)) +
       custom_ggtheme
     
-    if (protein_coding == 0) {plot_data <- plot_data + ggpubr::rremove("legend")}
+    if (p_coding == 0) {plot_data <- plot_data + ggpubr::rremove("legend")}
     
     # Add distance rectangle
     distance_rectangle <- ggplot() +
@@ -2142,11 +1932,6 @@ supplementary_figure15_16 <- function () {
 }
 
 supplementary_figure17 <- function(RBP_novel) {
-  
-  ##############################################################
-  ## Supplementary Figure 17
-  ## DISTANCES 200 BP (AQR)
-  ##############################################################
   
   RBP_novel <- RBP_novel %>%
     mutate(cluster = factor(cluster, levels = c("gene knockdown","control")))
@@ -2232,10 +2017,59 @@ aux_get_annotated_introns_inaccurate_splicing <- function(data, accurate_splicin
 }
 
 
-
+GenerateMSRtests <- function(target_RBPs,
+                             cluster_case = "case",
+                             cluster_control = "control",
+                             MSR_Table,
+                             num_cores = 4,
+                             file_output = "",
+                             overwrite = F){
+  
+  
+  if(!overwrite & file.exists(file_output)){
+    MSR_tests <- readRDS(file_output)
+    return(MSR_tests)
+  }
+  
+  cl <- parallel::makeCluster(num_cores)
+  doParallel::registerDoParallel(cl)
+  MSR_tests <- foreach(i = seq(length(target_RBPs)), .packages = c("tidyverse")) %dopar%{
+    # i <- 1
+    project <- target_RBPs[i]
+    
+    MSR_project <- MSR_Table %>%
+      dplyr::select(ref_junID,
+                    case = paste0(project, "_", cluster_case),
+                    control = paste0(project, "_", cluster_control)) %>%
+      tidyr::drop_na() %>%
+      tidyr::pivot_longer(cols = c("case", "control"), names_to = "group", values_to = "MSR") %>%
+      dplyr::arrange(ref_junID)
+    
+    #MSR_case <- MSR_project %>% dplyr::filter(group == "case") %>% dplyr::pull(MSR)
+    #MSR_control <- MSR_project %>% dplyr::filter(group == "control") %>% dplyr::pull(MSR)
+    
+    wilcox_test <- rstatix::wilcox_test(MSR_project, MSR ~ group, paired = TRUE, alternative = "greater")
+    wilcox_effsize <- rstatix::wilcox_effsize(MSR_project, MSR ~ group, paired = TRUE, alternative = "greater")
+    
+    tibble(target_gene = project,
+           statistical_test = NA,
+           H0 = NA,
+           H1 = NA,
+           p.value = wilcox_test$p,
+           effect_size = wilcox_effsize$effsize,
+           magnitude = wilcox_effsize$magnitude)
+  } %>% dplyr::bind_rows()
+  parallel::stopCluster(cl)
+  
+  if(file_output != ""){
+    MSR_tests %>% saveRDS(file_output)
+  }
+  
+  return(MSR_tests)
+}
 
 ##################################
 ## CALLS
 ##################################
 
-plot_effect_size_data_all_RBPs()
+# data_main_figure5_c()

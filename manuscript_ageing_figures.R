@@ -21,9 +21,6 @@ supporting_reads <- 1
 project_name <-  paste0("splicing_", supporting_reads, "read")
 database_name <- paste0(project_name, "_age")
 
-
-
-
 args <-
   list(
     database_folder = file.path(base_folder, "database",  database_name, gtf_version),
@@ -134,84 +131,7 @@ age_database_stats <- function() {
 }
 
 
-#' Title
-#' Produces a figure containing summary metadata of the samples included in the "Age Stratification" intron database.
-#' Corresponding to 'Supplementary Figure 23'
-#' @return
-#' @export
-#'
-#' @examples
-supplementary_figure23 <- function() {
-  
 
-  db_metadata <- df_metadata %>% mutate(gender = gender %>% as.integer())
-  
-  
-  ## Num samples
-  plot_num_samples <- ggplot(db_metadata %>% 
-           dplyr::count(SRA_project,cluster) %>%
-           arrange(cluster , n) %>%
-           mutate(SRA_project = fct_inorder(SRA_project)) ) +
-    geom_bar(aes(y = SRA_project, x = n, fill = cluster),
-             stat = "identity", position = position_dodge()) + 
-    theme_light() +
-    scale_fill_hue() +
-    labs(y = ("Body site"), x = "Num. samples" ) +
-    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_ggtheme
-  
-  plot_num_samples
-  
-  
-  ## Gender
-  plot_gender <- ggplot(db_metadata %>% 
-           mutate(gender = gender %>% as.character()) %>%
-           dplyr::count(SRA_project, gender) %>%
-           arrange(gender , n) %>%
-           mutate(SRA_project = fct_inorder(SRA_project)) ) +
-    geom_bar(aes(y = SRA_project, x = n, group = gender, fill = gender),
-             stat = "identity", position = "dodge") + 
-    theme_light() +
-    labs(y = ("Body site"), x = "Num. samples" ) +
-    scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
-    guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
-    custom_ggtheme
-  
-  plot_gender
-  
-  
-  ## RIN
-  plot_rin <- ggplot(db_metadata ) +
-    geom_density(aes(x = rin, fill = cluster), alpha = 0.5) + 
-    theme_light() +
-    labs(x = "RIN" ) +
-    scale_fill_hue() +
-    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_ggtheme
-  
-  plot_rin
-  
-  
-  ## Mapped read depth
-  plot_read_depth <- ggplot(db_metadata ) +
-    geom_density(aes(x = all_mapped_reads, fill = cluster), alpha = 0.5) + 
-    theme_light() +
-    scale_fill_hue() +
-    labs(x = "Mapped Read Count" ) +
-    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
-    custom_ggtheme
-  
-  plot_read_depth
-  
-  ggpubr::ggarrange(plot_num_samples,plot_gender,
-                    plot_rin,plot_read_depth,
-                    labels = c("a","b","c","d"))
-  
-
-  ggplot2::ggsave(filename = file.path(args$figures_folder, "supplementary_figure23.png"), width = 210, height = 190, units = "mm", dpi = 300)
-  
-  
-}
 
 
 #' Title
@@ -342,7 +262,7 @@ get_common_introns_across_age_groups <- function() {
 #' @export
 #'
 #' @examples
-data_main_figure7_a <- function() {
+get_data_main_figure7_a <- function() {
   
 
   ## Load common introns across age groups and tissues
@@ -366,7 +286,7 @@ data_main_figure7_a <- function() {
     as_tibble()
 
   
-  if ( !file.exists(file.path(args$results_folder, "main_figure7_a.rds")) ) {
+  if (!file.exists(file.path(args$results_folder, "data_main_figure7a.rds"))) {
     
     df_wilcoxon <- map_df( c("MSR Donor", "MSR Acceptor"), function(MSR_type) { #, "MSR_A"
         
@@ -433,8 +353,8 @@ data_main_figure7_a <- function() {
       
     })
   
-    file_name <- paste0(results_folder, "/data_main_figure7_a.rds")
-    saveRDS(object = df_wilcoxon, file = file_name)
+     
+    saveRDS(object = df_wilcoxon, file = paste0(args$results_folder, "/data_main_figure7a.rds"))
     
   }
   
@@ -456,26 +376,21 @@ data_main_figure7_a <- function() {
 main_figure7_a <- function() {
   
 
-  effect.size.file.path <- file.path(args$results_folder, "/data_main_figure7_a.rds")
-  figure.name <- file.path(figures_folder, "main_figure7_a.png")
-  plot.stats <- F
+  effect_size_filepath <- file.path(args$results_folder, "/data_main_figure7a.rds")
+
+  plot_stats <- F
   
   #######################################################
   ## LOAD AND TIDY THE DATA
   #######################################################
   
+  ## Adjust pvals using the Bonferroni method
+  df_wilcoxon_age <- readRDS(file = effect_size_filepath) %>% group_by(MSR_type) %>% mutate(q = p.adjust(pval, method = "fdr")) %>% ungroup()
+  df_wilcoxon_age$MSR_type <- factor(df_wilcoxon_age$MSR_type, levels = (df_wilcoxon_age$MSR_type %>% unique))
   
-  df_wilcoxon_age <- readRDS(file = effect.size.file.path) %>%
-    group_by(MSR_type) %>%
-    mutate(q = p.adjust(pval, method = "fdr")) %>%
-    ungroup()
-  df_wilcoxon_age$MSR_type <- factor(df_wilcoxon_age$MSR_type, levels = (df_wilcoxon_age$MSR_type %>% unique) )
+  ## Only consider significant tissues
   df_wilcoxon_age <- df_wilcoxon_age %>%
-    filter(tissue %in% (df_wilcoxon_age %>%
-                           group_by(tissue) %>%
-                           filter(q <= 0.05) %>%
-                           ungroup() %>% 
-                           pull(tissue)) ) %>%
+    filter(tissue %in% (df_wilcoxon_age %>% group_by(tissue) %>% filter(q <= 0.05) %>% ungroup() %>% pull(tissue)) ) %>%
     mutate(tissue = str_replace(tissue, pattern = "_",replacement = " ")) %>%
     group_by(MSR_type) %>%
     mutate(tissue = fct_reorder(tissue, plyr::desc(effsize))) %>%
@@ -522,7 +437,9 @@ main_figure7_a <- function() {
   
   
   ## Save the figure 
-  ggplot2::ggsave(filename = figure.name, width = 180, height = 280, units = "mm", dpi = 300)
+  figure_name <- file.path(args$figures_folder, "main_figure7a")
+  ggplot2::ggsave(filename = paste0(figure_name,".png"), width = 180, height = 60, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(figure_name,".svg"), width = 180, height = 60, units = "mm", dpi = 300)
   
   
   
@@ -681,22 +598,22 @@ main_figure7_b <- function() {
   )
   
   
-  clusterProfiler::dotplot(ego_MSR %>% filter(ONTOLOGY == "CC"), 
-                           x = "GeneRatio", 
-                           showCategory = 30, 
-                           split="ONTOLOGY") +
+  clusterProfiler::dotplot(ego_MSR %>% filter(ONTOLOGY == "CC"), x = "GeneRatio", showCategory = 30, split="ONTOLOGY") +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
     xlab("Gene Ratio") +
     ggforce::facet_col(ONTOLOGY~., scales = "free_y", space = "free") +
     custom_ggtheme +
-    theme(legend.position = "top",legend.box = "horizontal",
-          plot.margin = margin(t = -5,b = 0,l = 5,r = 5),
-          legend.margin=margin(t = -5,b = -5, r = 5, 0),
-          legend.box.margin=margin(t = -5,r = 10,b = -5,l = 0)) + 
+    theme(legend.position = "top", 
+          legend.box = "vertical",
+          plot.margin = margin(t = -5, b = 0, l = 5, r = 5),
+          legend.margin = margin(t = -5, b = -5, r = 5, 0),
+          legend.box.margin = margin(t = -5, r = 10, b = -5, l = 0)) + 
     scale_size(range = c(1, 5)) +
-    guides(size = guide_legend(title = "Gene Count: "),
-           colour = guide_legend(title = "q: "))    
-  ggplot2::ggsave(file.path(args$figures_folder, "figure7_bGO.png"), width = 180, height = 75, units = "mm", dpi = 300)
+    guides(size = guide_legend(title = "Gene Count: ", ncol = 6), colour = guide_legend(title = "q: "))    
+  
+  figure_name <- file.path(args$figures_folder, "main_figure7_bGO")
+  ggplot2::ggsave(filename = paste0(figure_name,".png"), width = 110, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(filename = paste0(figure_name,".svg"), width = 110, height = 90, units = "mm", dpi = 300)
   
   
   ## . Interestingly, this analysis identified significant enrichment in terms such as "neuron to neuron synapse" (FDR<0.001), "tau protein binding" (FDR=0.006) and "dendritic spine" (FDR<0.001) 
@@ -705,15 +622,11 @@ main_figure7_b <- function() {
   ego_MSR %>% as_tibble() %>% filter(str_detect(Description, pattern = "tau protein binding")) 
   
   ## Save result
-  write.csv(x = ego_MSR %>% as.data.frame() %>% dplyr::select(-"geneID"),
-            file = file.path(args$results_folder, "SuppTable9.csv"),
-            row.names = F)
+  write.csv(x = ego_MSR %>% as.data.frame() %>% dplyr::select(-"geneID"), file = file.path(args$results_folder, "SuppTable9.csv"), row.names = F)
   
   
   ## Save Data
-  write.csv(x = ego_MSR %>% as.data.frame() ,
-            file = file.path(args$data_folder, "figure7_b.csv"),
-            row.names = F)
+  write.csv(x = ego_MSR %>% as.data.frame(), file = file.path(args$data_folder, "figure7_b.csv"), row.names = F)
   
   
   
@@ -731,14 +644,109 @@ main_figure7_b <- function() {
   
   kegg <- clusterProfiler::enrichKEGG(gene = entrez_genes_increasing, 
                                       universe = entrez_genes_bg,
-                                      organism = 'hsa', keyType="kegg", pvalueCutoff = 0.05)
+                                      organism = 'hsa', keyType="kegg", pvalueCutoff = 0.05) %>% mutate(ONTOLOGY = "KEGG")
   
-  clusterProfiler::dotplot(kegg, showCategory=30) 
-  ggplot2::ggsave(file.path(args$figures_folder, "figure7_bKEGG.png"), width = 180, height = 75, units = "mm", dpi = 300)
+  clusterProfiler::dotplot(kegg, x = "GeneRatio", showCategory = 30) +
+    scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
+    xlab("Gene Ratio") +
+    custom_ggtheme +
+    ggforce::facet_col(ONTOLOGY~., scales = "free_y", space = "free") +
+    theme(legend.position = "top",legend.box = "vertical",
+          plot.margin = margin(t = -5,b = 0,l = 5,r = 5),
+          legend.margin=margin(t = -5,b = -5, r = 5, 0),
+          legend.box.margin=margin(t = -5,r = 10,b = -5,l = 0)) + 
+    scale_size(range = c(1, 5)) +
+    guides(size = guide_legend(title = "Gene Count: "), colour = guide_legend(title = "q: "))    
+  
+  figure_name <- file.path(args$figures_folder, "main_figure7_bKEGG")
+  ggplot2::ggsave(paste0(figure_name, ".png"), width = 110, height = 90, units = "mm", dpi = 300)
+  ggplot2::ggsave(paste0(figure_name, ".svg"), width = 110, height = 90, units = "mm", dpi = 300)
   
   
   ## Save Data
   write.csv(x = kegg %>% as.data.frame(), file = file.path(args$data_folder, "figure7_b2.csv"), row.names = F)
+  
+}
+
+
+
+
+#' Title
+#' Produces a figure containing summary metadata of the samples included in the "Age Stratification" intron database.
+#' Corresponding to 'Supplementary Figure 23'
+#' @return
+#' @export
+#'
+#' @examples
+supplementary_figure23 <- function() {
+  
+  
+  db_metadata <- df_metadata %>% mutate(gender = gender %>% as.integer())
+  
+  
+  ## Num samples
+  plot_num_samples <- ggplot(db_metadata %>% 
+                               dplyr::count(SRA_project,cluster) %>%
+                               arrange(cluster , n) %>%
+                               mutate(SRA_project = fct_inorder(SRA_project)) ) +
+    geom_bar(aes(y = SRA_project, x = n, fill = cluster),
+             stat = "identity", position = position_dodge()) + 
+    theme_light() +
+    scale_fill_hue() +
+    labs(y = ("Body site"), x = "Num. samples" ) +
+    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
+    custom_ggtheme
+  
+  plot_num_samples
+  
+  
+  ## Gender
+  plot_gender <- ggplot(db_metadata %>% 
+                          mutate(gender = gender %>% as.character()) %>%
+                          dplyr::count(SRA_project, gender) %>%
+                          arrange(gender , n) %>%
+                          mutate(SRA_project = fct_inorder(SRA_project)) ) +
+    geom_bar(aes(y = SRA_project, x = n, group = gender, fill = gender),
+             stat = "identity", position = "dodge") + 
+    theme_light() +
+    labs(y = ("Body site"), x = "Num. samples" ) +
+    scale_fill_manual(labels = c("Male", "Female"), values = c("1", "2"), palette=scales::hue_pal()) +
+    guides(fill = guide_legend(title = "Gender: ", ncol = 2, nrow = 1)) +
+    custom_ggtheme
+  
+  plot_gender
+  
+  
+  ## RIN
+  plot_rin <- ggplot(db_metadata ) +
+    geom_density(aes(x = rin, fill = cluster), alpha = 0.5) + 
+    theme_light() +
+    labs(x = "RIN" ) +
+    scale_fill_hue() +
+    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
+    custom_ggtheme
+  
+  plot_rin
+  
+  
+  ## Mapped read depth
+  plot_read_depth <- ggplot(db_metadata ) +
+    geom_density(aes(x = all_mapped_reads, fill = cluster), alpha = 0.5) + 
+    theme_light() +
+    scale_fill_hue() +
+    labs(x = "Mapped Read Count" ) +
+    guides(fill = guide_legend(title = "Age group: ", ncol = 3, nrow = 1)) +
+    custom_ggtheme
+  
+  plot_read_depth
+  
+  ggpubr::ggarrange(plot_num_samples,plot_gender,
+                    plot_rin,plot_read_depth,
+                    labels = c("a","b","c","d"))
+  
+  
+  ggplot2::ggsave(filename = file.path(args$figures_folder, "supplementary_figure23.png"), width = 210, height = 190, units = "mm", dpi = 300)
+  
   
 }
 
@@ -765,17 +773,19 @@ main_figure7_b <- function() {
 #' @export
 #'
 #' @examples
-age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = c("BRAIN"),
-                                                                 do_paired_test = T,
-                                                                 get_median_TPM = T,
-                                                                 replace = F) {
+get_data_supplementary_figures_19_20_21 <- function() {
   
+  ## Set up initial variables
   
+  project.list = c("BRAIN")
+  do_paired_test = T
+  get_median_TPM = T
+  replace = F
   
-  local_results_folder <- paste0(results_folder, "/MSR_normalisation_by_TPM")
+  local_results_folder <- paste0(args$results_folder, "/MSR_normalisation_by_TPM")
   dir.create(path = local_results_folder, recursive = T, showWarnings = F)
   
-  file_name <- paste0(results_folder, "/common_introns_all_age_groups.rds")
+  file_name <- paste0(args$results_folder, "/common_introns_all_age_groups.rds")
   df_common_introns_age <- readRDS(file = file_name)
   
   
@@ -788,10 +798,8 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
   all_RBPs <- (xlsx::read.xlsx(file = paste0(base_folder,'/dependencies/RBPs_subgroups.xlsx'),
                               header = TRUE, sheetIndex = 1) %>% as_tibble() %>% mutate(NMD = 0))[-116,]
   
-  all_NMDs <- data.frame(name = c("SMG1", "SMG5", "SMG6", "SMG7", 
-                                  "UPF1", "UPF2", "UPF3A"),
-                         id = c("ENSG00000157106", "ENSG00000198952", "ENSG00000070366", "ENSG00000116698", 
-                                "ENSG00000005007", "ENSG00000151461", "ENSG00000169062"),
+  all_NMDs <- data.frame(name = c("SMG1", "SMG5", "SMG6", "SMG7", "UPF1", "UPF2", "UPF3A"),
+                         id = c("ENSG00000157106", "ENSG00000198952", "ENSG00000070366", "ENSG00000116698", "ENSG00000005007", "ENSG00000151461", "ENSG00000169062"),
                          Splicing.regulation = c(0,0,0,0,0,0,0),
                          Spliceosome = c(0,0,0,0,0,0,0),
                          Exon.Junction.Complex = c(0,0,0,0,0,0,0),
@@ -799,10 +807,6 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
 
   all_RBPs_tidy <- rbind(all_NMDs,all_RBPs)
 
-
-  
-  
-  
   ################################
   ## PER GTEX TISSUE
   ################################
@@ -820,64 +824,41 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
     dir.create(path = tissue_local_results_folder, recursive = T, showWarnings = F)
     
     
-    if ( !file.exists(paste0(tissue_local_results_folder,  
-                             "/", project_id, "_effect_size_paired", do_paired_test, "_median", get_median_TPM,".rds")) || 
+    if ( !file.exists(paste0(tissue_local_results_folder, "/", project_id, "_effect_size_paired", do_paired_test, "_median", get_median_TPM,".rds")) || 
          replace ) {
       
-      
-      #####################################
-      ## CALCULATE INVERSE FOLD-CHANGE TPM
-      #####################################
-      
+
+      ## 1. CALCULATE INVERSE FOLD-CHANGE TPM
+
       fold_change_TPM <- if (file.exists(paste0(tissue_local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds"))) {
         readRDS(file = paste0(tissue_local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds"))
       } else {
-        fold_change_TPM <- age_stratification_calculate_fold_change_TPM(project.id = project_id, RBP.list = all_RBPs_tidy,
-                                                                        get.median = get_median_TPM)
-        saveRDS(object = fold_change_TPM,
-                file = paste0(tissue_local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds"))
+        fold_change_TPM <- calculate_fold_change_TPM(project.id = project_id, RBP.list = all_RBPs_tidy, get.median = get_median_TPM)
+        saveRDS(object = fold_change_TPM, file = paste0(tissue_local_results_folder, "/", project_id, "_inverse_fold-change_TPM.rds"))
         return(fold_change_TPM)
       }
 
-      
-      #####################################
-      ## NORMALISE MSR VALUES USING
-      ## INVERSE FOLD-CHANGE TPM
-      #####################################
-      
-      MSR_normalised <- age_stratification_get_normalised_MSR_values_by_gene_TPM(project.id = project_id,
-                                                                                 fold.change.TPM = fold_change_TPM,
-                                                                                 gene.list = all_RBPs_tidy)
+
+      ## 2. NORMALISE MSR VALUES USING INVERSE FOLD-CHANGE TPM
+
+      MSR_normalised <- normalise_MSR_values_by_gene_fold_change_TPM(project.id = project_id, fold.change.TPM = fold_change_TPM, gene.list = all_RBPs_tidy)
       
       
-      ################################
-      ## CALCULATE AGE EFFECT SIZES 
-      ## USING MSR NORMALISED DATA
-      ################################
-      
+
+      ## CALCULATE AGE EFFECT SIZES USING MSR NORMALISED DATA
       
       message("Calculating age effect sizes using MSR normalised data....")
-      
-      
       gene_list <- (fold_change_TPM %>% pull(name))
       
 
-      doParallel::registerDoParallel(cores = 3)
+      doParallel::registerDoParallel(cores = 1)
       effect_size_age_normalised_TPM <- foreach(j = seq(length(gene_list)), .combine = "rbind") %dopar% {
 
-        
         # gene <- gene_list[1]
-        # gene <- "KHDRBS2"
-        # gene <- "UPF1"
-        # gene <- "U2AF1"
-        
-        
+      
         gene <- (gene_list)[j]
- 
-       
         message(gene, "....")
         
-
         map_df(c("MSR Donor","MSR Acceptor"), function(MSR_type) {
           
           tryCatch(
@@ -886,11 +867,8 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
               
               message(gene, " --> ", MSR_type, " --> Wilcoxon paired=", do_paired_test, " effect-size test ....")
               
-              
-              
               MSR_normalised_data <- if (MSR_type == "MSR Donor") {
                  MSR_normalised %>% dplyr::select(ref_junID, MSR_normalised = MSR_D_normalised, age, gene_normalised) 
-                
               } else {
                 MSR_normalised %>% dplyr::select(ref_junID, MSR_normalised = MSR_A_normalised, age, gene_normalised) 
               }
@@ -901,17 +879,15 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
                 filter(gene_normalised == gene) %>%
                 spread(key = age, MSR_normalised)
               
-             
-          
               
-              ## Wilcoxon one-tailed test
+              ## Calculate Wilcoxon one-tailed test
               wilcox_pval <- data.frame(pval = c((wilcox.test(x = MSR_normalised_data$`20-39`,
                                                               y = MSR_normalised_data$`60-79`,
                                                               alternative = "less",
                                                               paired = do_paired_test))$p.value))
 
 
-              ## Wilcoxon effect size
+              ## Calculate Wilcoxon effect size
               w_effsize <- rstatix::wilcox_effsize(data = MSR_normalised_data %>%
                                                      dplyr::select(ref_junID, `20-39`,`60-79`) %>%
                                                      gather(key = age, value = MSR, -ref_junID) %>%
@@ -925,8 +901,7 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
             
               
               ## Return results
-              return(w_effsize %>%
-                       cbind(wilcox_pval))
+              return(w_effsize %>% cbind(wilcox_pval))
               
             },
             error = function(cond) {
@@ -937,17 +912,10 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
           )
         })
       } 
-
       
-      
-      saveRDS(object = effect_size_age_normalised_TPM %>% 
-                inner_join(y = all_RBPs_tidy, 
-                           by = c("gene_normalised" = "name")),
-              file = paste0(tissue_local_results_folder, 
-                            "/", project_id, "_effect_size_paired", 
-                            do_paired_test, "_median", get_median_TPM,"_inverse_fold-change_TPM.rds"))
-      
-      
+      ## Save results
+      saveRDS(object = effect_size_age_normalised_TPM %>% inner_join(y = all_RBPs_tidy,  by = c("gene_normalised" = "name")),
+              file = paste0(tissue_local_results_folder, "/", project_id, "_effect_size_paired", do_paired_test, "_median", get_median_TPM,"_inverse_fold-change_TPM.rds"))
       
     } 
 
@@ -966,9 +934,9 @@ age_stratification_age_effsize_MSR_normalised_by_TPM <- function(project.list = 
 #' @export
 #'
 #' @examples
-age_stratification_calculate_fold_change_TPM <- function(project.id,
-                                                         RBP.list,
-                                                         get.median = T) {
+calculate_fold_change_TPM <- function(project.id,
+                                      RBP.list,
+                                      get.median = T) {
   
   
 
@@ -980,16 +948,14 @@ age_stratification_calculate_fold_change_TPM <- function(project.id,
     
     message(RBP,"...")
     
-    young_group_TPM <- readRDS(file = paste0(base_folder,"/results/splicing_1read/", gtf_version, "/", project.id, "/tpm/",
-                                       project.id, "_20-39_tpm.rds")) %>%
+    young_group_TPM <- readRDS(file = paste0(base_folder,"/results/splicing_1read/", gtf_version, "/", project.id, "/tpm/", project.id, "_20-39_tpm.rds")) %>%
       filter(gene_id %in% RBP ) %>% 
       rowwise() %>% 
       mutate(TPM = mean( c_across(where(is.numeric))) ) %>%
       ungroup()
     
     
-    eldest_group_TPM <- readRDS(file = paste0(base_folder,"/results/splicing_1read/", gtf_version, "/", project.id, "/tpm/",
-                                       project.id, "_60-79_tpm.rds")) %>%
+    eldest_group_TPM <- readRDS(file = paste0(base_folder,"/results/splicing_1read/", gtf_version, "/", project.id, "/tpm/", project.id, "_60-79_tpm.rds")) %>%
       filter(gene_id %in% RBP ) %>% 
       rowwise() %>% 
       mutate(TPM = mean( c_across(where(is.numeric))) ) %>%
@@ -997,10 +963,7 @@ age_stratification_calculate_fold_change_TPM <- function(project.id,
     
     
     
-    if (young_group_TPM %>% nrow == 1 &&
-        eldest_group_TPM %>% nrow == 1 ) {
-      
-      
+    if (young_group_TPM %>% nrow == 1 && eldest_group_TPM %>% nrow == 1 ) {
       
       fold_change = eldest_group_TPM$TPM/young_group_TPM$TPM
       
@@ -1020,14 +983,10 @@ age_stratification_calculate_fold_change_TPM <- function(project.id,
       return(NULL)
     }
     
-    
-    
-    
   })
   
   fold_change_TPM_values_age_groups %>%
-    inner_join(y = RBP.list ,
-               by = c("gene" = "id")) %>%
+    inner_join(y = RBP.list, by = c("gene" = "id")) %>%
     arrange(desc(fold_change_eldest)) %>%
     return()
   
@@ -1048,14 +1007,14 @@ age_stratification_calculate_fold_change_TPM <- function(project.id,
 #' @export
 #'
 #' @examples
-age_stratification_get_normalised_MSR_values_by_gene_TPM <- function(project.id,
-                                                                     fold.change.TPM,
-                                                                     gene.list) {
+normalise_MSR_values_by_gene_fold_change_TPM <- function(project.id,
+                                                         fold.change.TPM,
+                                                         gene.list) {
 
   
   
   
-  local_results_folder <- paste0(results_folder, "/MSR_normalisation_by_TPM/")
+  local_results_folder <- paste0(args$results_folder, "/MSR_normalisation_by_TPM/")
   
   median_TPM_values_age_groups <- map_df(c("20-39","60-79"), function(cluster_id) {
     
@@ -1076,9 +1035,7 @@ age_stratification_get_normalised_MSR_values_by_gene_TPM <- function(project.id,
     tissue_introns <- dbGetQuery(con, query) %>% as_tibble() %>% distinct(ref_junID, .keep_all = T)
     
     query <- paste0("SELECT ref_junID, MSR_D, MSR_A FROM '", cluster_id, "_", project.id, "_nevermisspliced' " )
-    tissue_introns <- rbind(tissue_introns, dbGetQuery(con, query)) %>% as_tibble() %>% 
-      distinct(ref_junID, .keep_all = T) %>%
-      arrange(ref_junID)
+    tissue_introns <- rbind(tissue_introns, dbGetQuery(con, query)) %>% as_tibble() %>% distinct(ref_junID, .keep_all = T) %>% arrange(ref_junID)
     DBI::dbDisconnect(con)
   
     
@@ -1094,11 +1051,8 @@ age_stratification_get_normalised_MSR_values_by_gene_TPM <- function(project.id,
       if (cluster_id == "60-79") {
         TPM <- fold.change.TPM %>% filter(name == gene_name) %>% pull(inverse_fold_change)
       } else {
-        #TPM <- fold.change.TPM %>% filter(name == gene_name) %>% pull(mean_youngest)
-        TPM <- 1
+        TPM <- 1 ## expression level in the youngest group is taken as the reference
       }
-      
-      
       
       tissue_introns %>%
         mutate(MSR_D_normalised = MSR_D/TPM,
@@ -1111,14 +1065,9 @@ age_stratification_get_normalised_MSR_values_by_gene_TPM <- function(project.id,
       
     })
  
-    
-    normalised_TPM %>% 
-      return()
+    normalised_TPM %>%  return()
       
-      
-
   })
-  
   
   return(median_TPM_values_age_groups)
 
@@ -1129,149 +1078,118 @@ age_stratification_get_normalised_MSR_values_by_gene_TPM <- function(project.id,
 #' Auxiliary function to 'age_stratification_age_effsize_MSR_normalised_by_TPM()'.
 #' Plots the age effect size using normalised MSR values by the inverse fold-change TPM of each RBP/NMD gene.
 #' Corresponding to the supplementary figures 19-21
-#' @param effect.size.file.path 
-#' @param figure.path 
 #' @param plot.stats 
-#' @param paired.test 
-#' @param get.median 
-#' @param project.id 
 #'
 #' @return
 #' @export
 #'
 #' @examples
-plot_age_stratification_effsize_normalised_MSR <- function(effect.size.file.path,
-                                                           figure.path,
-                                                           plot.stats = F,
-                                                           paired.test,
-                                                           get.median,
-                                                           project.id) {
+supplementary_figures_19_20_21 <- function(plot.stats = F) {
   
+  paired.test = T
+  get.median = T
   
-  # SET VARIABLES
-  # project.id = "BLOOD_VESSEL"
-  # project.id = "BLOOD"
-  # project.id = "BRAIN"
-  # paired.test = T
-  # get.median = T
-  # effect.size.file.path = paste0(results_folder, "/MSR_normalisation_by_TPM/", project.id, "/", project.id, "_paired",paired.test,"/",
-  #                                project.id, "_effect_size_paired",
-  #                                paired.test, "_median", get.median,"_inverse_fold-change_TPM.rds")
-  # figure.path = paste0(figures_folder, "/age_normalised_MSR_by_TPM/", project.id)
-  
-  
-  df_wilcoxon_age <- readRDS(file = effect.size.file.path) %>%
-    group_by(MSR_type) %>%
-    mutate(q = 0)%>%#p.adjust(pval, method = "fdr"))%>%
-    ungroup()
-  
-  
-  #######################################################
-  ## PLOTS
-  #######################################################
-  
-  reference_effsize <- readRDS(file = paste0(results_folder, "/effsize_MSR_with_age.rds")) %>%
-    filter(tissue == project.id) %>%
-    arrange(desc(MSR_type)) %>%
-    pull(effsize) %>%
-    mean()
-  
-  df_wilcoxon_age$MSR_type = factor(df_wilcoxon_age$MSR_type, 
-                                    levels = c(df_wilcoxon_age$MSR_type %>% unique))
-  
-  df_wilcoxon_tidy_final <- df_wilcoxon_age %>%
-    mutate(project = str_replace(project, pattern = "_",replacement = " ")) %>%
-    group_by(MSR_type) %>%
-    mutate(gene_normalised = fct_reorder(gene_normalised, plyr::desc(effsize))) %>%
-    ungroup()  %>%
-    mutate(delta_effsize = reference_effsize - effsize) %>%
-    dplyr::select(delta_effsize, 
-                  effsize,
-                  gene_normalised,
-                  MSR_type, q, 
-                  Splicing.regulation, Spliceosome, Exon.Junction.Complex, NMD ) %>%
-    mutate(type = ifelse(Splicing.regulation == 1, "Splicing Regulation",
-                         ifelse(Spliceosome == 1, "Spliceosome",
-                                ifelse(Exon.Junction.Complex == 1, 
-                                       "Exon Junction Complex", "NMD")))) %>%
-    mutate(color = ifelse(q > 0.05, "grey", ifelse(MSR_type == "MSR Donor", "#34b275", "#64037d"))) %>%
-    mutate(type = factor(type, levels=c('NMD','Splicing Regulation','Spliceosome',
-                                        'Exon Junction Complex')))
-  
-  
-  
-  # write.csv(x = df_wilcoxon_tidy_final %>%
-  #             mutate(statistical_test = "Wilcoxon Rank text: rstatix::wilcox_test(data, formula, paired = TRUE, correct = TRUE, alternative = 'less')",
-  #                    H0 = "The MSR_D observations from the '20-39' & '60-79' distributions are symmetric about their median value.",
-  #                    H1 = "The MSR_D observations from the '20-39' distribution are smaller at their median value than the MSR_D observations from the 60-79' distribution"),
-  #           file = paste0(results_folder, "/age_wilcoxon_MSR_all_tissues.csv"),
-  #           row.names = F)
-  
-  
-  
-  ####################################
-  ## PLOT 
-  ####################################
-  
-  
-  # reference_effsize = 0.0388
-  
-  age_effsize_plot  <- ggplot(data = df_wilcoxon_tidy_final,
-         aes(x = effsize, y = gene_normalised, colour = color)) +
-    geom_point(alpha=.7) +
-    geom_vline(mapping = aes(xintercept = reference_effsize), linetype="dotted") +
-    facet_grid(~type) +
-    theme_light() +
-    ylab("") +
-    xlab("Probability of superior MSR after controlling for individual RBP/NMD activity in '60-79'yrs compared to '20-39'yrs") +
-    scale_color_manual(values = c("#666666", "#34b275", "#64037d"),
-                       breaks = c("grey", "#34b275", "#64037d"),
-                       labels = c("Non-significant FDR", "MSR Donor", "MSR Acceptor")) +
-    #custom_ggtheme + 
-    theme( plot.margin = margin(0,0,0,0),
-           legend.box.margin=margin(l = -11),
-           legend.position="right", 
-           legend.box="horizontal", 
-           axis.text.y = element_text(size = 6, 
-                                      family="Arial", colour = "black"), 
-           axis.text.x = element_text(size = 6, 
-                                      family="Arial", colour = "black"),
-           axis.title.x = element_text(size = 7, 
-                                       family="Arial", colour = "black"),
-           strip.text.x = element_text(size = 7, 
-                                       family="Arial", colour = "black"),
-           legend.text = element_text(size = 7, 
-                                      family="Arial", colour = "black")) +
-    scale_size(name = "FDR pval:",
-               #trans="log10",
-               
-               range=c(5), 
-               breaks=c(2.2e-16, 0.5)) +
+  for (project.id in c("BRAIN", "BLOOD_VESSEL", "BLOOD")) {
     
-    #guides(size = guide_legend(title = "q:"))+
-    guides(color = guide_legend(title = ""))+
-    scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
-  
-  
-  
-  # Set the colors to be used
-  fill_colors <- c("#cccccc","#999999","#999999","#999999")
-  
-  # Find strips glob
-  gt<-ggplot_gtable(ggplot_build(age_effsize_plot))
-  strips <- which(startsWith(gt$layout$name,'strip'))
-  
-  # Change the fill color of each strip
-  for (s in seq_along(strips)) {
-    gt$grobs[[strips[s]]]$grobs[[1]]$children[[1]]$gp$fill <- fill_colors[s]
+    # project.id = c("BRAIN", "BLOOD_VESSEL", "BLOOD")[1]
+    if (project.id == "BLOOD_VESSEL") {
+      table_name <- "supplementary_table9"  
+      figure_name <- "supplementary_figure19"  
+    } else if (project.id == "BRAIN") {
+      table_name <- "supplementary_table10"  
+      figure_name <- "supplementary_figure20"  
+    } else if (project.id == "BLOOD") {
+      table_name <- "supplementary_table8"
+      figure_name <- "supplementary_figure21"
+    } else {
+      table_name <- paste0("effect_size_fold-change_TPM", project.id)
+      figure_name <- paste0("effect_size_fold-change_TPM", project.id)
+    }
+    
+    effect_size_file_path <- file.path(args$results_folder, "MSR_normalisation_by_TPM", project.id, 
+                                       paste0(project.id, "_paired", paired.test),
+                                       paste0(project.id, "_effect_size_paired", paired.test, "_median", get.median, "_inverse_fold-change_TPM.rds"))
+    
+    df_wilcoxon_age <- readRDS(file = effect_size_file_path) %>% group_by(MSR_type) %>% mutate(q = p.adjust(p = pval,method = "fdr")) %>% ungroup()
+    
+    
+    #######################################################
+    ## SUPPLEMENTARY TABLES 8-10
+    #######################################################
+    
+    reference_effsize <- readRDS(file = paste0(args$results_folder, "/data_main_figure7a.rds")) %>% filter(tissue == project.id) %>% arrange(desc(MSR_type)) %>% pull(effsize) %>% mean()
+    
+    df_wilcoxon_age$MSR_type = factor(df_wilcoxon_age$MSR_type, levels = c(df_wilcoxon_age$MSR_type %>% unique))
+    
+    df_wilcoxon_tidy_final <- df_wilcoxon_age %>%
+      mutate(project = str_replace(project, pattern = "_",replacement = " ")) %>%
+      group_by(MSR_type) %>%
+      mutate(gene_normalised = fct_reorder(gene_normalised, plyr::desc(effsize))) %>%
+      ungroup()  %>%
+      mutate(delta_effsize = reference_effsize - effsize) %>%
+      dplyr::select(delta_effsize, effsize, gene_normalised, MSR_type, q, Splicing.regulation, Spliceosome, Exon.Junction.Complex, NMD ) %>%
+      mutate(type = ifelse(Splicing.regulation == 1, "Splicing Regulation", ifelse(Spliceosome == 1, "Spliceosome", ifelse(Exon.Junction.Complex == 1, "Exon Junction Complex", "NMD")))) %>%
+      mutate(color = ifelse(q > 0.05, "grey", ifelse(MSR_type == "MSR Donor", "#34b275", "#64037d"))) %>%
+      mutate(type = factor(type, levels=c('NMD','Splicing Regulation','Spliceosome', 'Exon Junction Complex')))
+    
+    
+    df_wilcoxon_tidy_final %>% dplyr::select(gene_normalised, effsize, q, MSR_type, Splicing.regulation, Spliceosome, Exon.Junction.Complex, NMD) %>% arrange(effsize)
+    
+    
+    write.csv(x = df_wilcoxon_tidy_final %>% dplyr::select(gene_normalised, effsize, q, MSR_type, Splicing.regulation, Spliceosome, Exon.Junction.Complex, NMD) %>% arrange(effsize),
+              file = file.path(args$results_folder, paste0(table_name, ".csv")),
+              row.names = F)
+    
+    #######################################################
+    ## SUPPLEMENTARY FIGURES 19-21
+    #######################################################
+    
+    # reference_effsize = 0.0388
+    
+    age_effsize_plot  <- ggplot(data = df_wilcoxon_tidy_final, aes(x = effsize, y = gene_normalised, colour = MSR_type)) + #color)) +
+      geom_point(alpha=.7) +
+      geom_vline(mapping = aes(xintercept = reference_effsize), linetype="dotted") +
+      facet_grid(~type) +
+      theme_light() +
+      ylab("") +
+      xlab("Probability of superior MSR after controlling for individual RBP/NMD activity in '60-79'yrs compared to '20-39'yrs") +
+      scale_color_manual(values = c("#35B779FF","#64037d"), breaks = c("MSR Donor", "MSR Acceptor"), labels = c("MSR Donor", "MSR Acceptor")) +
+        #values = c("#666666", "#34b275", "#64037d"), #breaks = c("grey", "#34b275", "#64037d"), #labels = c("Non-significant FDR", "MSR Donor", "MSR Acceptor")) +
+      theme( plot.margin = margin(0,0,0,0),
+             legend.box.margin=margin(l = -11),
+             legend.position="right", 
+             legend.box="horizontal", 
+             axis.text.y = element_text(size = 6, family="Arial", colour = "black"), 
+             axis.text.x = element_text(size = 6, family="Arial", colour = "black"),
+             axis.title.x = element_text(size = 7, family="Arial", colour = "black"),
+             strip.text.x = element_text(size = 7, family="Arial", colour = "black"),
+             legend.text = element_text(size = 7, family="Arial", colour = "black")) +
+      scale_size(name = "FDR pval:", range=c(5), breaks=c(2.2e-16, 0.5)) +
+      guides(color = guide_legend(title = ""))+
+      scale_x_continuous(expand = expansion(add = c(0.025, 0.025))) 
+    
+    ggplot2::ggsave(filename = file.path(args$figures_folder, paste0(figure_name,".png")), width = 180, height = 240, units = "mm", dpi = 300)
+    
+    # # Set the colors to be used
+    # fill_colors <- c("#cccccc","#999999","#999999","#999999")
+    # 
+    # # Find strips glob
+    # gt<-ggplot_gtable(ggplot_build(age_effsize_plot))
+    # strips <- which(startsWith(gt$layout$name,'strip'))
+    # 
+    # # Change the fill color of each strip
+    # for (s in seq_along(strips)) {
+    #   gt$grobs[[strips[s]]]$grobs[[1]]$children[[1]]$gp$fill <- fill_colors[s]
+    # }
+    # 
+    # dir.create(path = args$figures_folder, recursive = T, showWarnings = F)
+    # 
+    # 
+    # 
+    # png(filename=file.path(args$figures_folder, paste0(figure_name,".png")), width = 180, height = 240, units = "mm", res = 300)
+    # plot(gt)
+    # dev.off()
   }
-  
-  dir.create(path = figure.path, recursive = T, showWarnings = F)
-  png(filename=paste0(figure.path, "/", project.id, "_age_effect_size_paired",paired.test,"_median",get.median,"_fold-change_TPM.png"), 
-      width = 180, height = 240, 
-      units = "mm", res = 300)
-  plot(gt)
-  dev.off()
   
 }
 
