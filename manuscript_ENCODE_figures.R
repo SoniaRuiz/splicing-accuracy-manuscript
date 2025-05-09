@@ -113,37 +113,25 @@ get_database_stats <- function() {
   }
   
   
-  master_metadata %>%
-    dplyr::count(cluster) %>%
-    print(n = 50)
+  master_metadata %>% dplyr::count(cluster) %>% print(n = 50)
+  master_metadata %>% distinct(target_gene) %>% nrow()
   
-  ## We found that 268,988 (82.8%) annotated introns had at least a single associated novel donor or acceptor junction,
-  ## with only 55,968 annotated introns appearing to be precisely spliced across all the samples and tissues studied.
   
-  master_introns %>% head()
   master_introns %>% distinct(ref_junID) %>% nrow()
-  master_introns %>%
-    dplyr::count(misspliced)
+  master_introns %>% dplyr::count(misspliced)
   
   
-  ## Collectively, we detected 3,865,268 unique novel junctions, equating to 14 novel junctions per annotated intron. 
   master_novel_junctions %>% head
   master_novel_junctions %>% nrow() 
-  master_novel_junctions %>% 
-    dplyr::count(novel_type)
+  master_novel_junctions %>% dplyr::count(novel_type)
   
   (master_novel_junctions %>% nrow()) / (master_introns %>% filter(misspliced==1) %>% nrow())
   master_novel_junctions$seqnames %>% unique
   
-  ## Collectively, we detected 31,811 genes and 199,551 transcripts
-  query <- paste0("SELECT * FROM 'transcript'")
-  master_transcripts <- dbGetQuery(con, query) %>% as_tibble() 
-  master_transcripts %>% nrow()
   
-  ## JOIN WITH GENE DATA
-  query <- paste0("SELECT * FROM 'gene'")
-  master_genes <- dbGetQuery(con, query) %>% as_tibble() 
-  master_genes %>% distinct(gene_id) %>% nrow()
+  
+  master_transcript %>% nrow()
+  master_gene %>% distinct(gene_id) %>% nrow()
   
   ## Novel junctions exceed in X fold to annotated introns
   (master_novel_junctions %>% distinct(novel_junID) %>% nrow()) / (master_introns %>% distinct(ref_junID) %>% nrow())
@@ -158,16 +146,6 @@ get_database_stats <- function() {
        round(digits = 1))
   
   
-  ## Collectively, we detected X novel junctions
-  master_novel_junctions %>% distinct(novel_junID) %>% nrow()
-  
-  
-  ## equating to 14 novel junctions per an annotated junction.
-  ((master_novel_junctions %>% distinct(novel_junID) %>% nrow()) / (master_introns %>%
-                                                                      dplyr::count(misspliced) %>%
-                                                                      filter(misspliced == "Yes") %>%
-                                                                      pull(n))) %>%
-    round()
   
   
   ## After accounting for sample number, we found that the highest numbers of unique 
@@ -186,7 +164,7 @@ get_database_stats <- function() {
       filter(SRA_project == project_id) %>%
       pull(cluster) %>%
       unique()
-    
+    print(paste0(project_id))
     map_df(all_clusters, function (cluster_id)  {
       
       # cluster_id <- all_clusters[1]
@@ -195,7 +173,8 @@ get_database_stats <- function() {
                       FROM '", cluster_id, "_", project_id, "_misspliced'")
       novel_junctions <- dbGetQuery(con, query) %>% as.double()
       
-      return(data.frame(cluster = cluster_id,
+      return(data.frame(project = project_id,
+                        cluster = cluster_id,
                         n_novel = novel_junctions[1],
                         mean_msrd = novel_junctions[2],
                         mean_msra = novel_junctions[3]))
@@ -204,12 +183,10 @@ get_database_stats <- function() {
   })
   
   
-  ## The detection of unique novel donor and acceptor junctions was a common finding across all tissues, 
-  ## with the highest numbers found in “Cells - EBV-transformed lymphocytes” tissue and the lowest in “Whole Blood”.
-  
   df_n_samples_msr <- db_metadata_tidy %>%
     dplyr::rename(n_sample = n) %>%
-    inner_join(y = df_novel_jxn_count, by = "cluster") %>%
+    inner_join(y = df_novel_jxn_count, by = c("SRA_project" = "project",
+                                              "cluster" = "cluster")) %>%
     mutate(prop_novel = n_novel/n_sample)
   
   df_n_samples_msr %>%
@@ -225,17 +202,14 @@ get_database_stats <- function() {
     mutate(cluster = fct_inorder(cluster))
   
   ggplot(data =  plot_data) +
-    geom_bar(mapping = aes(x = cluster, 
-                           y = avg_n_novel_sample),
-             stat = "identity") +
+    geom_bar(mapping = aes(x = cluster, y = avg_n_novel_sample), stat = "identity") +
+    ggforce::facet_row(~SRA_project, scales = "free_x") +
     ylab("Average number of unique novel\njunctions across samples") +
     xlab("GTEx tissue") +
     theme_light() +
     custom_ggtheme +
     theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1)) 
   
-  file_name <- paste0(args$figures_folder, "/avg_novel_jnx_per_tissue")
-  ggplot2::ggsave(paste0(file_name, ".png"), width = 180, height = 100, units = "mm", dpi = 300)
   
 }
 
@@ -796,8 +770,8 @@ main_figure6_a <- function() {
                             levels = c("control", "gene knockdown donor", "gene knockdown acceptor"))) %>%
     mutate(novel_type = str_to_title(novel_type)) 
   
-  ## Save source data
   
+  ## Save source data
   write_csv(x = RBP_novel, file = file.path(args$data_folder, "figure6_a.csv"), col_names = T)
   
   #################################################
@@ -808,16 +782,17 @@ main_figure6_a <- function() {
     geom_histogram(aes(x = distance, fill = fct_rev(cluster)), 
                    bins = 60,  binwidth = 1,  position = "identity", alpha = 1,  color = "black",  linewidth = 0.1) +
     scale_x_continuous(breaks = seq(-limit_bp, limit_bp, length.out = 5)) + 
-    scale_fill_manual(values = c("#35B779FF", "#8d03b0", "#666666"),
+    scale_fill_manual(values = c("#35B779FF", "#8d03b0", "#999999"),
                       breaks = c("gene knockdown donor", "gene knockdown acceptor", "control"),
-                      labels = c("gene knockdown donor", "gene knockdown acceptor", "control")) +
+                      labels = c("shRNA knockdown - Novel Donor", "shRNA knockdown - Novel Acceptor", "Control")) +
     labs(x = "Distance (bp)", y = "Number of unique novel junctions") + 
     facet_grid(fct_rev(novel_type)~RBP) +
-    guides(fill = guide_legend(title = "Sample type: ", ncol = 2, nrow = 1 )) +
+    guides(fill = guide_legend(title = "Sample type: ", ncol = 3, nrow = 1 )) +
     theme_light() +
-    custom_ggtheme +
-    theme(legend.position = "none") 
-  
+    theme(panel.grid.minor = element_blank(),
+          panel.grid.major = element_line(linewidth = 0.07)) +
+    custom_ggtheme # +
+    #theme(legend.position = "none") 
   
   distance_rectangle <- ggplot() +
     geom_rect(aes(xmin = 0, xmax = limit_bp, ymin = 1, ymax = 60), fill = "grey", color = "black") +
@@ -830,7 +805,7 @@ main_figure6_a <- function() {
   distances_plot
   
   figure_name <- file.path(args$figures_folder, "main_figure6_a")
-  ggsave(file = paste0(figure_name, ".png"), width = 180, height = 80, dpi = 300, units = "mm")
+  # ggsave(file = paste0(figure_name, ".png"), width = 180, height = 80, dpi = 300, units = "mm")
   ggsave(file = paste0(figure_name, ".svg"), width = 180, height = 80, dpi = 300, units = "mm")
   
   
@@ -936,8 +911,12 @@ main_figure6_b <- function() {
     facet_wrap(vars(RBP)) +
     geom_text(data = distinct(RBP_novel_acceptor_delta, RBP, p.value), 
               aes(label = paste0("P<", p.value)), x = 25, y = 0.08, size = 3, color = "#333333") +
-    scale_fill_manual(values = c("#64037d", "#999999"), breaks = c("gene knockdown", "control"), labels = c("shRNA knockdown", "Control")) + 
-    scale_colour_manual(values = c("#64037d", "#333333"), breaks = c("gene knockdown", "control"), labels = c("shRNA knockdown", "Control")) + 
+    scale_fill_manual(values = c("#64037d", "#999999"), 
+                      breaks = c("gene knockdown", "control"), 
+                      labels = c("shRNA knockdown", "Control")) + 
+    scale_colour_manual(values = c("#64037d", "#333333"), 
+                        breaks = c("gene knockdown", "control"), 
+                        labels = c("shRNA knockdown", "Control")) + 
     labs(x = "Delta MES Acceptor") +
     theme_light() +
     custom_ggtheme

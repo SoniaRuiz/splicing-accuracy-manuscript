@@ -72,6 +72,8 @@ custom_ggtheme <-  theme(text = element_text(size = 7, colour = "black"),
                          axis.text.y = element_text(size = 7, colour = "black"),
                          axis.text.x = element_text(size = 7, colour = "black", hjust = 0.5, vjust = 0.5),
                          strip.text = element_text(size = 7, colour = "black"),
+                         panel.grid.major = element_line(linewidth = 0.1), 
+                         panel.grid.minor = element_line(linewidth = 0), 
                          legend.text = element_text(size = "7", colour = "black"),
                          legend.title = element_blank(),
                          legend.position = "top")
@@ -794,8 +796,8 @@ main_figure3_ab <- function() {
       theme_light() +
       scale_color_viridis_d() +
       scale_fill_manual(values = colour, breaks = breaks_label, labels = label_text) +
-      custom_ggtheme +
-      guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1))
+      guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1)) +
+      custom_ggtheme
   }
  
   ## Plot
@@ -805,7 +807,7 @@ main_figure3_ab <- function() {
   
 
   figure_name = file.path(args$figures_folder, "main_figure3_ab")
-  ggplot2::ggsave(filename = paste0(figure_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
+  #ggplot2::ggsave(filename = paste0(figure_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(figure_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
   
   
@@ -1017,6 +1019,7 @@ main_figure3_cd <- function() {
                        breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6), trans = "reverse") +
     scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
+    ylim(c(0,1100)) +
     custom_ggtheme +
     theme(legend.position = "none") 
   plot_PC_donor <- plot_PC_donor / distance_rectangle_donor +  patchwork::plot_layout(heights = c(8, 2))
@@ -1029,6 +1032,7 @@ main_figure3_cd <- function() {
     xlab("Distance (in bp)") +
     ylab("Unique novel junctions") +
     theme_light() +
+    ylim(c(0,1100)) +
     scale_x_continuous(limits = c((limit_bp * -1), limit_bp), breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
     scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
@@ -1056,6 +1060,7 @@ main_figure3_cd <- function() {
     scale_x_continuous(limits = c(limit_bp,(limit_bp * -1)), breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6), trans = "reverse") +
     scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
+    ylim(c(0,250)) +
     custom_ggtheme +
     theme(legend.position = "none") 
   plot_NPC_donor <- plot_NPC_donor / distance_rectangle_donor +  patchwork::plot_layout(heights = c(8, 2))
@@ -1068,6 +1073,7 @@ main_figure3_cd <- function() {
     xlab("Distance (in bp)") +
     ylab("Unique novel junctions") +
     theme_light() +
+    ylim(c(0,250)) +
     scale_x_continuous(limits = c((limit_bp * -1), limit_bp), breaks = seq(from = (limit_bp * -1), to = limit_bp, by = 6)) +
     scale_fill_manual(values = c("#35B779FF","#64037d"), breaks = c("Novel Donor", "Novel Acceptor")) +
     guides(fill = guide_legend(title = NULL, ncol = 2, nrow = 1 )) +
@@ -1200,12 +1206,12 @@ main_figure3_e <- function() {
     theme_light() +
     custom_ggtheme +
     theme(legend.position = "none") +
-    scale_x_continuous(breaks = c(30,35,40), labels = c("30%","35%","40%")) +
+    scale_x_continuous(breaks = c(.3,.35,.40), labels = c("30%","35%","40%")) +
     scale_y_discrete(expand = c(0,0.5,1,0))
   
   
   figure_name <- file.path(args$figures_folder, "main_figure3_e")
-  ggplot2::ggsave(filename = paste0(figure_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
+  #ggplot2::ggsave(filename = paste0(figure_name, ".png"), width = 180, height = 50, units = "mm", dpi = 300)
   ggplot2::ggsave(filename = paste0(figure_name, ".svg"), width = 180, height = 50, units = "mm", dpi = 300)
   
   
@@ -1400,7 +1406,7 @@ main_figure4_bc <- function() {
            percentile_group = factor(percentile_group, levels = c("0", "(0,0.2]", "(0.2,0.4]", "(0.4,0.6]", "(0.6,0.8]", "(0.8,1]")))
   subsample_MSR_A <- subsample_MSR_tidy %>%
     dplyr::select(biotype, subclass, MSR = MSR_A, ref_junID) %>%
-    mutate(percentile_group = cut(MSR, breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1), include.lowest = F)) %>%
+    mutate(percentile_group = cut(MSR, breaks = c(0, 0.2, 0.4, 0.6, 0.8, 1), include.lowest = F )) %>%
     mutate(percentile_group = percentile_group %>% as.character(),
            percentile_group = replace_na(percentile_group, "0"),
            percentile_group = factor(percentile_group, levels = c("0", "(0,0.2]", "(0.2,0.4]", "(0.4,0.6]", "(0.6,0.8]", "(0.8,1]")))
@@ -1414,14 +1420,19 @@ main_figure4_bc <- function() {
       scale_fill_manual(values = c("#333333", "#999999"), 
                         breaks = c("PC", "non PC"),
                         labels = c("Protein-coding", "Non-coding")) +
-      theme_light() + custom_ggtheme + guides(fill = guide_legend(ncol = 2, nrow = 1)) 
-    if (zoomed) { plot + scale_y_continuous(limits =c(0,750), position = "right")} else {plot}
+      theme_light() + 
+      scale_y_continuous(limits =c(0,25000), sec.axis = sec_axis( trans=~.*.01, name=NULL)) + 
+      custom_ggtheme + 
+      guides(fill = guide_legend(ncol = 2, nrow = 1)) 
+    if (zoomed) { plot + scale_y_continuous(limits =c(0,700), 
+                                            sec.axis = sec_axis( trans=~.*100, name=NULL))} else {plot}
   }
   
   
   plot_MSR_donor <- plot_MSR(df = subsample_MSR_D, title = "MSR Donor")
   plot_MSR_acceptor <- plot_MSR(df = subsample_MSR_A, title = "MSR Acceptor")
   final_plot <- ggpubr::ggarrange(plot_MSR_donor, plot_MSR_acceptor, nrow = 1, ncol = 2, common.legend = TRUE)
+  final_plot
   figure_name <- file.path(args$figures_folder, "/main_figure4_bc")
   ggsave(filename = paste0(figure_name, ".png"), final_plot, width = 180, height = 60, units = "mm", dpi = 300)
   ggsave(filename = paste0(figure_name, ".svg"), final_plot, width = 180, height = 60, units = "mm", dpi = 300)
@@ -1431,6 +1442,7 @@ main_figure4_bc <- function() {
   plot_MSR_acceptor_zoomed <- plot_MSR(df = subsample_MSR_A, title = "MSR Acceptor", zoomed = T)
   final_plot_zoomed <- ggpubr::ggarrange(plot_MSR_donor_zoomed, plot_MSR_acceptor_zoomed, nrow = 1, ncol = 2, common.legend = TRUE)
   figure_name_zoomed <- file.path(args$figures_folder, "/main_figure4_bc_zoomed")
+  final_plot_zoomed
   ggsave(filename = paste0(figure_name_zoomed, ".png"), final_plot_zoomed, width = 180, height = 60, units = "mm", dpi = 300)
   ggsave(filename = paste0(figure_name_zoomed, ".svg"), final_plot_zoomed, width = 180, height = 60, units = "mm", dpi = 300)
   

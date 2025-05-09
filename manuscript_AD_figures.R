@@ -91,6 +91,37 @@ custom_ggtheme <-  theme(text = element_text(size = 9, family="Arial", colour = 
 ## FUNCTIONS 
 ########################################
 
+
+get_database_stats <- function() {
+  
+  df_metadata %>% nrow() 
+  
+  if ( any( names(df_metadata) == "rin" ) ) {
+    df_metadata %>%
+      filter(rin >= 8) %>% nrow()
+    df_metadata %>%
+      filter(rin >= 7) %>% nrow()
+    df_metadata %>%
+      filter(rin >= 6) %>% nrow()
+  }
+  
+  ## This database included a set of 245,738 annotated introns (Ensembl-v105=)
+  ## 149,649 of them with no evidence of mis-splicing and 96,089 introns with at least one linked novel split read)
+  master_introns %>% distinct(ref_junID) %>% nrow()
+  master_introns %>% dplyr::count(misspliced)
+  
+  
+  ## and a linked set of 219,658 novel junctions (125,085 novel acceptor and 94,573 novel donor junctions),
+  master_novel_junctions %>% nrow() 
+  master_novel_junctions %>% dplyr::count(novel_type)
+  
+  
+  ## originating from 23,999 genes and 181,284 transcripts
+  master_transcripts %>% distinct(transcript_id) %>% nrow()
+  master_gene %>% distinct(gene_id) %>% nrow()
+  
+}
+
 ## SECTION 1 - PAPER FIGURES -----------------------------------------------------------------
 
 ## Main figures
@@ -1558,34 +1589,6 @@ index_database <- function() {
   
 }
 
-get_database_stats <- function() {
-  
-  df_metadata %>% nrow() 
-  
-  if ( any( names(df_metadata) == "rin" ) ) {
-    df_metadata %>%
-      filter(rin >= 8) %>% nrow()
-    df_metadata %>%
-      filter(rin >= 7) %>% nrow()
-    df_metadata %>%
-      filter(rin >= 6) %>% nrow()
-  }
-  
-  ## This database included a set of 245,738 annotated introns (Ensembl-v105=)
-  ## 149,649 of them with no evidence of mis-splicing and 96,089 introns with at least one linked novel split read)
-  master_introns %>% distinct(ref_junID) %>% nrow()
-  master_introns %>% dplyr::count(misspliced)
-  
-  
-  ## and a linked set of 219,658 novel junctions (125,085 novel acceptor and 94,573 novel donor junctions),
-  master_novel_junctions %>% nrow() 
-  master_novel_junctions %>% dplyr::count(novel_type)
-  
-  ## originating from 23,999 genes and 181,284 transcripts
-  master_transcripts %>% distinct(transcript_id) %>% nrow()
-  master_gene %>% distinct(gene_id) %>% nrow()
-  
-}
 
 # "Analysis of MSR measures also demonstrated significantly higher levels of MSRs in AD samples at both donor and acceptor sites 
 # (5’ss, effect-size=0.052, one-tailed paired Wilcoxon signed rank test, P<0.001; 3’ss, effect-size=0.054, 

@@ -73,3 +73,6 @@ logs
 thesis.R
 thesis_corrections.R
 splicing_accuracy_manuscript_natcomms_review.R
+
+
+dependencies/.encori.sh.swp

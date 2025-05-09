@@ -89,6 +89,7 @@ age_database_stats <- function() {
   
   
   ## Number of tissues considered
+  df_metadata %>% distinct(SRA_project)
   df_metadata %>% distinct(external_id, .keep_all = T) %>% dplyr::count(SRA_project,cluster)
   
   
@@ -598,7 +599,39 @@ main_figure7_b <- function() {
   )
   
   
-  clusterProfiler::dotplot(ego_MSR %>% filter(ONTOLOGY == "CC"), x = "GeneRatio", showCategory = 30, split="ONTOLOGY") +
+  # Convert results to a data frame
+  enrich_df <- as.data.frame(ego_MSR) %>% filter(ONTOLOGY == "CC") 
+  enrich_df %>% as_tibble()
+  
+  # Create a new numeric column from the 'GeneRatio' column
+  enrich_df$GeneRatio_numeric <- sapply(enrich_df$GeneRatio, function(x) {
+    # Split the string by "/" and calculate the ratio
+    parts <- strsplit(x, "/")[[1]]
+    as.numeric(parts[1]) / as.numeric(parts[2])
+  })
+  
+  # Order the data frame by the new numeric column
+  top_terms <- enrich_df[order(enrich_df$GeneRatio_numeric, decreasing = T), ][1:30,]
+  
+  
+  # View the ordered data frame
+  #enrich_df_ordered[1:30,]
+  #which( enrich_df$Description == "nuclear envelope")
+  #enrich_df[1:27,]
+  # Select the top 30 terms
+  #top_terms <- enrich_df[order(enrich_df$GeneRatio, decreasing = F), ]
+  
+  # Check if the specific term is included
+  specific_term <- "tau protein binding"
+  if (!specific_term %in% top_terms$Description) {
+    # Add the specific term to the top terms
+    specific_row <- enrich_df[enrich_df$Description == specific_term, ]
+    top_terms <- rbind(top_terms, specific_row)
+  }
+  
+  clusterProfiler::dotplot(ego_MSR %>% filter(ONTOLOGY == "CC"), 
+                           x = "GeneRatio", 
+                           showCategory = top_terms$Description) +
     scale_y_discrete(labels = function(x) stringr::str_wrap(x, width = 60)) +
     xlab("Gene Ratio") +
     ggforce::facet_col(ONTOLOGY~., scales = "free_y", space = "free") +
